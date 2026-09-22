@@ -1,0 +1,29 @@
+# Builds a custom Ollama model tag ("mai-agent") on top of a pulled base
+# model, with a bigger context window than Ollama's default.
+#
+# WHY THIS FILE EXISTS: Ollama silently caps every model's context window
+# at 2048 tokens unless told otherwise -- it does not warn you, it just
+# truncates. This project's agent sends a system prompt plus the full
+# GitHub tool schema (~49 tools once a repo is connected) on every turn,
+# which alone is already well over 2048 tokens -- so without this, the
+# model would never even see its own tool definitions, let alone any
+# conversation history. See services/chat-server/src/agent.ts and
+# token-budget.ts for how the app sizes conversation history against
+# whatever context window you configure below.
+#
+# Usage (after `ollama pull qwen2.5:7b-instruct`, or whatever base model
+# you chose -- edit the FROM line to match):
+#   ollama create mai-agent -f scripts/ollama/Modelfile.mai-agent
+#
+# Then point .env's AGENT_LLM_MODEL at "mai-agent" and AGENT_LLM_TPM_LIMIT
+# at the same number as num_ctx below (see .env.example's Ollama block).
+FROM qwen2.5:7b-instruct
+
+# 8192 is a reasonable default for 32GB of RAM with CPU-only inference
+# (no dedicated GPU): it leaves real room for conversation history on top
+# of the tool schema and system prompt, without the prompt-processing time
+# per turn getting painfully long. Raise it if you have a GPU with enough
+# VRAM to keep the whole context resident, or lower it (e.g. 4096) if
+# replies feel too slow -- either way, keep AGENT_LLM_TPM_LIMIT in .env
+# matching this number.
+PARAMETER num_ctx 8192

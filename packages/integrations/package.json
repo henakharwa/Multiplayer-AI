@@ -1,0 +1,22 @@
+{
+  "name": "@mai-chat/integrations",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mai-chat/shared-types": "0.1.0",
+    "@octokit/rest": "22.0.1",
+    "@slack/web-api": "8.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  }
+}

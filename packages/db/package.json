@@ -1,0 +1,25 @@
+{
+  "name": "@mai-chat/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "migrate": "tsx src/migrate.ts"
+  },
+  "dependencies": {
+    "@mai-chat/shared-types": "0.1.0",
+    "dotenv": "18.0.1",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.2",
+    "@types/pg": "8.23.1",
+    "typescript": "7.0.2",
+    "tsx": "4.23.15",
+    "vitest": "5.0.1"
+  }
+}
