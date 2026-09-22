@@ -20,7 +20,8 @@ WebSockets working without buying a custom domain.
 3. Confirm Render found `render.yaml` and will create:
    - `multiplayer-ai` — Web Service — Free
    - `multiplayer-ai-db` — PostgreSQL — Free
-4. Click **Apply** and wait for the first deployment.
+4. Click **Apply** and wait for the first deployment. The application applies
+   its idempotent database schema automatically when it starts.
 5. Open `multiplayer-ai` > **Settings** > **Custom Domains** and copy the
    generated `https://...onrender.com` address. Call it `APP_URL` below.
 

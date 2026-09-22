@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 render_port="${PORT:?Render must provide PORT}"
+npm run migrate
 PORT=4000 npm run start:server &
 chat_pid=$!
 npm run start:web -- --hostname 127.0.0.1 --port 3000 &

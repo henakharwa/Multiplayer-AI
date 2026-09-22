@@ -6,7 +6,6 @@ services:
     region: oregon
     dockerfilePath: ./Dockerfile.render
     dockerContext: .
-    preDeployCommand: npm run migrate
     envVars:
       - key: DATABASE_URL
         fromDatabase:
