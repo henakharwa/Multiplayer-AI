@@ -26,19 +26,18 @@ export default function EmailVerificationBanner({ user }: { user: User }) {
   }
 
   return (
-    <div className="banner warning" role="status">
+    <div className="banner warning email-verification-banner" role="status">
       <span>
         {status === "sent"
-          ? `We've sent a new verification link to ${user.email}.`
-          : `Verify ${user.email} to finish setting up your account.`}
+          ? "Verification email sent. Check your inbox."
+          : "Verify your email to finish setting up your account."}
       </span>
-      {status === "sent" ? (
-        <button type="button" onClick={() => setDismissed(true)}>Dismiss</button>
-      ) : (
+      {status !== "sent" && (
         <button type="button" onClick={resend} disabled={status === "sending"}>
           {status === "sending" ? "Sending…" : status === "error" ? "Try again" : "Resend email"}
         </button>
       )}
+      <button type="button" className="email-verification-dismiss" onClick={() => setDismissed(true)} aria-label="Dismiss verification reminder">×</button>
     </div>
   );
 }
