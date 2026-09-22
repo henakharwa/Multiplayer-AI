@@ -7,6 +7,10 @@ COPY . .
 RUN npm ci && npm run build --workspace=packages/shared-types && npm run build --workspace=packages/db && npm run build --workspace=packages/integrations && npm run build --workspace=services/chat-server && npm run build --workspace=apps/web
 COPY --from=github_mcp /server/github-mcp-server /usr/local/bin/github-mcp-server
 COPY --from=caddy /usr/bin/caddy /usr/local/bin/caddy
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libcap2-bin \
+  && setcap -r /usr/local/bin/caddy \
+  && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 ENV GITHUB_MCP_COMMAND=github-mcp-server
 RUN chmod +x scripts/start-render.sh
