@@ -152,7 +152,10 @@ const defaultDeps: CreateServerDeps = {
 
 export function createApp(deps: CreateServerDeps = defaultDeps) {
   const app = express();
-  const webAppUrl = process.env.WEB_APP_URL ?? "http://localhost:3000";
+  // Browser Origin never includes a trailing slash. Normalizing the
+  // configured URL avoids rejecting legitimate deployed requests when a
+  // host dashboard stores the URL as `https://example.com/`.
+  const webAppUrl = (process.env.WEB_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "");
   app.use(cors({ origin: webAppUrl, credentials: true }));
   app.use(express.json());
   app.use((req, res, next) => {
@@ -481,7 +484,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
   }
 
   wss.on("connection", (ws: WebSocket, req) => {
-    if (req.headers.origin && req.headers.origin !== (process.env.WEB_APP_URL ?? "http://localhost:3000")) {
+    if (req.headers.origin && req.headers.origin !== (process.env.WEB_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "")) {
       ws.close(4003, "Untrusted origin");
       return;
     }
