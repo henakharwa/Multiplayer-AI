@@ -231,9 +231,15 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   });
 
   app.post("/workspaces", async (req: Request, res: Response) => {
-    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const name = typeof req.body?.name === "string" ? db.normalizeWorkspaceName(req.body.name) : "";
     if (!name) return res.status(400).json({ error: "name is required" });
-    const workspace = await db.createWorkspace(name);
+    let workspace;
+    try {
+      workspace = await db.createWorkspace(name, req.user!.id);
+    } catch (error) {
+      if (error instanceof db.WorkspaceNameTakenError) return res.status(409).json({ error: "A workspace with this name already exists." });
+      throw error;
+    }
     await db.addWorkspaceMember(workspace.id, req.user!.id, "admin");
     await db.createConversation({ workspaceId: workspace.id, createdByUserId: req.user!.id });
     await db.recordAuditEvent({

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage, Participant, PendingAction } from "@mai-chat/shared-types";
 import { CHAT_SERVER_WS_URL } from "./config";
-import { listPendingActions } from "./api";
+import { listMessages, listPendingActions } from "./api";
 
 export type ConnectionStatus = "connecting" | "open" | "closed";
 
@@ -64,6 +64,7 @@ export function useWorkspaceChat(workspaceId: string | null, conversationId: str
 
   useEffect(() => {
     if (!workspaceId || !conversationId || !displayName) return;
+    let active = true;
     setStatus("connecting");
     setCloseReason(null);
     setMessages([]);
@@ -72,6 +73,21 @@ export function useWorkspaceChat(workspaceId: string | null, conversationId: str
     setAgentBusy(false);
     setSendError(null);
     setHistoryLoaded(false);
+
+    // Fetch persisted history as soon as this conversation is selected. The
+    // WebSocket also sends history and remains the live update channel, but
+    // this fallback makes a refresh/reconnect resilient if that one socket
+    // event is delayed or lost through a proxy restart.
+    listMessages(workspaceId, conversationId)
+      .then((stored) => {
+        if (!active) return;
+        setMessages(stored);
+        setHistoryLoaded(true);
+      })
+      .catch(() => {
+        // The socket can still supply history; keep the composer disabled
+        // only until one of the two sources succeeds.
+      });
 
     // The WebSocket's "history" event only replays chat messages -- any
     // GitHub actions still awaiting confirmation from before this visit
@@ -142,6 +158,7 @@ export function useWorkspaceChat(workspaceId: string | null, conversationId: str
     };
 
     return () => {
+      active = false;
       ws.close();
       socketRef.current = null;
     };

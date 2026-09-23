@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import {
   getPool,
   closePool,
@@ -14,6 +15,7 @@ import {
   upsertSlackIntegration,
   listIntegrations,
   getIntegrationCredential,
+  upsertUserFromGithub,
   encryptToken,
   decryptToken,
 } from "../src/index.js";
@@ -72,6 +74,14 @@ describe("workspaces", () => {
   it("returns null for an unknown id or join code", async () => {
     expect(await getWorkspaceById("00000000-0000-0000-0000-000000000000")).toBeNull();
     expect(await getWorkspaceByJoinCode("zzzzzz")).toBeNull();
+  });
+
+  it("normalizes names and rejects a duplicate created by the same user", async () => {
+    const owner = await upsertUserFromGithub({ githubId: randomUUID(), username: "workspace-owner", displayName: "Workspace Owner" });
+    const name = `Workspace ${randomUUID()}`;
+    const created = await createWorkspace(`  ${name}  `, owner.id);
+    expect(created.name).toBe(name);
+    await expect(createWorkspace(name.toUpperCase(), owner.id)).rejects.toMatchObject({ name: "WorkspaceNameTakenError" });
   });
 });
 

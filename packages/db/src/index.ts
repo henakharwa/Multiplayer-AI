@@ -30,27 +30,59 @@ function generateJoinCode(): string {
   return randomBytes(6).toString("base64url").slice(0, 6);
 }
 
-export async function createWorkspace(name: string): Promise<Workspace> {
-  const pool = getPool();
+export class WorkspaceNameTakenError extends Error {
+  constructor() {
+    super("A workspace with this name already exists.");
+    this.name = "WorkspaceNameTakenError";
+  }
+}
+
+export function normalizeWorkspaceName(name: string): string {
+  return name.trim().replace(/\s+/g, " ");
+}
+
+export async function createWorkspace(name: string, createdByUserId?: string | null): Promise<Workspace> {
+  const normalizedName = normalizeWorkspaceName(name);
+  if (!normalizedName) throw new Error("workspace name is required");
+  const client = await getPool().connect();
   // Collisions are astronomically unlikely at this scale, but retry once
   // rather than assume -- a UNIQUE constraint violation is real and cheap
   // to recover from.
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const joinCode = generateJoinCode();
-    try {
-      const result = await pool.query(
-        `INSERT INTO workspaces (name, join_code) VALUES ($1, $2)
-         RETURNING id, name, join_code, created_at`,
-        [name, joinCode]
-      );
-      return toWorkspace(result.rows[0]);
-    } catch (err: unknown) {
-      const isUniqueViolation =
-        typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "23505";
-      if (!isUniqueViolation || attempt === 2) throw err;
+  try {
+    await client.query("BEGIN");
+    // A transaction lock makes the case/whitespace-insensitive lookup safe
+    // even when two browser tabs submit the same name at the same time.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [normalizedName.toLowerCase()]);
+    const existing = await client.query(
+      `SELECT id FROM workspaces
+       WHERE lower(regexp_replace(btrim(name), '\\s+', ' ', 'g')) = $1
+         AND created_by IS NOT DISTINCT FROM $2
+       LIMIT 1`,
+      [normalizedName.toLowerCase(), createdByUserId ?? null]
+    );
+    if (existing.rows[0]) throw new WorkspaceNameTakenError();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const joinCode = generateJoinCode();
+      try {
+        const result = await client.query(
+          `INSERT INTO workspaces (name, join_code, created_by) VALUES ($1, $2, $3)
+           RETURNING id, name, join_code, created_at`,
+          [normalizedName, joinCode, createdByUserId ?? null]
+        );
+        await client.query("COMMIT");
+        return toWorkspace(result.rows[0]);
+      } catch (err: unknown) {
+        const isUniqueViolation = typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "23505";
+        if (!isUniqueViolation || attempt === 2) throw err;
+      }
     }
+    throw new Error("failed to generate a unique join code");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
   }
-  throw new Error("failed to generate a unique join code");
 }
 
 // Records that a signed-in user has been in a workspace -- NOT an access
