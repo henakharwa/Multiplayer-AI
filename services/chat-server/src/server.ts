@@ -88,8 +88,11 @@ export async function defaultGithubMcpToolsFactory(opts: { workspaceId: string; 
   const client = await getGithubMcpClient(opts.workspaceId, {
     token: opts.token,
     image: process.env.GITHUB_MCP_DOCKER_IMAGE,
-    toolsets: process.env.GITHUB_TOOLSETS,
-    tools: process.env.GITHUB_TOOLS ?? (process.env.GITHUB_TOOLSETS ? undefined : DEFAULT_GITHUB_TOOLS),
+    // Render retains a blank variable as an empty string. `??` treats that
+    // as configured, which made GITHUB_TOOLS= select GitHub MCP's large
+    // default surface instead of this curated list and overflow Groq.
+    toolsets: process.env.GITHUB_TOOLSETS || undefined,
+    tools: process.env.GITHUB_TOOLS || (process.env.GITHUB_TOOLSETS ? undefined : DEFAULT_GITHUB_TOOLS),
   });
   return listMcpToolExecutors(client);
 }
