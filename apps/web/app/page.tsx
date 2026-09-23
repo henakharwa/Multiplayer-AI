@@ -66,19 +66,6 @@ export default function HomePage() {
     }
   }
 
-  async function startGuidedDemo() {
-    if (!auth.user) { setAuthMode("signup"); return; }
-    setCreating(true);
-    setError(null);
-    try {
-      const workspace = await createWorkspace("My demo workspace");
-      router.push(`/w/${workspace.id}?guide=1`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not create the demo workspace.");
-      setCreating(false);
-    }
-  }
-
   return (
     <div className="home-shell">
       <nav className="home-nav">
@@ -173,11 +160,6 @@ export default function HomePage() {
             </form>
           </div>}
         </div>
-
-        <section className="home-demo" aria-label="Guided demo">
-          <div><strong>See the shared AI workflow in action</strong><span>Create a guided workspace with a clear first-step checklist.</span></div>
-          <button className="btn secondary" onClick={() => void startGuidedDemo()} disabled={creating}>{creating ? "Creating…" : "Try a guided demo"}</button>
-        </section>
 
         {error && (
           <div className="home-error">

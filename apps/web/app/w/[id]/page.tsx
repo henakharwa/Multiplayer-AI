@@ -176,7 +176,6 @@ export default function WorkspaceRoomPage() {
   const [slackNotice, setSlackNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationConfig[]>([]);
   const [toolMenu, setToolMenu] = useState<IntegrationConfig["type"] | null>(null);
-  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Lands here right after the GitHub or Slack OAuth redirect
   // (services/chat-server/src/github-oauth.ts / slack-oauth.ts always
@@ -213,10 +212,6 @@ export default function WorkspaceRoomPage() {
     }
     router.replace(`/w/${workspaceId}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    setShowOnboarding(new URLSearchParams(window.location.search).get("guide") === "1");
   }, []);
 
   function handleRepoSelected(repo: GithubRepoSummary) {
@@ -595,7 +590,7 @@ export default function WorkspaceRoomPage() {
                 onChoose={useStarterTemplate}
                 onConnect={() => setShowConnectModal(true)}
               />
-              <OnboardingChecklist visible={showOnboarding || isNewWorkspaceConversation} hasIntegration={integrations.length > 0} hasMessage={chat.messages.length > 0} hasPendingAction={pendingActionCount > 0} onInvite={() => void copyInvite()} onConnect={() => setShowConnectModal(true)} />
+              <OnboardingChecklist visible={isNewWorkspaceConversation} hasIntegration={integrations.length > 0} hasMessage={chat.messages.length > 0} hasPendingAction={pendingActionCount > 0} onInvite={() => void copyInvite()} onConnect={() => setShowConnectModal(true)} />
             </section>
           ) : visibleMessages.map((m) => {
             if (m.role === "system") {
