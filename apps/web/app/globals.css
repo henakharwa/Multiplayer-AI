@@ -456,8 +456,10 @@ textarea {
 .workspace-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .workspace-new { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: 12px; padding: 11px 14px; border: 0; border-radius: 12px; background: #3395f4; color: white; font-weight: 650; }
 .workspace-new:hover { background: #2186e5; }
-.workspace-conversations { margin: 18px 0 8px; padding: 0 6px; min-height: 0; overflow-y: auto; }
-.workspace-conversation-heading { margin: 0 8px 8px; color: #6b7280; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.workspace-conversations { margin: 18px 0 8px; padding: 0 6px; min-height: 0; overflow: visible; }
+.workspace-conversation-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 38px; margin: 0 0 5px; padding: 7px 10px; border: 0; border-radius: 9px; background: transparent; color: #6b7280; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-align: left; text-transform: uppercase; }
+.workspace-conversation-toggle:hover { background: var(--bg-sunken); color: var(--text); }
+.workspace-conversation-toggle svg { width: 20px; height: 20px; color: var(--text-dim); }
 .workspace-conversation-item { display: flex; align-items: center; gap: 7px; width: 100%; overflow: hidden; border: 0; border-radius: 9px; background: transparent; color: #374151; cursor: pointer; font: inherit; font-size: 14px; line-height: 1.3; padding: 9px 10px; text-align: left; white-space: nowrap; }
 .workspace-conversation-item > span { overflow: hidden; text-overflow: ellipsis; }
 .workspace-unread-dot { width: 7px; height: 7px; margin-left: auto; border-radius: 50%; background: #3395f4; flex: 0 0 auto; }

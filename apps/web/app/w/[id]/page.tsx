@@ -155,6 +155,7 @@ export default function WorkspaceRoomPage() {
   const [draft, setDraft] = useState("");
   const [conversationSearch, setConversationSearch] = useState("");
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversationsOpen, setConversationsOpen] = useState(true);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<AgentKind>("project");
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
@@ -501,8 +502,10 @@ export default function WorkspaceRoomPage() {
         </nav>
 
         <div className="workspace-conversations" aria-label="Conversations">
-          <p className="workspace-conversation-heading">Conversations</p>
-          {conversations.map((conversation) => (
+          <button type="button" className="workspace-conversation-toggle" aria-expanded={conversationsOpen} onClick={() => setConversationsOpen((open) => !open)}>
+            <span>Conversations</span><ChevronGlyph direction={conversationsOpen ? "up" : "down"} />
+          </button>
+          {conversationsOpen && conversations.map((conversation) => (
             <button
               key={conversation.id}
               type="button"
@@ -781,6 +784,7 @@ function GearGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circl
 function ChatGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 3V5Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg>; }
 function ActivityGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l2-6 4 12 2-6h4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
 function GridGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2"/><rect x="14" y="4" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2"/><rect x="4" y="14" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2"/><rect x="14" y="14" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2"/></svg>; }
+function ChevronGlyph({ direction }: { direction: "up" | "down" }) { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={direction === "up" ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
 function LinkGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1L11 5m3 6a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 19.9L13 19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>; }
 function ArrowGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13m-5-5 5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
 function SignOutGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H5v14h5m4-4 5-3-5-3m5 3H9" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
