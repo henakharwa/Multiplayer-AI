@@ -95,6 +95,18 @@ const AGENTS: Array<{ id: AgentKind; name: string; description: string }> = [
   { id: "figma", name: "Figma", description: "Design context and handoff" },
 ];
 
+function identityForAgentMessage(authorName: string): { kind: AgentKind; name: string } {
+  const knownAgents: Record<string, { kind: AgentKind; name: string }> = {
+    "Project Agent": { kind: "project", name: "Project" },
+    "GitHub Agent": { kind: "github", name: "GitHub" },
+    "Slack Agent": { kind: "slack", name: "Slack" },
+    "Linear Agent": { kind: "linear", name: "Linear" },
+    "Notion Agent": { kind: "notion", name: "Notion" },
+    "Figma Agent": { kind: "figma", name: "Figma" },
+  };
+  return knownAgents[authorName] ?? { kind: "project", name: authorName.replace(/\s+Agent$/, "").trim() || "Project" };
+}
+
 export default function WorkspaceRoomPage() {
   const params = useParams<{ id: string }>();
   const workspaceId = params.id;
@@ -526,6 +538,7 @@ export default function WorkspaceRoomPage() {
               );
             }
             const isAgent = m.role === "agent";
+            const agentIdentity = isAgent ? identityForAgentMessage(m.authorName) : null;
             // @-mention / handoff mechanics (docs/spec.md Phase 2): a
             // 'user' message that @-mentioned only a teammate (never the
             // agent) never triggered a turn -- see server.ts's WebSocket
@@ -541,11 +554,11 @@ export default function WorkspaceRoomPage() {
             return (
               <div className={`msg${mentionsCurrentUser ? " mentions-you" : ""}`} key={m.id} data-testid="chat-message">
                 <span className={`avatar ${isAgent ? "agent" : ""}`} style={isAgent ? undefined : { background: colorForName(m.authorName) }}>
-                  {isAgent ? <AgentGlyph /> : initialsForName(m.authorName)}
+                  {isAgent && agentIdentity ? <AgentIcon agent={agentIdentity.kind} /> : initialsForName(m.authorName)}
                 </span>
                 <div className="msg-body">
                   <div className="meta">
-                    <span className={`author ${isAgent ? "agent" : ""}`}>{m.authorName || roleLabel(m.role)}</span>
+                    <span className={`author ${isAgent ? "agent" : ""}`}>{agentIdentity?.name ?? (m.authorName || roleLabel(m.role))}</span>
                     <span>· {formatTime(m.createdAt)}</span>
                     {isHandoff && (
                       <span className="handoff-badge" data-testid="handoff-badge" title="Directed at a teammate -- the agent didn't see this as a request">
