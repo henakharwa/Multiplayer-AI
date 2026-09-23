@@ -95,6 +95,41 @@ const AGENTS: Array<{ id: AgentKind; name: string; description: string }> = [
   { id: "figma", name: "Figma", description: "Design context and handoff" },
 ];
 
+type StarterTemplate = { prompt: string; requiresApproval?: boolean };
+
+const STARTER_TEMPLATES: Record<AgentKind, StarterTemplate[]> = {
+  project: [
+    { prompt: "Summarize this conversation and list the next steps." },
+    { prompt: "Create a simple plan for this project." },
+    { prompt: "What should our team decide next?" },
+  ],
+  github: [
+    { prompt: "List the open issues in the connected repository." },
+    { prompt: "Summarize the latest pull requests." },
+    { prompt: "Create an issue for: [describe the task]", requiresApproval: true },
+  ],
+  slack: [
+    { prompt: "List the channels I can access." },
+    { prompt: "Find recent messages about: [topic]" },
+    { prompt: "Post an update in #[channel]: [message]", requiresApproval: true },
+  ],
+  linear: [
+    { prompt: "List my active issues." },
+    { prompt: "Find issues related to: [topic]" },
+    { prompt: "What work is currently blocked?" },
+  ],
+  notion: [
+    { prompt: "Search Notion for: [topic]" },
+    { prompt: "Find documents about: [project]" },
+    { prompt: "Create a page for [topic] under [parent page].", requiresApproval: true },
+  ],
+  figma: [
+    { prompt: "List the Figma files I can access." },
+    { prompt: "Summarize the design in [file name]." },
+    { prompt: "Find comments or open design questions in [file name]." },
+  ],
+};
+
 function identityForAgentMessage(authorName: string): { kind: AgentKind; name: string } {
   const knownAgents: Record<string, { kind: AgentKind; name: string }> = {
     "Project Agent": { kind: "project", name: "Project" },
@@ -371,6 +406,12 @@ export default function WorkspaceRoomPage() {
   const selectedAgentInfo = AGENTS.find((agent) => agent.id === selectedAgent) ?? AGENTS[0];
   const workspaceRole = workspaceMembers.find((member) => member.id === user.id)?.role ?? "admin";
   const canEdit = workspaceRole === "admin" || workspaceRole === "editor";
+  const selectedAgentConnected = selectedAgent === "project" || integrations.some((integration) => integration.type === selectedAgent);
+
+  function useStarterTemplate(prompt: string): void {
+    setDraft(prompt);
+    window.setTimeout(() => composerInputRef.current?.focus(), 0);
+  }
 
   if (loadError) {
     return (
@@ -528,6 +569,25 @@ export default function WorkspaceRoomPage() {
                   <button type="submit" data-testid="send-btn" disabled={chat.status !== "open" || !canEdit || !draft.trim()} aria-label="Start chat"><ArrowGlyph /></button>
                 </div>
               </form>
+              <section className="workspace-starter-prompts" aria-label={`${selectedAgentInfo.name} starter prompts`}>
+                <p>Try {selectedAgentInfo.name}</p>
+                <div>
+                  {selectedAgentConnected ? STARTER_TEMPLATES[selectedAgent].map((template) => (
+                    <button
+                      key={template.prompt}
+                      type="button"
+                      onClick={() => useStarterTemplate(template.prompt)}
+                      disabled={!canEdit || chat.status !== "open"}
+                    >
+                      <span>{template.prompt}</span>{template.requiresApproval && <small>Requires approval</small>}
+                    </button>
+                  )) : (
+                    <button type="button" onClick={() => setShowConnectModal(true)} disabled={!canEdit}>
+                      <span>Connect {selectedAgentInfo.name} to get started</span>
+                    </button>
+                  )}
+                </div>
+              </section>
             </section>
           ) : visibleMessages.map((m) => {
             if (m.role === "system") {
