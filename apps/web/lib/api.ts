@@ -66,6 +66,11 @@ export async function createConversation(workspaceId: string): Promise<Conversat
   return (await parseJsonOrThrow(res)) as Conversation;
 }
 
+export async function deleteConversation(workspaceId: string, conversationId: string): Promise<Conversation[]> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" });
+  return (await parseJsonOrThrow(res)) as Conversation[];
+}
+
 export async function listNotifications(workspaceId: string): Promise<WorkspaceNotification[]> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/notifications?workspaceId=${encodeURIComponent(workspaceId)}`);
   return (await parseJsonOrThrow(res)) as WorkspaceNotification[];

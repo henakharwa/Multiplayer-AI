@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Conversation, GithubRepoSummary, IntegrationConfig, Workspace, WorkspaceMember, WorkspaceRole } from "@mai-chat/shared-types";
-import { createConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, disconnectIntegration, githubOAuthStartUrl, ApiError } from "../../../lib/api";
+import { createConversation, deleteConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, disconnectIntegration, githubOAuthStartUrl, ApiError } from "../../../lib/api";
 import { useWorkspaceChat } from "../../../lib/useWorkspaceChat";
 import { colorForName, initialsForName } from "../../../lib/avatar";
 import ConnectChannelModal from "../../_components/ConnectChannelModal";
@@ -156,6 +156,7 @@ export default function WorkspaceRoomPage() {
   const [conversationSearch, setConversationSearch] = useState("");
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationsOpen, setConversationsOpen] = useState(true);
+  const [conversationMenu, setConversationMenu] = useState<string | null>(null);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<AgentKind>("project");
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
@@ -360,6 +361,19 @@ export default function WorkspaceRoomPage() {
     window.history.replaceState(null, "", `/w/${workspaceId}?conversation=${conversationId}`);
   }
 
+  async function removeConversation(conversation: Conversation): Promise<void> {
+    if (!window.confirm(`Delete “${conversation.title}”? This permanently removes its messages and pending approvals.`)) return;
+    try {
+      const remaining = await deleteConversation(workspaceId, conversation.id);
+      setConversations(remaining);
+      setConversationMenu(null);
+      const nextConversation = remaining.find((item) => item.id !== conversation.id) ?? remaining[0];
+      if (nextConversation) selectConversation(nextConversation.id);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Could not delete this conversation.");
+    }
+  }
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat.messages.length]);
@@ -505,15 +519,12 @@ export default function WorkspaceRoomPage() {
             <span>Conversations</span><ChevronGlyph direction={conversationsOpen ? "up" : "down"} />
           </button>
           {conversationsOpen && conversations.map((conversation) => (
-            <button
-              key={conversation.id}
-              type="button"
-              className={`workspace-conversation-item${conversation.id === selectedConversationId ? " active" : ""}`}
-              onClick={() => selectConversation(conversation.id)}
-              title={conversation.title}
-            >
-              <span>{conversation.title}</span>{chat.unreadConversationIds.includes(conversation.id) && <i className="workspace-unread-dot" aria-label="Unread messages" />}
-            </button>
+            <div className={`workspace-conversation-row${conversation.id === selectedConversationId ? " active" : ""}`} key={conversation.id}>
+              <button type="button" className="workspace-conversation-item" onClick={() => selectConversation(conversation.id)} title={conversation.title}>
+                <span>{conversation.title}</span>{chat.unreadConversationIds.includes(conversation.id) && <i className="workspace-unread-dot" aria-label="Unread messages" />}
+              </button>
+              {canEdit && <div className="workspace-conversation-menu"><button type="button" className="workspace-conversation-more" aria-label={`More options for ${conversation.title}`} aria-expanded={conversationMenu === conversation.id} onClick={() => setConversationMenu((current) => current === conversation.id ? null : conversation.id)}><MoreGlyph /></button>{conversationMenu === conversation.id && <div className="workspace-conversation-popover"><button type="button" onClick={() => void removeConversation(conversation)}>Delete chat</button></div>}</div>}
+            </div>
           ))}
         </div>
 

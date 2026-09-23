@@ -288,6 +288,20 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.status(201).json(await db.createConversation({ workspaceId, title, createdByUserId: req.user!.id }));
   });
 
+  app.delete("/workspaces/:id/conversations/:conversationId", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const workspaceId = paramString(req.params.id);
+    const conversationId = paramString(req.params.conversationId);
+    if (!UUID_RE.test(workspaceId) || !UUID_RE.test(conversationId)) return res.status(400).json({ error: "invalid conversation id" });
+    if (!(await db.getWorkspaceById(workspaceId))) return res.status(404).json({ error: "not found" });
+    if (!(await db.deleteConversation(workspaceId, conversationId))) return res.status(404).json({ error: "conversation not found" });
+    let conversations = await db.listConversations(workspaceId);
+    // Keep every workspace immediately usable: deleting its final chat
+    // creates one fresh blank conversation instead of leaving a dead view.
+    if (conversations.length === 0) conversations = [await db.createConversation({ workspaceId, createdByUserId: req.user!.id })];
+    res.json(conversations);
+  });
+
   // Action audit trail (docs/spec.md Phase 2: "who asked for what, what
   // the agent did, when") -- see actions.ts / the WebSocket handlers
   // above for where these rows get written, and packages/db's

@@ -132,6 +132,14 @@ export async function getConversation(workspaceId: string, id: string): Promise<
   return result.rows[0] ? toConversation(result.rows[0]) : null;
 }
 
+export async function deleteConversation(workspaceId: string, id: string): Promise<boolean> {
+  const result = await getPool().query(
+    `DELETE FROM conversations WHERE workspace_id = $1 AND id = $2`,
+    [workspaceId, id]
+  );
+  return result.rowCount === 1;
+}
+
 function toConversation(row: { id: string; workspace_id: string; title: string; created_by_user_id: string | null; created_at: Date; updated_at: Date }): Conversation {
   return { id: row.id, workspaceId: row.workspace_id, title: row.title, createdByUserId: row.created_by_user_id, createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString() };
 }
