@@ -150,6 +150,7 @@ export default function WorkspaceRoomPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const user = useWorkspaceUser();
   const displayName = user.displayName;
+  const greetingName = (displayName || user.username || "there").trim().split(/\s+/)[0] || "there";
 
   const [draft, setDraft] = useState("");
   const [conversationSearch, setConversationSearch] = useState("");
@@ -553,7 +554,7 @@ export default function WorkspaceRoomPage() {
         <div className="workspace-chat-scroll" data-testid="message-list">
           {isNewWorkspaceConversation ? (
             <section className="workspace-empty-state">
-              <h2>What&apos;s next, {displayName.split(" ")[0]}?</h2>
+              <h2>What&apos;s next, {greetingName}?</h2>
               <form className="workspace-hero-composer" onSubmit={handleSend}>
                 <input
                   ref={composerInputRef}
