@@ -409,7 +409,6 @@ export default function WorkspaceRoomPage() {
   const workspaceRole = workspaceMembers.find((member) => member.id === user.id)?.role ?? "admin";
   const canEdit = workspaceRole === "admin" || workspaceRole === "editor";
   const selectedAgentConnected = selectedAgent === "project" || integrations.some((integration) => integration.type === selectedAgent);
-  const pendingActionCount = chat.pendingActions.filter((action) => action.status === "pending").length;
   const notificationsToday = notifications.filter((notification) => new Date(notification.createdAt).toDateString() === new Date().toDateString());
   const notificationsEarlier = notifications.filter((notification) => !notificationsToday.includes(notification));
 
@@ -558,13 +557,6 @@ export default function WorkspaceRoomPage() {
           </div>
         </header>
 
-        <aside className="workspace-context-panel" aria-label="Workspace context">
-          <p>Workspace context</p>
-          <section><span className="context-icon"><AgentIcon agent={selectedAgent} /></span><div><strong>{selectedAgentInfo.name} agent</strong><small>{selectedAgentConnected ? "Ready to help" : "Needs connection"}</small></div></section>
-          <section><span className="context-count">{pendingActionCount}</span><div><strong>{pendingActionCount === 1 ? "Decision needs approval" : "Decisions need approval"}</strong><small>{pendingActionCount ? "Review before an external change runs." : "No pending approvals."}</small></div></section>
-          <section><span className="context-count">{notifications.length}</span><div><strong>Recent updates</strong><small>{notifications[0]?.text ?? "No workspace activity yet."}</small></div></section>
-        </aside>
-
         <div className="workspace-chat-scroll" data-testid="message-list">
           {isNewWorkspaceConversation ? (
             <section className="workspace-empty-state">
@@ -593,7 +585,6 @@ export default function WorkspaceRoomPage() {
                 onChoose={useStarterTemplate}
                 onConnect={() => setShowConnectModal(true)}
               />
-              <OnboardingChecklist visible={isNewWorkspaceConversation} hasIntegration={integrations.length > 0} hasMessage={chat.messages.length > 0} hasPendingAction={pendingActionCount > 0} onInvite={() => void copyInvite()} onConnect={() => setShowConnectModal(true)} />
             </section>
           ) : visibleMessages.map((m) => {
             if (m.role === "system") {
@@ -756,10 +747,6 @@ function StarterPrompts({ agent, agentName, connected, canEdit, chatOpen, onChoo
 }
 function NotificationGroup({ label, notifications }: { label: string; notifications: StoredNotification[] }) {
   return <section className="workspace-notification-group"><p>{label}</p>{notifications.map((notification) => <article key={notification.id}><p>{notification.text}</p><time>{formatTime(notification.createdAt)}</time></article>)}</section>;
-}
-function OnboardingChecklist({ visible, hasIntegration, hasMessage, hasPendingAction, onInvite, onConnect }: { visible: boolean; hasIntegration: boolean; hasMessage: boolean; hasPendingAction: boolean; onInvite: () => void; onConnect: () => void }) {
-  if (!visible) return null;
-  return <section className="workspace-onboarding" aria-label="Getting started checklist"><div><p>Getting started</p><strong>Make your first shared decision</strong></div><ol><li className={hasIntegration ? "done" : ""}><button type="button" onClick={onConnect}>{hasIntegration ? "Tool connected" : "Connect a collaboration tool"}</button></li><li><button type="button" onClick={onInvite}>Invite a teammate</button></li><li className={hasMessage ? "done" : ""}><span>{hasMessage ? "First question asked" : "Ask an agent a question"}</span></li><li className={hasPendingAction ? "active" : ""}><span>{hasPendingAction ? "Review an approval" : "Approve a suggested action"}</span></li></ol></section>;
 }
 function LinearIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5.2 5.2 4 20 18.8 18.8 20 4 5.2Zm0 6.7L5.2 10.7 13.3 18.8 12.1 20 4 11.9Zm6.7-7.9L12 2.8 20 10.7l-1.2 1.2L10.7 4Z" /></svg>; }
 function NotionIcon() { return <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.2 4.5 18.8 3.4l1.5 1.8v14.1l-1.7 1.2-13.4-.9-1.5-1.7V6.2l1.5-1.7Z" stroke="currentColor" strokeWidth="1.8" /><path d="M8 8.4v7.1m0-7.1 7.8 7.1m0-7.1v7.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>; }
