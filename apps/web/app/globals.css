@@ -423,9 +423,11 @@ textarea {
 /* Authenticated workspace dashboard. The landing page keeps the separate
    home layout above; these styles apply only after entering /w/:id. */
 .workspace-shell {
+  height: 100dvh;
   min-height: 100dvh;
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr);
+  align-items: stretch;
   background: #fafafa;
 }
 
@@ -526,7 +528,7 @@ textarea {
 .workspace-account strong { font-size: 13px; }
 .workspace-account small { color: var(--text-faint); font-size: 11px; }
 
-.workspace-main { position: relative; z-index: 0; min-width: 0; min-height: 100dvh; display: flex; flex-direction: column; margin: 0 10px 0 0; border-left: 1px solid rgba(229, 232, 238, .65); border-right: 1px solid var(--border); background: var(--surface); }
+.workspace-main { position: relative; z-index: 0; min-width: 0; height: 100dvh; min-height: 0; display: flex; flex-direction: column; margin: 0 10px 0 0; border-left: 1px solid rgba(229, 232, 238, .65); border-right: 1px solid var(--border); background: var(--surface); }
 .workspace-main-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 76px; padding: 16px 30px; border-bottom: 1px solid var(--border); }
 .workspace-kicker { margin: 0 0 2px; color: var(--text-faint); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .workspace-main-header h1 { margin: 0; color: var(--text); font-size: 18px; letter-spacing: -.02em; }
@@ -630,7 +632,8 @@ textarea {
   .workspace-nav { display: block; margin: 10px 0 0; }
   .workspace-nav a.active { display: inline-flex; padding: 8px 10px; }
   .workspace-account { position: absolute; top: 4px; right: 12px; margin: 0; }
-  .workspace-main { min-height: calc(100dvh - 67px); border: 0; }
+  .workspace-shell { height: auto; }
+  .workspace-main { height: auto; min-height: calc(100dvh - 67px); border: 0; }
   .workspace-main-header { padding: 14px 16px; min-height: 64px; }
   .workspace-header-actions .workspace-invite { font-size: 0; width: 36px; padding: 0; }
   .workspace-header-actions .workspace-invite svg { width: 18px; height: 18px; }
