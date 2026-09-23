@@ -599,6 +599,13 @@ textarea {
 .workspace-composer-wrap .workspace-starter-prompts button { padding: 5px 8px; font-size: 11px; }
 .workspace-composer-wrap .workspace-starter-prompts button small { font-size: 9px; }
 
+.workspace-toast-stack { position: fixed; z-index: 80; top: 18px; right: 18px; display: grid; gap: 8px; width: min(390px, calc(100vw - 36px)); }
+.workspace-toast { display: flex; align-items: center; gap: 12px; padding: 11px 12px 11px 14px; border: 1px solid #f4c9c9; border-radius: 12px; background: #fff8f8; box-shadow: 0 10px 28px rgba(36, 43, 56, .16); color: #a52b2b; font-size: 13px; line-height: 1.35; }
+.workspace-toast span { min-width: 0; flex: 1; }
+.workspace-toast button { flex: 0 0 auto; padding: 5px 9px; border: 1px solid currentColor; border-radius: 7px; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; font-weight: 650; }
+.workspace-toast.success { border-color: #c7ecdb; background: #f1fbf5; color: #0b7a4d; }
+.workspace-toast button:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+
 @media (max-width: 860px) {
   .workspace-shell { grid-template-columns: 220px minmax(0, 1fr); }
   .workspace-main { margin-right: 0; }
@@ -625,6 +632,7 @@ textarea {
   .workspace-hero-composer > input { min-height: 34px; font-size: 16px; }
   .workspace-composer-wrap { padding: 0 16px 14px; }
   .workspace-composer-note { display: none; }
+  .workspace-toast-stack { top: 12px; right: 12px; width: calc(100vw - 24px); }
 }
 
 @media (min-width: 681px) and (max-height: 760px) {

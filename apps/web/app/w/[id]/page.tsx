@@ -441,26 +441,26 @@ export default function WorkspaceRoomPage() {
   return (
     <div className="workspace-shell">
       <EmailVerificationBanner user={user} />
-      {chat.status === "closed" && chat.closeReason && (
-        <div className="banner" data-testid="disconnect-banner">
-          <span>{chat.closeReason}</span>
-          <button onClick={chat.reconnect}>Reconnect</button>
-        </div>
-      )}
-
-      {githubNotice && (
-        <div className={`banner ${githubNotice.kind === "success" ? "success" : ""}`} data-testid="github-notice">
-          <span>{githubNotice.text}</span>
-          <button onClick={() => setGithubNotice(null)}>Dismiss</button>
-        </div>
-      )}
-
-      {slackNotice && (
-        <div className={`banner ${slackNotice.kind === "success" ? "success" : ""}`} data-testid="slack-notice">
-          <span>{slackNotice.text}</span>
-          <button onClick={() => setSlackNotice(null)}>Dismiss</button>
-        </div>
-      )}
+      {(chat.status === "closed" || githubNotice || slackNotice) && <div className="workspace-toast-stack" aria-live="polite">
+        {chat.status === "closed" && chat.closeReason && (
+          <div className="workspace-toast error" data-testid="disconnect-banner">
+            <span>{chat.closeReason}</span>
+            <button onClick={chat.reconnect}>Reconnect</button>
+          </div>
+        )}
+        {githubNotice && (
+          <div className={`workspace-toast ${githubNotice.kind === "success" ? "success" : "error"}`} data-testid="github-notice">
+            <span>{githubNotice.text}</span>
+            <button onClick={() => setGithubNotice(null)}>Dismiss</button>
+          </div>
+        )}
+        {slackNotice && (
+          <div className={`workspace-toast ${slackNotice.kind === "success" ? "success" : "error"}`} data-testid="slack-notice">
+            <span>{slackNotice.text}</span>
+            <button onClick={() => setSlackNotice(null)}>Dismiss</button>
+          </div>
+        )}
+      </div>}
 
       {showConnectModal && <ConnectChannelModal workspaceId={workspaceId} onClose={() => setShowConnectModal(false)} />}
       {showRepoPicker && (
@@ -647,6 +647,16 @@ export default function WorkspaceRoomPage() {
         )}
 
         {!isNewWorkspaceConversation && <div className="workspace-composer-wrap">
+        <StarterPrompts
+          compact
+          agent={selectedAgent}
+          agentName={selectedAgentInfo.name}
+          connected={selectedAgentConnected}
+          canEdit={canEdit}
+          chatOpen={chat.status === "open"}
+          onChoose={useStarterTemplate}
+          onConnect={() => setShowConnectModal(true)}
+        />
         <form className="composer" onSubmit={handleSend}>
           <input
             ref={composerInputRef}
@@ -673,16 +683,6 @@ export default function WorkspaceRoomPage() {
           </button>
         </form>
         <p className="workspace-composer-note">Messages are shared with everyone in {workspace.name}. Use @agent or @mention a teammate to direct the next step.</p>
-        <StarterPrompts
-          compact
-          agent={selectedAgent}
-          agentName={selectedAgentInfo.name}
-          connected={selectedAgentConnected}
-          canEdit={canEdit}
-          chatOpen={chat.status === "open"}
-          onChoose={useStarterTemplate}
-          onConnect={() => setShowConnectModal(true)}
-        />
         </div>}
         {showAccessManager && <AccessManager workspaceId={workspaceId} members={workspaceMembers} onClose={() => setShowAccessManager(false)} onChanged={setWorkspaceMembers} />}
       </main>
