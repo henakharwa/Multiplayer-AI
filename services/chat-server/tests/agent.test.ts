@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { runAgentTurn, stripConfirmationBoilerplate } from "../src/agent.js";
+import { replyForResolvedActions, runAgentTurn, stripConfirmationBoilerplate } from "../src/agent.js";
 import type { ChatMessage, LlmChatFn } from "../src/llm-client.js";
 import type { ToolExecutor } from "../src/tools.js";
 
@@ -225,6 +225,7 @@ describe("runAgentTurn", () => {
     expect(result.reply).toContain("team meeting");
     expect(result.reply.toLowerCase()).not.toContain("confirm");
     expect(result.reply.toLowerCase()).not.toContain("card");
+    expect(result.proposedActionIds).toEqual(["a1"]);
   });
 
   it("leaves the reply alone when no tool call proposed a write action this turn", async () => {
@@ -265,5 +266,17 @@ describe("stripConfirmationBoilerplate", () => {
   it("leaves an unrelated reply untouched", () => {
     const reply = stripConfirmationBoilerplate("The weather in SF is sunny today.");
     expect(reply).toBe("The weather in SF is sunny today.");
+  });
+});
+
+describe("replyForResolvedActions", () => {
+  it("replaces a stale proposal reply after its action has already been confirmed", () => {
+    expect(replyForResolvedActions([{ status: "confirmed" }], "github")).toBe(
+      "The proposed GitHub action was confirmed and completed."
+    );
+  });
+
+  it("keeps the model reply when an action is still awaiting a decision", () => {
+    expect(replyForResolvedActions([{ status: "pending" }], "github")).toBeNull();
   });
 });

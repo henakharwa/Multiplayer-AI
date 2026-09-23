@@ -8,7 +8,7 @@ import { createGithubClient, type GithubClient } from "@mai-chat/integrations";
 import type { AuditEventType, Participant } from "@mai-chat/shared-types";
 import { RoomRegistry } from "./rooms.js";
 import { toLlmHistory } from "./history.js";
-import { runAgentTurn as defaultRunAgentTurn, type AgentKind, type RunAgentTurnInput, type RunAgentTurnResult } from "./agent.js";
+import { runAgentTurn as defaultRunAgentTurn, replyForResolvedActions, type AgentKind, type RunAgentTurnInput, type RunAgentTurnResult } from "./agent.js";
 import { buildToolsForWorkspace, wrapForProposal, registerActionRoutes } from "./actions.js";
 import { parseMentions } from "./mentions.js";
 import type { ToolExecutor } from "./tools.js";
@@ -465,12 +465,19 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     const turnStart = Date.now();
     const result = await deps.runAgentTurn({ history: toLlmHistory(messages), tools, githubContext: agentKind === "github" ? built.githubContext : null, agentKind });
     console.log(`[timing] workspace ${workspaceId}: runAgentTurn (all LLM calls + tool calls, see [timing] lines above) took ${Date.now() - turnStart}ms`);
+    const proposedActions = await Promise.all(
+      (result.proposedActionIds ?? []).map((actionId) => db.getPendingAction(workspaceId, actionId))
+    );
+    const resolvedReply = replyForResolvedActions(
+      proposedActions.filter((action): action is NonNullable<typeof action> => action !== null),
+      agentKind
+    );
     const agentMessage = await db.insertMessage({
       workspaceId,
       conversationId,
       role: "agent",
       authorName: agentKind === "github" ? "GitHub Agent" : agentKind === "slack" ? "Slack Agent" : agentKind === "linear" ? "Linear Agent" : agentKind === "notion" ? "Notion Agent" : agentKind === "figma" ? "Figma Agent" : "Project Agent",
-      content: result.reply,
+      content: resolvedReply ?? result.reply,
     });
     rooms.broadcast(`${workspaceId}:${conversationId}`, { type: "message", message: agentMessage });
     rooms.broadcast(workspaceId, { type: "workspace_message", message: agentMessage });

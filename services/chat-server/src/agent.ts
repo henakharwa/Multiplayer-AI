@@ -24,6 +24,10 @@ export interface RunAgentTurnInput {
 export interface RunAgentTurnResult {
   reply: string;
   toolCallsMade: number;
+  // IDs of write actions proposed during this turn. The server uses these
+  // exact IDs to avoid publishing a stale "please confirm" reply when a
+  // person resolves the card before the model's follow-up text arrives.
+  proposedActionIds?: string[];
 }
 
 // Built fresh per turn (rather than a single module-level constant) since
@@ -106,6 +110,46 @@ Keep replies concise -- this is a live chat, not a report.`;
 // without still tipping a request over the limit.
 const TOKEN_BUDGET_SAFETY_MARGIN = 200;
 
+// A write proposal appears as its own interactive card. The model's second
+// response often repeats "please confirm it in the UI", which is redundant
+// at best and can become stale if someone approves the card before that
+// response arrives. Remove only sentences that combine confirmation wording
+// with proposal-card mechanics; ordinary uses of words such as "confirm"
+// remain untouched.
+export function stripConfirmationBoilerplate(reply: string): string {
+  const kept = reply
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => {
+      if (!(/\b(confirm|cancel)\b/i.test(sentence) && /\b(pending|awaiting|card|ui|button)\b/i.test(sentence))) return sentence;
+      // The model often puts the useful proposal and stale UI instruction
+      // into one sentence. Keep the former by cutting only from the action
+      // status / instruction phrase onward.
+      return sentence
+        .replace(/\s+(?:this|the)\s+(?:action|request|change|proposal)\s+(?:is|remains)\s+(?:pending|awaiting)[\s\S]*$/i, "")
+        .replace(/\s+please\s+(?:confirm|cancel)\b[\s\S]*$/i, "")
+        .replace(/^(?:this|the)\s+(?:action|request|change|proposal)\s+(?:is|remains)\s+(?:pending|awaiting)[\s\S]*$/i, "")
+        .replace(/^please\s+(?:confirm|cancel)\b[\s\S]*$/i, "")
+        .trim();
+    })
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  return kept || "Here's what I'm proposing -- see the card above.";
+}
+
+export function replyForResolvedActions(
+  actions: Array<{ status: "pending" | "confirmed" | "cancelled" | "failed" }>,
+  agentKind: AgentKind
+): string | null {
+  if (actions.length === 0 || actions.some((action) => action.status === "pending")) return null;
+  const label = agentKind === "github" ? "GitHub " : agentKind === "slack" ? "Slack " : "";
+  const noun = actions.length === 1 ? "action" : "actions";
+  if (actions.every((action) => action.status === "confirmed")) return `The proposed ${label}${noun} ${actions.length === 1 ? "was" : "were"} confirmed and completed.`;
+  if (actions.every((action) => action.status === "cancelled")) return `The proposed ${label}${noun} ${actions.length === 1 ? "was" : "were"} cancelled.`;
+  if (actions.every((action) => action.status === "failed")) return `The proposed ${label}${noun} could not be completed.`;
+  return null;
+}
+
 export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTurnResult> {
   const chat = input.chat ?? chatCompletion;
   const config = input.llmConfig ?? resolveLlmConfig();
@@ -142,6 +186,8 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
 
   const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }, ...trimmedHistory];
   let toolCallsMade = 0;
+  let proposedWriteAction = false;
+  const proposedActionIds: string[] = [];
 
   for (let turn = 0; turn < maxTurns; turn++) {
     // Diagnostic timing (temporary, 2026-09-21 -- tracking down reports of
@@ -155,7 +201,8 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     messages.push(message);
 
     if (!message.tool_calls || message.tool_calls.length === 0) {
-      return { reply: message.content ?? "", toolCallsMade };
+      const reply = message.content ?? "";
+      return { reply: proposedWriteAction ? stripConfirmationBoilerplate(reply) : reply, toolCallsMade, proposedActionIds };
     }
 
     for (const call of message.tool_calls) {
@@ -169,6 +216,11 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
         try {
           const args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
           const result = await exec(args);
+          if (result && typeof result === "object" && (result as { status?: unknown }).status === "awaiting_user_confirmation") {
+            proposedWriteAction = true;
+            const actionId = (result as { actionId?: unknown }).actionId;
+            if (typeof actionId === "string") proposedActionIds.push(actionId);
+          }
           resultText = JSON.stringify(result);
         } catch (err) {
           resultText = `error: ${err instanceof Error ? err.message : String(err)}`;
@@ -182,5 +234,6 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   return {
     reply: "I wasn't able to finish that within my turn budget -- try asking something narrower.",
     toolCallsMade,
+    proposedActionIds,
   };
 }
