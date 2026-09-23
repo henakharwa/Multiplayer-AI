@@ -569,25 +569,15 @@ export default function WorkspaceRoomPage() {
                   <button type="submit" data-testid="send-btn" disabled={chat.status !== "open" || !canEdit || !draft.trim()} aria-label="Start chat"><ArrowGlyph /></button>
                 </div>
               </form>
-              <section className="workspace-starter-prompts" aria-label={`${selectedAgentInfo.name} starter prompts`}>
-                <p>Try {selectedAgentInfo.name}</p>
-                <div>
-                  {selectedAgentConnected ? STARTER_TEMPLATES[selectedAgent].map((template) => (
-                    <button
-                      key={template.prompt}
-                      type="button"
-                      onClick={() => useStarterTemplate(template.prompt)}
-                      disabled={!canEdit || chat.status !== "open"}
-                    >
-                      <span>{template.prompt}</span>{template.requiresApproval && <small>Requires approval</small>}
-                    </button>
-                  )) : (
-                    <button type="button" onClick={() => setShowConnectModal(true)} disabled={!canEdit}>
-                      <span>Connect {selectedAgentInfo.name} to get started</span>
-                    </button>
-                  )}
-                </div>
-              </section>
+              <StarterPrompts
+                agent={selectedAgent}
+                agentName={selectedAgentInfo.name}
+                connected={selectedAgentConnected}
+                canEdit={canEdit}
+                chatOpen={chat.status === "open"}
+                onChoose={useStarterTemplate}
+                onConnect={() => setShowConnectModal(true)}
+              />
             </section>
           ) : visibleMessages.map((m) => {
             if (m.role === "system") {
@@ -683,6 +673,16 @@ export default function WorkspaceRoomPage() {
           </button>
         </form>
         <p className="workspace-composer-note">Messages are shared with everyone in {workspace.name}. Use @agent or @mention a teammate to direct the next step.</p>
+        <StarterPrompts
+          compact
+          agent={selectedAgent}
+          agentName={selectedAgentInfo.name}
+          connected={selectedAgentConnected}
+          canEdit={canEdit}
+          chatOpen={chat.status === "open"}
+          onChoose={useStarterTemplate}
+          onConnect={() => setShowConnectModal(true)}
+        />
         </div>}
         {showAccessManager && <AccessManager workspaceId={workspaceId} members={workspaceMembers} onClose={() => setShowAccessManager(false)} onChanged={setWorkspaceMembers} />}
       </main>
@@ -712,6 +712,29 @@ function AgentSelector({ selected, selectedName, open, onToggle, onSelect, compa
     <button ref={triggerRef} type="button" className="workspace-agent-chip" onClick={togglePicker} title={`Select agent: ${selectedName}`} aria-label={`Select agent: ${selectedName}`}><AgentIcon agent={selected} /></button>
     {open && <div className={`agent-picker ${pickerPlacement}`} style={{ maxHeight: pickerMaxHeight }} role="menu"><div className="agent-picker-toolbar"><label><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Agents" aria-label="Search agents" /><SearchGlyph /></label></div><div className="agent-picker-list">{matchingAgents.map((agent) => <button type="button" key={agent.id} className={agent.id === selected ? "selected" : ""} onClick={() => onSelect(agent.id)}><span><AgentIcon agent={agent.id} /></span><strong>{agent.name}</strong><small>{agent.description}</small>{agent.id === selected && <b>✓</b>}</button>)}{matchingAgents.length === 0 && <p>No agents match your search.</p>}</div></div>}
   </div>;
+}
+function StarterPrompts({ agent, agentName, connected, canEdit, chatOpen, onChoose, onConnect, compact = false }: {
+  agent: AgentKind;
+  agentName: string;
+  connected: boolean;
+  canEdit: boolean;
+  chatOpen: boolean;
+  onChoose: (prompt: string) => void;
+  onConnect: () => void;
+  compact?: boolean;
+}) {
+  return <section className={`workspace-starter-prompts${compact ? " compact" : ""}`} aria-label={`${agentName} starter prompts`}>
+    <p>Try {agentName}</p>
+    <div>
+      {connected ? STARTER_TEMPLATES[agent].map((template) => (
+        <button key={template.prompt} type="button" onClick={() => onChoose(template.prompt)} disabled={!canEdit || !chatOpen}>
+          <span>{template.prompt}</span>{template.requiresApproval && <small>Requires approval</small>}
+        </button>
+      )) : (
+        <button type="button" onClick={onConnect} disabled={!canEdit}><span>Connect {agentName} to get started</span></button>
+      )}
+    </div>
+  </section>;
 }
 function LinearIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5.2 5.2 4 20 18.8 18.8 20 4 5.2Zm0 6.7L5.2 10.7 13.3 18.8 12.1 20 4 11.9Zm6.7-7.9L12 2.8 20 10.7l-1.2 1.2L10.7 4Z" /></svg>; }
 function NotionIcon() { return <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.2 4.5 18.8 3.4l1.5 1.8v14.1l-1.7 1.2-13.4-.9-1.5-1.7V6.2l1.5-1.7Z" stroke="currentColor" strokeWidth="1.8" /><path d="M8 8.4v7.1m0-7.1 7.8 7.1m0-7.1v7.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>; }

@@ -594,6 +594,10 @@ textarea {
 .workspace-composer-wrap .composer .agent-selector { grid-column: 1; grid-row: 1; }
 .workspace-composer-wrap .composer-send { grid-column: 3; grid-row: 1; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; }
 .workspace-composer-note { margin: 8px 3px 0; color: var(--text-faint); font-size: 11px; }
+.workspace-composer-wrap .workspace-starter-prompts { margin: 8px 3px 0; }
+.workspace-composer-wrap .workspace-starter-prompts > p { display: none; }
+.workspace-composer-wrap .workspace-starter-prompts button { padding: 5px 8px; font-size: 11px; }
+.workspace-composer-wrap .workspace-starter-prompts button small { font-size: 9px; }
 
 @media (max-width: 860px) {
   .workspace-shell { grid-template-columns: 220px minmax(0, 1fr); }
