@@ -708,7 +708,7 @@ export async function getUserById(id: string): Promise<User | null> {
   return result.rows[0] ? toUser(result.rows[0]) : null;
 }
 
-export async function createPasswordUser(input: { email: string; displayName: string; passwordHash: string }): Promise<User> {
+export async function createPasswordUser(input: { email: string; displayName: string; passwordHash: string; emailVerified?: boolean }): Promise<User> {
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
@@ -717,10 +717,13 @@ export async function createPasswordUser(input: { email: string; displayName: st
        RETURNING id, github_id, username, display_name, avatar_url, created_at`,
       [input.email, input.displayName]
     );
-    await client.query(`INSERT INTO password_credentials (user_id, email, password_hash) VALUES ($1, $2, $3)`,
-      [result.rows[0].id, input.email.toLowerCase().trim(), input.passwordHash]);
+    await client.query(
+      `INSERT INTO password_credentials (user_id, email, password_hash, email_verified_at)
+       VALUES ($1, $2, $3, CASE WHEN $4 THEN now() ELSE NULL END)`,
+      [result.rows[0].id, input.email.toLowerCase().trim(), input.passwordHash, input.emailVerified ?? false]
+    );
     await client.query("COMMIT");
-    return { ...toUser(result.rows[0]), email: input.email.toLowerCase().trim(), emailVerified: false };
+    return { ...toUser(result.rows[0]), email: input.email.toLowerCase().trim(), emailVerified: input.emailVerified ?? false };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

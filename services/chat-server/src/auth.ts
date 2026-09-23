@@ -46,6 +46,10 @@ export interface UserAuthConfig {
   // Secure attribute; false for local http:// dev, where Secure would
   // make the browser refuse to ever send the cookie at all.
   secureCookie: boolean;
+  // Disabled for the public prototype until transactional email is set up.
+  // Kept as a flag so verification can be restored without changing the
+  // authentication flow again.
+  emailVerificationEnabled?: boolean;
 }
 
 export interface UserAuthDeps {
@@ -290,4 +294,3 @@ export function registerUserAuthRoutes(
 
 // Exposed for tests only.
 export const __testing = { pendingStates, cleanupExpiredStates, SESSION_COOKIE_NAME, parseSessionToken };
-

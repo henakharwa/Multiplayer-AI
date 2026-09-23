@@ -30,6 +30,7 @@ export function registerEmailVerificationRoutes(app: Express, config: UserAuthCo
   // different browser/device than the one they signed up in) -- the
   // token itself, not a session, proves the click.
   app.post("/auth/verify-email", async (req: Request, res: Response) => {
+    if (!config.emailVerificationEnabled) return res.status(404).json({ error: "Email verification is currently disabled." });
     const token = typeof req.body?.token === "string" ? req.body.token : "";
     if (!token) return res.status(400).json({ error: "A verification token is required." });
     try {
@@ -43,6 +44,7 @@ export function registerEmailVerificationRoutes(app: Express, config: UserAuthCo
 
   const resendAttempts = new Map<string, { count: number; expiresAt: number }>();
   app.post("/auth/resend-verification", requireAuth, async (req: Request, res: Response) => {
+    if (!config.emailVerificationEnabled) return res.status(404).json({ error: "Email verification is currently disabled." });
     const now = Date.now();
     for (const [key, value] of resendAttempts) if (value.expiresAt <= now) resendAttempts.delete(key);
     const key = `user:${req.user!.id}`;

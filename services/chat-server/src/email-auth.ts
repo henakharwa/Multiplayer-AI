@@ -37,8 +37,15 @@ export function registerEmailAuthRoutes(app: Express, config: UserAuthConfig, ma
     }
     try {
       let user;
-      if (signup) {
-        user = await db.createPasswordUser({ email, displayName, passwordHash: await hashPassword(password) });
+      if (signup && config.emailVerificationEnabled) {
+        user = await db.createPasswordUser({
+          email,
+          displayName,
+          passwordHash: await hashPassword(password),
+          // When verification is deliberately disabled, do not leave new
+          // accounts in a misleading permanently-unverified state.
+          emailVerified: !config.emailVerificationEnabled,
+        });
       } else {
         const credential = await db.getPasswordCredential(email);
         const matches = await verifyPassword(password, credential?.passwordHash ?? null);

@@ -176,6 +176,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     redirectUri: deps.githubOAuthConfig.redirectUri,
     webAppUrl,
     secureCookie: new URL(webAppUrl).protocol === "https:",
+    emailVerificationEnabled: process.env.EMAIL_VERIFICATION_ENABLED === "true",
   };
   registerUserAuthRoutes(app, userAuthConfig, deps.userAuthDeps, deps.mailer);
   registerEmailVerificationRoutes(app, userAuthConfig, deps.mailer);

@@ -16,6 +16,7 @@ loadEnv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
 const config: UserAuthConfig = {
   clientId: "github-test", clientSecret: "test", redirectUri: "http://localhost:4000/auth/github/callback",
   webAppUrl: "http://localhost:3000", secureCookie: false,
+  emailVerificationEnabled: true,
   google: { clientId: "google-test", clientSecret: "secret", redirectUri: "http://localhost:4000/auth/login/google/callback" },
 };
 

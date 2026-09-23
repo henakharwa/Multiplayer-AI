@@ -12,7 +12,7 @@ export default function EmailVerificationBanner({ user }: { user: User }) {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [dismissed, setDismissed] = useState(false);
 
-  if (!user.email || user.emailVerified || dismissed) return null;
+  if (process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED !== "true" || !user.email || user.emailVerified || dismissed) return null;
 
   async function resend() {
     setStatus("sending");
