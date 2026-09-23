@@ -530,7 +530,7 @@ export default function WorkspaceRoomPage() {
         </div>
 
         <div className="workspace-side-section">
-          <div className="workspace-side-heading"><span>Connected tools</span><button onClick={() => setShowConnectModal(true)} aria-label="Add connected tool"><PlusGlyph /></button></div>
+          <div className="workspace-side-heading"><span>Connected tools</span></div>
           {integrations.length > 0 && integrations.some((i) => connectedChannelLabel(i)) ? integrations.map((integration) => {
             const label = connectedChannelLabel(integration);
             if (!label) return null;
@@ -538,8 +538,7 @@ export default function WorkspaceRoomPage() {
               <Link className="workspace-tool" href={`/w/${workspaceId}/integrations`}><span className="channel-glyph"><ToolIcon tool={integration.type} /></span><span>{label}</span><small className="tool-health connected">Connected</small></Link>
               {canEdit && <div className="workspace-tool-menu"><button type="button" className="workspace-tool-more" aria-label={`Manage ${integration.type}`} aria-expanded={toolMenu === integration.type} onClick={() => setToolMenu((current) => current === integration.type ? null : integration.type)}><MoreGlyph /></button>{toolMenu === integration.type && <div className="workspace-tool-popover">{integration.type === "github" && <button type="button" onClick={changeGithubConnection}>Change</button>}<button type="button" className="danger" onClick={() => void removeIntegration(integration.type)}>Disconnect</button></div>}</div>}
             </div>;
-          }) : <button className="workspace-empty-tool" onClick={() => setShowConnectModal(true)}><PlusGlyph /> Connect GitHub or Slack</button>}
-          <div className="workspace-tool-health-list">{AGENTS.filter((agent) => agent.id !== "project" && !integrations.some((integration) => integration.type === agent.id)).map((agent) => <button key={agent.id} type="button" className="workspace-tool-health-row" onClick={() => setShowConnectModal(true)}><AgentIcon agent={agent.id} /><span>{agent.name}</span><small>Needs connection</small></button>)}</div>
+          }) : <button className="workspace-empty-tool" onClick={() => setShowConnectModal(true)}>Connect your tools</button>}
         </div>
 
         <div className="workspace-side-section workspace-members">
