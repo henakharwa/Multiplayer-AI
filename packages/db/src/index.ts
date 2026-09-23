@@ -690,25 +690,79 @@ function toUser(row: {
   };
 }
 
-// Creates a user on first login, or refreshes username/display
-// name/avatar on every login after that -- GitHub is the source of truth
-// for these, this project doesn't let someone edit their own profile
-// separately, so "whatever GitHub says now" always wins.
-export async function upsertUserFromGithub(input: {
-  githubId: string;
+// A verified provider email is the shared account key. The provider's stable
+// subject remains the credential key; this mapping only tells us which user
+// should receive a newly-seen provider credential.
+function normalizedEmail(email: string): string { return email.trim().toLowerCase(); }
+
+async function findOrCreateUserForVerifiedEmail(input: {
+  providerColumn: "github_id" | "google_id";
+  providerId: string;
+  email: string;
   username: string;
   displayName: string;
   avatarUrl?: string;
 }): Promise<User> {
-  const pool = getPool();
-  const result = await pool.query(
-    `INSERT INTO users (github_id, username, display_name, avatar_url)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (github_id) DO UPDATE SET username = $2, display_name = $3, avatar_url = $4
-     RETURNING id, github_id, username, display_name, avatar_url, created_at`,
-    [input.githubId, input.username, input.displayName, input.avatarUrl ?? null]
-  );
-  return toUser(result.rows[0]);
+  const client = await getPool().connect();
+  const email = normalizedEmail(input.email);
+  try {
+    await client.query("BEGIN");
+    // Serialize first-time linking for one email so two OAuth callbacks
+    // cannot create separate accounts before either records its identity.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [email]);
+    const existingProvider = await client.query(
+      `SELECT id FROM users WHERE ${input.providerColumn} = $1`, [input.providerId]
+    );
+    const existingEmail = existingProvider.rows[0]
+      ? null
+      : await client.query(`SELECT user_id FROM user_email_identities WHERE email = $1`, [email]);
+    const userId = existingProvider.rows[0]?.id ?? existingEmail?.rows[0]?.user_id;
+    let result;
+    if (userId) {
+      result = await client.query(
+        `UPDATE users SET ${input.providerColumn} = $2, username = $3, display_name = $4, avatar_url = $5
+         WHERE id = $1 RETURNING id, github_id, username, display_name, avatar_url, created_at`,
+        [userId, input.providerId, input.username, input.displayName, input.avatarUrl ?? null]
+      );
+    } else {
+      result = await client.query(
+        `INSERT INTO users (${input.providerColumn}, username, display_name, avatar_url) VALUES ($1, $2, $3, $4)
+         RETURNING id, github_id, username, display_name, avatar_url, created_at`,
+        [input.providerId, input.username, input.displayName, input.avatarUrl ?? null]
+      );
+    }
+    await client.query(
+      `INSERT INTO user_email_identities (email, user_id) VALUES ($1, $2)
+       ON CONFLICT (email) DO UPDATE SET user_id = EXCLUDED.user_id`,
+      [email, result.rows[0].id]
+    );
+    await client.query("COMMIT");
+    return { ...toUser(result.rows[0]), email, emailVerified: true };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally { client.release(); }
+}
+
+export async function upsertUserFromGithub(input: {
+  githubId: string;
+  email?: string;
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+}): Promise<User> {
+  // Compatibility for existing test fixtures and legacy callers. Production
+  // OAuth always supplies a GitHub-verified email and takes the linking path.
+  if (!input.email) {
+    const result = await getPool().query(
+      `INSERT INTO users (github_id, username, display_name, avatar_url) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (github_id) DO UPDATE SET username = $2, display_name = $3, avatar_url = $4
+       RETURNING id, github_id, username, display_name, avatar_url, created_at`,
+      [input.githubId, input.username, input.displayName, input.avatarUrl ?? null]
+    );
+    return toUser(result.rows[0]);
+  }
+  return findOrCreateUserForVerifiedEmail({ providerColumn: "github_id", providerId: input.githubId, email: input.email, username: input.username, displayName: input.displayName, avatarUrl: input.avatarUrl });
 }
 
 export async function getUserById(id: string): Promise<User | null> {
@@ -725,20 +779,33 @@ export async function getUserById(id: string): Promise<User | null> {
 
 export async function createPasswordUser(input: { email: string; displayName: string; passwordHash: string; emailVerified?: boolean }): Promise<User> {
   const client = await getPool().connect();
+  const email = normalizedEmail(input.email);
   try {
     await client.query("BEGIN");
-    const result = await client.query(
-      `INSERT INTO users (username, display_name) VALUES ($1, $2)
-       RETURNING id, github_id, username, display_name, avatar_url, created_at`,
-      [input.email, input.displayName]
-    );
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [email]);
+    const existing = await client.query(`SELECT user_id FROM user_email_identities WHERE email = $1`, [email]);
+    const result = existing.rows[0]
+      ? await client.query(
+        `SELECT id, github_id, username, display_name, avatar_url, created_at FROM users WHERE id = $1`,
+        [existing.rows[0].user_id]
+      )
+      : await client.query(
+        `INSERT INTO users (username, display_name) VALUES ($1, $2)
+         RETURNING id, github_id, username, display_name, avatar_url, created_at`,
+        [email, input.displayName]
+      );
     await client.query(
       `INSERT INTO password_credentials (user_id, email, password_hash, email_verified_at)
        VALUES ($1, $2, $3, CASE WHEN $4 THEN now() ELSE NULL END)`,
-      [result.rows[0].id, input.email.toLowerCase().trim(), input.passwordHash, input.emailVerified ?? false]
+      [result.rows[0].id, email, input.passwordHash, input.emailVerified ?? false]
+    );
+    if (input.emailVerified) await client.query(
+      `INSERT INTO user_email_identities (email, user_id) VALUES ($1, $2)
+       ON CONFLICT (email) DO UPDATE SET user_id = EXCLUDED.user_id`,
+      [email, result.rows[0].id]
     );
     await client.query("COMMIT");
-    return { ...toUser(result.rows[0]), email: input.email.toLowerCase().trim(), emailVerified: input.emailVerified ?? false };
+    return { ...toUser(result.rows[0]), email, emailVerified: input.emailVerified ?? false };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -746,19 +813,13 @@ export async function createPasswordUser(input: { email: string; displayName: st
 }
 
 export async function getPasswordCredential(email: string): Promise<{ userId: string; passwordHash: string } | null> {
-  const result = await getPool().query(`SELECT user_id, password_hash FROM password_credentials WHERE email = $1`, [email.toLowerCase().trim()]);
+  const result = await getPool().query(`SELECT user_id, password_hash FROM password_credentials WHERE email = $1`, [normalizedEmail(email)]);
   const row = result.rows[0];
   return row ? { userId: row.user_id, passwordHash: row.password_hash } : null;
 }
 
 export async function upsertUserFromGoogle(input: { googleId: string; email: string; displayName: string; avatarUrl?: string }): Promise<User> {
-  const result = await getPool().query(
-    `INSERT INTO users (google_id, username, display_name, avatar_url) VALUES ($1, $2, $3, $4)
-     ON CONFLICT (google_id) DO UPDATE SET username = $2, display_name = $3, avatar_url = $4
-     RETURNING id, github_id, username, display_name, avatar_url, created_at`,
-    [input.googleId, input.email, input.displayName, input.avatarUrl ?? null]
-  );
-  return toUser(result.rows[0]);
+  return findOrCreateUserForVerifiedEmail({ providerColumn: "google_id", providerId: input.googleId, email: input.email, username: input.email, displayName: input.displayName, avatarUrl: input.avatarUrl });
 }
 
 // Mints a new session for a just-authenticated user and returns the RAW

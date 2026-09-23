@@ -129,11 +129,20 @@ describe("Google sign-in", () => {
     expect(start.headers.location).toContain("loginError");
   });
   it("does not link a Google identity to an unverified password account by email", async () => {
-    const account = newAccount(); const app = makeApp({ google: { fetchProfile: async () => ({ googleId: randomUUID(), email: account.email, displayName: "Google" }) } });
+    const account = newAccount(); const app = makeApp({ google: { fetchProfile: async () => ({ googleId: randomUUID(), email: account.email, displayName: "Google" }) } }, { ...config, emailVerificationEnabled: true });
     const created = await request(app).post("/auth/signup/email").send(account);
     const browser = request.agent(app); const start = await browser.get("/auth/login/google/start");
     await browser.get("/auth/login/google/callback").query({ code: "test", state: new URL(start.headers.location).searchParams.get("state") });
     expect((await browser.get("/auth/me")).body.id).not.toBe(created.body.id);
+  });
+  it("links a verified email account and Google login into one user", async () => {
+    const account = newAccount();
+    const app = makeApp({ google: { fetchProfile: async () => ({ googleId: randomUUID(), email: account.email, displayName: "Google" }) } });
+    const created = await request(app).post("/auth/signup/email").send(account);
+    expect(created.status).toBe(201);
+    const browser = request.agent(app); const start = await browser.get("/auth/login/google/start");
+    await browser.get("/auth/login/google/callback").query({ code: "test", state: new URL(start.headers.location).searchParams.get("state") });
+    expect((await browser.get("/auth/me")).body.id).toBe(created.body.id);
   });
   it("validates the real token and UserInfo responses", async () => {
     const mocked = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "test-access" })))

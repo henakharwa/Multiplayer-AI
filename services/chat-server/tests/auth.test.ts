@@ -45,7 +45,7 @@ function makeApp(deps: UserAuthDeps) {
 
 const okDeps: UserAuthDeps = {
   exchangeCodeForToken: async () => ({ accessToken: "gho_real-token" }),
-  fetchGithubUser: async () => ({ githubId: "12345", username: "octocat", displayName: "The Octocat", avatarUrl: "https://example.com/a.png" }),
+  fetchGithubUser: async () => ({ githubId: "12345", email: "octocat@example.test", username: "octocat", displayName: "The Octocat", avatarUrl: "https://example.com/a.png" }),
 };
 
 beforeAll(async () => {
@@ -65,7 +65,7 @@ function extractCookie(res: { headers: Record<string, string | string[] | undefi
 }
 
 describe("GET /auth/login/github/start", () => {
-  it("redirects to GitHub's authorize endpoint with client_id, redirect_uri, state, and no scope", async () => {
+  it("redirects to GitHub's authorize endpoint with client_id, redirect_uri, state, and email scope", async () => {
     const app = makeApp(okDeps);
     const res = await request(app).get("/auth/login/github/start");
     expect(res.status).toBe(302);
@@ -74,11 +74,7 @@ describe("GET /auth/login/github/start", () => {
     expect(location.searchParams.get("client_id")).toBe("test-client-id");
     expect(location.searchParams.get("redirect_uri")).toBe(config.redirectUri);
     expect(location.searchParams.get("state")).toBeTruthy();
-    // Signing in only needs the public profile, which GitHub's
-    // scope-less default grant already covers -- see auth.ts's comment
-    // on why no "scope" param is set here (unlike github-oauth.ts's
-    // "repo" scope for the separate integration flow).
-    expect(location.searchParams.get("scope")).toBeNull();
+    expect(location.searchParams.get("scope")).toBe("user:email");
   });
 
   it("honors a relative returnTo, but ignores an absolute/external one (open-redirect protection)", async () => {

@@ -37,13 +37,13 @@ export function registerEmailAuthRoutes(app: Express, config: UserAuthConfig, ma
     }
     try {
       let user;
-      if (signup && config.emailVerificationEnabled) {
+      if (signup) {
         user = await db.createPasswordUser({
           email,
           displayName,
           passwordHash: await hashPassword(password),
-          // When verification is deliberately disabled, do not leave new
-          // accounts in a misleading permanently-unverified state.
+          // This prototype currently disables email verification, so a
+          // completed sign-up can be linked with a verified OAuth email.
           emailVerified: !config.emailVerificationEnabled,
         });
       } else {

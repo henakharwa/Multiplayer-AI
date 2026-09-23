@@ -28,6 +28,16 @@ CREATE TABLE IF NOT EXISTS password_credentials (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- A provider may attest the same email as an existing password account. This
+-- is the canonical verified email-to-user mapping used to link sign-in methods.
+CREATE TABLE IF NOT EXISTS user_email_identities (
+  email TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  verified_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS user_email_identities_user_idx ON user_email_identities (user_id);
+
+
 -- token_hash is SHA-256(raw session token) (see src/crypto.ts's
 -- hashSessionToken) -- the raw token itself lives only in the browser's
 -- httpOnly cookie, never stored here, so a read of this table alone can't
@@ -216,6 +226,15 @@ CREATE INDEX IF NOT EXISTS pending_actions_workspace_idx
 -- email (or GitHub identity) before this app ever saw it; only signup
 -- via email+password hands us an address nobody has confirmed yet.
 ALTER TABLE password_credentials ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+
+-- Existing duplicate accounts remain separate; new sign-ins reuse the first
+-- verified identity rather than silently moving workspaces or messages.
+INSERT INTO user_email_identities (email, user_id, verified_at)
+SELECT lower(email), user_id, COALESCE(email_verified_at, now()) FROM password_credentials
+ON CONFLICT (email) DO NOTHING;
+INSERT INTO user_email_identities (email, user_id)
+SELECT lower(username), id FROM users WHERE google_id IS NOT NULL AND username LIKE '%@%'
+ON CONFLICT (email) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS email_verification_tokens (
   token_hash TEXT PRIMARY KEY,

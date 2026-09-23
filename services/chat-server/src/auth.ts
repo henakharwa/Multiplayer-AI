@@ -61,7 +61,7 @@ export interface UserAuthDeps {
   exchangeCodeForToken: (code: string, config: UserAuthConfig) => Promise<{ accessToken: string } | { error: string }>;
   fetchGithubUser: (
     accessToken: string
-  ) => Promise<{ githubId: string; username: string; displayName: string; avatarUrl?: string } | { error: string }>;
+  ) => Promise<{ githubId: string; email: string; username: string; displayName: string; avatarUrl?: string } | { error: string }>;
 }
 
 async function defaultExchangeCodeForToken(code: string, config: UserAuthConfig): Promise<{ accessToken: string } | { error: string }> {
@@ -84,7 +84,7 @@ async function defaultExchangeCodeForToken(code: string, config: UserAuthConfig)
 
 async function defaultFetchGithubUser(
   accessToken: string
-): Promise<{ githubId: string; username: string; displayName: string; avatarUrl?: string } | { error: string }> {
+): Promise<{ githubId: string; email: string; username: string; displayName: string; avatarUrl?: string } | { error: string }> {
   const res = await fetch("https://api.github.com/user", {
     headers: {
       authorization: `Bearer ${accessToken}`,
@@ -99,8 +99,17 @@ async function defaultFetchGithubUser(
   if (!res.ok || body.id === undefined) {
     return { error: `Could not fetch the signed-in GitHub profile (HTTP ${res.status}).` };
   }
+  const emailResponse = await fetch("https://api.github.com/user/emails", {
+    headers: { authorization: `Bearer ${accessToken}`, accept: "application/vnd.github+json", "user-agent": "multiplayer-ai-chat-server" },
+  });
+  const emails = (await emailResponse.json().catch(() => [])) as Array<{ email?: string; primary?: boolean; verified?: boolean }>;
+  const verifiedEmail = emails.find((entry) => entry.primary && entry.verified)?.email ?? emails.find((entry) => entry.verified)?.email;
+  if (!emailResponse.ok || !verifiedEmail) {
+    return { error: "GitHub did not provide a verified email address. Add and verify an email in GitHub, then try again." };
+  }
   return {
     githubId: String(body.id),
+    email: verifiedEmail,
     username: body.login ?? String(body.id),
     displayName: body.name?.trim() || body.login || String(body.id),
     avatarUrl: body.avatar_url,
@@ -232,10 +241,9 @@ export function registerUserAuthRoutes(
     const authorizeUrl = new URL("https://github.com/login/oauth/authorize");
     authorizeUrl.searchParams.set("client_id", config.clientId);
     authorizeUrl.searchParams.set("redirect_uri", config.redirectUri);
-    // No scope requested -- signing in only needs the public profile
-    // (id/login/name/avatar), which GitHub's default (scope-less) grant
-    // already includes. The separate "repo" scope for actually reading a
-    // repository is requested by github-oauth.ts's own, different flow.
+    // Request a verified email solely to link an existing account. GitHub's
+    // stable numeric ID still authenticates future sign-ins.
+    authorizeUrl.searchParams.set("scope", "user:email");
     authorizeUrl.searchParams.set("state", state);
     res.redirect(authorizeUrl.toString());
   });
