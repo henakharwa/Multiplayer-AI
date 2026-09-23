@@ -786,7 +786,8 @@ textarea {
 }
 
 .msg .avatar.agent {
-  background: linear-gradient(135deg, var(--accent), var(--violet));
+  background: transparent;
+  color: var(--accent);
 }
 
 .msg .msg-body {
