@@ -66,6 +66,19 @@ export default function HomePage() {
     }
   }
 
+  async function startGuidedDemo() {
+    if (!auth.user) { setAuthMode("signup"); return; }
+    setCreating(true);
+    setError(null);
+    try {
+      const workspace = await createWorkspace("My demo workspace");
+      router.push(`/w/${workspace.id}?guide=1`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not create the demo workspace.");
+      setCreating(false);
+    }
+  }
+
   return (
     <div className="home-shell">
       <nav className="home-nav">
@@ -93,12 +106,16 @@ export default function HomePage() {
         <span className="eyebrow">Shared AI workspace</span>
         <h1>Your team and an AI teammate, in one shared chat</h1>
         <p className="lede">
-          Connect GitHub and Slack once, then work through them together — everyone in the workspace sees the same conversation, the
-          same context, and the same agent.
+          Bring GitHub, Slack, Linear, Notion, and Figma into one shared conversation. Your team sees the same context, agents, and approved actions.
         </p>
 
+        {!auth.user && <div className="home-primary-actions">
+          <button className="btn home-primary-cta" onClick={() => { setError(null); setAuthMode("signup"); }}>Create your workspace</button>
+          <button className="home-text-action" onClick={() => { setError(null); setAuthMode("signin"); }}>Already have an account? Sign in</button>
+        </div>}
+
         <div className="home-panels">
-          <div className="home-panel">
+          {auth.user && <div className="home-panel">
             <span className="panel-icon blue" aria-hidden>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -122,9 +139,9 @@ export default function HomePage() {
                 {creating ? "Creating…" : "Create workspace"}
               </button>
             </form>
-          </div>
+          </div>}
 
-          <div className="home-panel">
+          {auth.user && <div className="home-panel">
             <span className="panel-icon violet" aria-hidden>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path
@@ -154,8 +171,13 @@ export default function HomePage() {
                 {joining ? "Joining…" : "Join workspace"}
               </button>
             </form>
-          </div>
+          </div>}
         </div>
+
+        <section className="home-demo" aria-label="Guided demo">
+          <div><strong>See the shared AI workflow in action</strong><span>Create a guided workspace with a clear first-step checklist.</span></div>
+          <button className="btn secondary" onClick={() => void startGuidedDemo()} disabled={creating}>{creating ? "Creating…" : "Try a guided demo"}</button>
+        </section>
 
         {error && (
           <div className="home-error">

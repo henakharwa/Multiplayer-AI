@@ -19,6 +19,7 @@ export default function PendingActionCard({
 }) {
   const [busy, setBusy] = useState<"confirm" | "cancel" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const target = [action.args.owner, action.args.repo].filter((value): value is string => typeof value === "string" && value.length > 0).join("/") || (typeof action.args.channel === "string" ? `#${action.args.channel}` : action.toolName);
 
   async function handle(intent: "confirm" | "cancel") {
     setBusy(intent);
@@ -43,6 +44,7 @@ export default function PendingActionCard({
     <div className="pending-action" data-testid="pending-action-card">
       <div className="pending-action-label">The agent wants to:</div>
       <div className="pending-action-desc">{action.description}</div>
+      <dl className="pending-action-details"><div><dt>Action</dt><dd>{action.toolName.replace(/[_-]/g, " ")}</dd></div><div><dt>Target</dt><dd>{target}</dd></div><div><dt>Requested by</dt><dd>{action.requestedByName ?? "A workspace member"}</dd></div></dl>
       {action.preview && <pre className="pending-action-preview">{action.preview}</pre>}
       {error && <div className="pending-action-error">{error}</div>}
       <div className="pending-action-buttons">
