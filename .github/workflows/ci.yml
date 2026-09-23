@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: mai_chat
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mai_chat"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/mai_chat
+      # Test-only key. Production uses its own Render environment secret.
+      INTEGRATION_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      AGENT_LLM_API_KEY: test-key
+      AGENT_LLM_BASE_URL: http://example.invalid/v1
+      AGENT_LLM_MODEL: test-model
+      AGENT_LLM_MAX_TOKENS: "256"
+      AGENT_LLM_TPM_LIMIT: "8192"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # These are the production release gates for the YC demo. Run each
+      # database-backed suite in its own process because each intentionally
+      # closes its own Postgres pool during teardown.
+      - name: Run agent request-budget tests
+        run: npm run test --workspace=services/chat-server -- --run tests/agent.test.ts
+
+      - name: Run GitHub workflow release gate
+        run: npm run test --workspace=services/chat-server -- --run tests/github-workflow.test.ts
+
+      - name: Run Slack workflow release gate
+        run: npm run test --workspace=services/chat-server -- --run tests/slack-workflow.test.ts
+
+      - name: Build all workspaces
+        run: npm run build
