@@ -450,7 +450,7 @@ textarea {
 .workspace-sidebar-icons { display: flex; gap: 3px; }
 .workspace-sidebar-icons a, .workspace-sidebar-icons button, .workspace-account button { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--text-dim); }
 .workspace-sidebar-icons a:hover, .workspace-sidebar-icons button:hover, .workspace-account button:hover { background: var(--bg-sunken); color: var(--text); }
-.workspace-search { display: flex; align-items: center; gap: 9px; height: 42px; margin-top: 18px; padding: 0 11px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text-dim); }
+.workspace-search { display: flex; align-items: center; gap: 10px; height: 50px; margin-top: 18px; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text-dim); }
 .workspace-search svg { width: 19px; height: 19px; flex: 0 0 auto; }
 .workspace-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); }
 .workspace-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
