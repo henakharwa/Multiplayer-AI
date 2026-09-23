@@ -25,6 +25,7 @@ export interface WorkspaceChatState {
   unreadConversationIds: string[];
   pendingActions: PendingAction[];
   closeReason: string | null;
+  reconnecting: boolean;
   // True while the agent is actively working on the last message sent in
   // this workspace (by anyone -- the room shares one agent turn at a
   // time, see services/chat-server/src/server.ts). The composer should
@@ -54,6 +55,7 @@ export function useWorkspaceChat(workspaceId: string | null, conversationId: str
   const [unreadConversationIds, setUnreadConversationIds] = useState<string[]>([]);
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
   const [closeReason, setCloseReason] = useState<string | null>(null);
+  const [reconnecting, setReconnecting] = useState(false);
   const [agentBusy, setAgentBusy] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [historyLoaded, setHistoryLoaded] = useState(false);
@@ -87,7 +89,7 @@ export function useWorkspaceChat(workspaceId: string | null, conversationId: str
     const ws = new WebSocket(url);
     socketRef.current = ws;
 
-    ws.onopen = () => setStatus("open");
+    ws.onopen = () => { setStatus("open"); setReconnecting(false); };
 
     ws.onmessage = (event) => {
       let parsed: ServerEvent;
@@ -123,6 +125,7 @@ export function useWorkspaceChat(workspaceId: string | null, conversationId: str
 
     ws.onclose = (event) => {
       setStatus("closed");
+      setReconnecting(false);
       if (event.code === 4001) {
         window.location.reload();
         return;
@@ -152,12 +155,15 @@ export function useWorkspaceChat(workspaceId: string | null, conversationId: str
     const trimmed = content.trim();
     if (!trimmed) return;
     const ws = socketRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      setSendError("Your connection is offline. Reconnect before sending a message.");
+      return;
+    }
     setSendError(null);
     ws.send(JSON.stringify({ type: "chat", content: trimmed, agentKind }));
   }, []);
 
-  const reconnect = useCallback(() => setGeneration((g) => g + 1), []);
+  const reconnect = useCallback(() => { setReconnecting(true); setSendError(null); setGeneration((g) => g + 1); }, []);
 
-  return { status, messages, participants, workspaceParticipants, unreadConversationIds, pendingActions, closeReason, agentBusy, sendError, historyLoaded, sendMessage, reconnect };
+  return { status, messages, participants, workspaceParticipants, unreadConversationIds, pendingActions, closeReason, reconnecting, agentBusy, sendError, historyLoaded, sendMessage, reconnect };
 }

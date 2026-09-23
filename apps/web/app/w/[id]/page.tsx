@@ -459,11 +459,12 @@ export default function WorkspaceRoomPage() {
   return (
     <div className="workspace-shell">
       <EmailVerificationBanner user={user} />
-      {(chat.status === "closed" || githubNotice || slackNotice) && <div className="workspace-toast-stack" aria-live="polite">
+      {(chat.status === "closed" || chat.reconnecting || githubNotice || slackNotice) && <div className="workspace-toast-stack" aria-live="polite">
+        {chat.reconnecting && <div className="workspace-toast reconnecting" data-testid="reconnecting-notice"><span>Reconnecting to the workspace…</span><button disabled>Reconnecting</button></div>}
         {chat.status === "closed" && chat.closeReason && (
           <div className="workspace-toast error" data-testid="disconnect-banner">
             <span>{chat.closeReason}</span>
-            <button onClick={chat.reconnect}>Reconnect</button>
+            <button onClick={chat.reconnect} disabled={chat.reconnecting}>{chat.reconnecting ? "Reconnecting" : "Reconnect"}</button>
           </div>
         )}
         {githubNotice && (

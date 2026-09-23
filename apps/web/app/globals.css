@@ -618,6 +618,8 @@ textarea {
 .workspace-toast span { min-width: 0; flex: 1; }
 .workspace-toast button { flex: 0 0 auto; padding: 5px 9px; border: 1px solid currentColor; border-radius: 7px; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; font-weight: 650; }
 .workspace-toast.success { border-color: #c7ecdb; background: #f1fbf5; color: #0b7a4d; }
+.workspace-toast.reconnecting { border-color: #c9d6f8; background: #f5f8ff; color: #285dbb; }
+.workspace-toast button:disabled { cursor: wait; opacity: .65; }
 .workspace-toast button:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
 
 @media (max-width: 860px) {

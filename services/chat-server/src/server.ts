@@ -159,6 +159,16 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   app.use(cors({ origin: webAppUrl, credentials: true }));
   app.use(express.json());
   app.use((req, res, next) => {
+    const requestId = randomUUID();
+    res.setHeader("x-request-id", requestId);
+    res.on("finish", () => {
+      // Keep normal successful traffic quiet. Render captures these JSON
+      // lines for failures without exposing request bodies or secrets.
+      if (res.statusCode >= 400) console.error(JSON.stringify({ level: "error", event: "http_request", requestId, method: req.method, path: req.path, status: res.statusCode }));
+    });
+    next();
+  });
+  app.use((req, res, next) => {
     if (!["GET", "HEAD", "OPTIONS"].includes(req.method) && req.headers.origin && req.headers.origin !== webAppUrl) {
       res.status(403).json({ error: "Untrusted request origin" });
       return;
@@ -194,7 +204,18 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     return true;
   }
 
-  app.get("/healthz", (_req: Request, res: Response) => res.json({ ok: true }));
+  // Liveness proves the process can answer HTTP; readiness also proves its
+  // required datastore is reachable. Neither endpoint leaks configuration.
+  app.get("/healthz", (_req: Request, res: Response) => res.json({ ok: true, service: "chat-server" }));
+  app.get("/readyz", async (_req: Request, res: Response) => {
+    try {
+      await db.checkDatabaseHealth();
+      res.json({ ok: true, service: "chat-server", database: "connected" });
+    } catch (error) {
+      console.error(JSON.stringify({ level: "error", event: "readiness_check_failed", error: errMessage(error) }));
+      res.status(503).json({ ok: false, service: "chat-server", database: "unavailable" });
+    }
+  });
 
   app.get("/notifications", requireAuth, async (req: Request, res: Response) => {
     const notifications = await db.listNotifications(req.user!.id);
@@ -723,6 +744,12 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
         rooms.broadcast(workspaceId, { type: "workspace_presence", participants: rooms.participants(workspaceId) });
       });
     })();
+  });
+
+  app.use((error: unknown, req: Request, res: Response, _next: express.NextFunction) => {
+    const requestId = res.getHeader("x-request-id");
+    console.error(JSON.stringify({ level: "error", event: "unhandled_http_error", requestId, method: req.method, path: req.path, error: errMessage(error) }));
+    if (!res.headersSent) res.status(500).json({ error: "Unexpected server error", requestId });
   });
 
   return {

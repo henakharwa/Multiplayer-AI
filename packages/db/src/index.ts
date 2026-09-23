@@ -108,6 +108,11 @@ const MESSAGE_COLUMNS = "id, workspace_id, conversation_id, role, author_name, u
 
 const CONVERSATION_COLUMNS = "id, workspace_id, title, created_by_user_id, created_at, updated_at";
 
+/** A deliberately small database readiness probe for the deployment health endpoint. */
+export async function checkDatabaseHealth(): Promise<void> {
+  await getPool().query("SELECT 1");
+}
+
 export async function createConversation(input: { workspaceId: string; title?: string; createdByUserId?: string | null }): Promise<Conversation> {
   const result = await getPool().query(
     `INSERT INTO conversations (workspace_id, title, created_by_user_id) VALUES ($1, $2, $3)
