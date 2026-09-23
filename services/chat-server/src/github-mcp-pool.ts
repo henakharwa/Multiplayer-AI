@@ -173,6 +173,6 @@ export async function closeAllGithubMcpClients(): Promise<void> {
 // can be widened (via the GITHUB_TOOLS or GITHUB_TOOLSETS env vars -- see
 // README.md) once you can see the real numbers for your setup.
 export const DEFAULT_GITHUB_TOOLS =
-  "get_me,issue_read,issue_write,add_issue_comment,pull_request_read,list_pull_requests," +
+  "get_me,list_issues,issue_read,issue_write,add_issue_comment,pull_request_read,list_pull_requests," +
   "create_pull_request,merge_pull_request,get_file_contents,create_or_update_file," +
   "create_branch,list_commits,list_branches,search_code";

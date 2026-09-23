@@ -32,7 +32,7 @@ vi.mock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
   }),
 }));
 
-const { getGithubMcpClient, closeAllGithubMcpClients, DEFAULT_GITHUB_MCP_IMAGE } = await import("../src/github-mcp-pool.js");
+const { getGithubMcpClient, closeAllGithubMcpClients, DEFAULT_GITHUB_MCP_IMAGE, DEFAULT_GITHUB_TOOLS } = await import("../src/github-mcp-pool.js");
 
 beforeEach(() => {
   connectMock.mockClear();
@@ -45,6 +45,14 @@ afterEach(async () => {
 });
 
 describe("getGithubMcpClient", () => {
+  it("includes list_issues in the small default GitHub surface", () => {
+    // Regression coverage: the curated list exposed issue details but
+    // omitted GitHub's collection-level issue listing tool, so a connected
+    // GitHub agent could not answer the most basic "list open issues"
+    // request even though the MCP server was healthy.
+    expect(DEFAULT_GITHUB_TOOLS.split(",")).toContain("list_issues");
+  });
+
   // Regression test for a real incident found live 2026-09-21: .env's
   // GITHUB_MCP_DOCKER_IMAGE= (present but blank, not commented out) was
   // passed straight through as `image: ""`, and `"" ?? DEFAULT_...`
