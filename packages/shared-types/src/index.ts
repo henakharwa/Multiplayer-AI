@@ -66,6 +66,8 @@ export interface ChatMessage {
   conversationId: string;
   role: MessageRole;
   authorName: string; // display name for "user" messages, "Agent" for agent replies, "System" for system
+  // Immutable provenance lets clients identify the signed-in user even when names match.
+  authorUserId?: string;
   content: string;
   createdAt: string; // ISO
   // @-mention / handoff mechanics (docs/spec.md Phase 2) -- computed once

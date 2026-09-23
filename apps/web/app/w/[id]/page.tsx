@@ -602,8 +602,10 @@ export default function WorkspaceRoomPage() {
             // crash the whole message list on a stale/partial response.
             const isHandoff = m.role === "user" && m.mentionsAgent === false;
             const mentionsCurrentUser = (m.mentionedUserIds ?? []).includes(user.id);
+            // Prefer the immutable user id. The name fallback keeps older messages aligned for their author.
+            const isCurrentUserMessage = m.role === "user" && (m.authorUserId ? m.authorUserId === user.id : m.authorName === displayName);
             return (
-              <div className={`msg${mentionsCurrentUser ? " mentions-you" : ""}`} key={m.id} data-testid="chat-message">
+              <div className={`msg${isCurrentUserMessage ? " own" : ""}${mentionsCurrentUser ? " mentions-you" : ""}`} key={m.id} data-testid="chat-message">
                 <span className={`avatar ${isAgent ? "agent" : ""}`} style={isAgent ? undefined : { background: colorForName(m.authorName) }}>
                   {isAgent && agentIdentity ? <AgentIcon agent={agentIdentity.kind} /> : initialsForName(m.authorName)}
                 </span>

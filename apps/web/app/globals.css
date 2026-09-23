@@ -540,6 +540,11 @@ textarea {
 .workspace-context button svg { width: 15px; height: 15px; }
 .workspace-chat-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 25px 30px 16px; }
 .workspace-chat-scroll .msg { max-width: 780px; }
+/* Messages sent by this signed-in user sit on the right. Agent replies and
+   messages from teammates retain the shared, left-aligned conversation flow. */
+.workspace-chat-scroll .msg.own { margin-left: auto; flex-direction: row-reverse; }
+.workspace-chat-scroll .msg.own .meta { justify-content: flex-end; }
+.workspace-chat-scroll .msg.own .bubble { text-align: right; }
 .workspace-empty-state { display: flex; flex-direction: column; align-items: center; width: min(100%, 760px); margin: clamp(55px, 14vh, 165px) auto 0; text-align: center; }
 .workspace-empty-state h2 { margin: 0 0 30px; font-size: clamp(30px, 4vw, 44px); font-weight: 650; letter-spacing: -.045em; }
 .workspace-starter-prompts { width: 100%; margin-top: 18px; text-align: left; }

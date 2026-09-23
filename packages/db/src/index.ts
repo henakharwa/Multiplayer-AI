@@ -104,7 +104,7 @@ function toWorkspace(row: {
   };
 }
 
-const MESSAGE_COLUMNS = "id, workspace_id, conversation_id, role, author_name, content, created_at, mentions_agent, mentioned_user_ids";
+const MESSAGE_COLUMNS = "id, workspace_id, conversation_id, role, author_name, user_id, content, created_at, mentions_agent, mentioned_user_ids";
 
 const CONVERSATION_COLUMNS = "id, workspace_id, title, created_by_user_id, created_at, updated_at";
 
@@ -197,6 +197,7 @@ function toMessage(row: {
   conversation_id: string;
   role: MessageRole;
   author_name: string;
+  user_id: string | null;
   content: string;
   created_at: Date;
   mentions_agent: boolean;
@@ -208,6 +209,7 @@ function toMessage(row: {
     conversationId: row.conversation_id,
     role: row.role,
     authorName: row.author_name,
+    ...(row.user_id ? { authorUserId: row.user_id } : {}),
     content: row.content,
     createdAt: row.created_at.toISOString(),
     mentionsAgent: row.mentions_agent,
