@@ -167,6 +167,23 @@ describe("runAgentTurn", () => {
     expect(seenSystemPrompt).toContain("No GitHub repository is connected");
   });
 
+  it("includes trusted action status so follow-up questions can report a confirmed action accurately", async () => {
+    let seenSystemPrompt = "";
+    const chat: LlmChatFn = async (_config, messages) => {
+      seenSystemPrompt = String(messages[0].content);
+      return { role: "assistant", content: "The issue was created." };
+    };
+    await runAgentTurn({
+      history: [{ role: "user", content: "Is the action completed?" }],
+      tools: [],
+      actionContext: "- Create issue: Approval status: confirmed",
+      chat,
+    });
+    expect(seenSystemPrompt).toContain("Trusted action status for this conversation");
+    expect(seenSystemPrompt).toContain("Create issue: Approval status: confirmed");
+    expect(seenSystemPrompt).toContain("A confirmed action has completed");
+  });
+
   it("trims older history to fit the configured token budget, keeping the most recent messages and their order", async () => {
     let seenMessages: ChatMessage[] = [];
     const chat: LlmChatFn = async (_config, messages) => {

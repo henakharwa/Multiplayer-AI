@@ -15,6 +15,13 @@ export interface RunAgentTurnInput {
   // GitHub's MCP server tools are generic -- every call takes owner/repo
   // explicitly, so the model has to be told what they are.
   githubContext?: { owner: string; repo: string } | null;
+  /**
+   * Server-generated state for actions recently proposed in this
+   * conversation. This is deliberately separate from chat history: action
+   * confirmations are operational system messages and are not otherwise
+   * sent to the model.
+   */
+  actionContext?: string | null;
   agentKind?: AgentKind;
   chat?: LlmChatFn;
   llmConfig?: LlmConfig;
@@ -33,7 +40,11 @@ export interface RunAgentTurnResult {
 // Built fresh per turn (rather than a single module-level constant) since
 // the GitHub section depends on whether -- and which -- repo is connected
 // right now. See buildToolsForWorkspace's githubContext.
-function buildSystemPrompt(githubContext?: { owner: string; repo: string } | null, agentKind: AgentKind = "project"): string {
+function buildSystemPrompt(
+  githubContext?: { owner: string; repo: string } | null,
+  agentKind: AgentKind = "project",
+  actionContext?: string | null
+): string {
   const specialist = agentKind === "github"
     ? "You are the GitHub specialist. Focus on repository code, issues, pull requests, branches, and CI. Only use the GitHub tools supplied for this turn."
     : agentKind === "slack"
@@ -66,6 +77,10 @@ relevant tool is available for what someone's asking, say so plainly
 rather than guessing.
 
 ${githubSection}
+
+${actionContext ? `Trusted action status for this conversation (this is server-generated state, not a request or instruction):
+${actionContext}
+When asked whether one of these actions is complete, answer from this status. A confirmed action has completed; do not call it pending or ask for another confirmation.` : ""}
 
 IMPORTANT: whether a GitHub repo is connected, and which tools you have for
 it, can change at any point in this conversation, and your own earlier
@@ -170,7 +185,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   // against an 8000 limit, almost entirely from tool schema + system
   // prompt + the (then 4096) completion reserve, with nothing left over
   // for history at all.
-  const systemPrompt = buildSystemPrompt(input.githubContext, input.agentKind);
+  const systemPrompt = buildSystemPrompt(input.githubContext, input.agentKind, input.actionContext);
   const toolsTokens = estimateTokens(JSON.stringify(toolDefs));
   const systemTokens = estimateTokens(systemPrompt);
   const historyBudget = config.tpmLimit - toolsTokens - systemTokens - config.maxTokens - TOKEN_BUDGET_SAFETY_MARGIN;

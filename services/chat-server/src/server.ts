@@ -462,8 +462,23 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     // problem) or non-empty (the model just didn't use what it had).
     console.log(`[agent] workspace ${workspaceId}: ${tools.length} tool(s) available for this turn`);
 
+    // Confirmation notices are deliberately excluded from normal LLM
+    // history (history.ts), so provide the recent authoritative outcomes as
+    // compact server context instead. Without this, a follow-up such as
+    // "is the action completed?" can only see the earlier proposal and may
+    // incorrectly call an already-confirmed action pending.
+    const recentActions = (await db.listPendingActions(workspaceId, conversationId))
+      .slice(-5)
+      .map((action) => `- ${action.description}: ${action.status}`)
+      .join("\n");
     const turnStart = Date.now();
-    const result = await deps.runAgentTurn({ history: toLlmHistory(messages), tools, githubContext: agentKind === "github" ? built.githubContext : null, agentKind });
+    const result = await deps.runAgentTurn({
+      history: toLlmHistory(messages),
+      tools,
+      githubContext: agentKind === "github" ? built.githubContext : null,
+      actionContext: recentActions || null,
+      agentKind,
+    });
     console.log(`[timing] workspace ${workspaceId}: runAgentTurn (all LLM calls + tool calls, see [timing] lines above) took ${Date.now() - turnStart}ms`);
     const proposedActions = await Promise.all(
       (result.proposedActionIds ?? []).map((actionId) => db.getPendingAction(workspaceId, actionId))
