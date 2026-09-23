@@ -125,6 +125,65 @@ Keep replies concise -- this is a live chat, not a report.`;
 // without still tipping a request over the limit.
 const TOKEN_BUDGET_SAFETY_MARGIN = 200;
 
+// The provider counts tool definitions as prompt tokens. Remote MCP servers
+// can expose dozens of large JSON schemas, which made a Slack turn exceed
+// Groq's 8k request cap before the user message was even considered. Keep
+// the tool portion conservative so the system prompt, reply reservation,
+// and some current chat context still fit.
+const MAX_TOOL_SCHEMA_SHARE = 0.32;
+
+function compactSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(compactSchema);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      // These fields help a human read a schema but do not affect the
+      // shape of a tool call. Remote MCP schemas often repeat them enough
+      // times to dominate the entire LLM request.
+      .filter(([key]) => !["description", "title", "examples", "default", "$schema"].includes(key))
+      .map(([key, child]) => [key, compactSchema(child)])
+  );
+}
+
+function scoreTool(tool: ToolExecutor, request: string): number {
+  const haystack = `${tool.definition.function.name} ${tool.definition.function.description}`.toLowerCase();
+  const terms = request.toLowerCase().match(/[a-z0-9_]{3,}/g) ?? [];
+  return terms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
+}
+
+/**
+ * Produces a bounded, compact tool surface for one LLM request. Executing a
+ * tool still uses the original executor; only the schema shown to the model
+ * is shortened. Relevant tools are preferred using words from the newest
+ * user request, then original order is used as a deterministic tie-break.
+ */
+export function selectToolsForBudget(tools: ToolExecutor[], request: string, budgetTokens: number): ToolExecutor[] {
+  const ranked = tools
+    .map((tool, index) => ({ tool, index, score: scoreTool(tool, request) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+  const selected: ToolExecutor[] = [];
+  let used = 0;
+  for (const { tool } of ranked) {
+    const compact = {
+      ...tool,
+      definition: {
+        ...tool.definition,
+        function: {
+          ...tool.definition.function,
+          description: tool.definition.function.description.slice(0, 400),
+          parameters: compactSchema(tool.definition.function.parameters) as Record<string, unknown>,
+        },
+      },
+    };
+    const cost = estimateTokens(JSON.stringify(compact.definition));
+    if (selected.length > 0 && used + cost > budgetTokens) continue;
+    if (cost > budgetTokens) continue;
+    selected.push(compact);
+    used += cost;
+  }
+  return selected;
+}
+
 // A write proposal appears as its own interactive card. The model's second
 // response often repeats "please confirm it in the UI", which is redundant
 // at best and can become stale if someone approves the card before that
@@ -169,8 +228,11 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   const chat = input.chat ?? chatCompletion;
   const config = input.llmConfig ?? resolveLlmConfig();
   const maxTurns = input.maxTurns ?? 6;
-  const toolDefs = input.tools.map((t) => t.definition);
-  const toolMap = new Map(input.tools.map((t) => [t.definition.function.name, t.execute]));
+  const newestUserRequest = [...input.history].reverse().find((message) => message.role === "user")?.content ?? "";
+  const toolBudget = Math.max(600, Math.floor(config.tpmLimit * MAX_TOOL_SCHEMA_SHARE));
+  const selectedTools = selectToolsForBudget(input.tools, newestUserRequest, toolBudget);
+  const toolDefs = selectedTools.map((t) => t.definition);
+  const toolMap = new Map(selectedTools.map((t) => [t.definition.function.name, t.execute]));
 
   // The connected tool schema (Slack's 2 hand-written tools, plus
   // whatever GitHub MCP tools are configured -- see github-mcp-pool.ts's
@@ -195,7 +257,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   // github-mcp-pool.ts and README.md) leaves any real room for
   // conversation history, instead of guessing from this project's docs.
   console.log(
-    `[agent] tool schema ~${toolsTokens} tok, system prompt ~${systemTokens} tok, ` +
+    `[agent] ${selectedTools.length}/${input.tools.length} tool(s), schema ~${toolsTokens} tok, system prompt ~${systemTokens} tok, ` +
       `history budget ~${Math.max(historyBudget, 0)} tok (of ${config.tpmLimit} total, ${config.maxTokens} reserved for the reply)`
   );
 

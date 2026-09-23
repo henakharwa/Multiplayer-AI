@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { replyForResolvedActions, runAgentTurn, stripConfirmationBoilerplate } from "../src/agent.js";
+import { replyForResolvedActions, runAgentTurn, selectToolsForBudget, stripConfirmationBoilerplate } from "../src/agent.js";
 import type { ChatMessage, LlmChatFn } from "../src/llm-client.js";
 import type { ToolExecutor } from "../src/tools.js";
 
@@ -16,6 +16,37 @@ function fakeTool(name: string, execute: (args: Record<string, unknown>) => Prom
 }
 
 describe("runAgentTurn", () => {
+  it("bounds a large remote MCP tool surface and prefers a tool relevant to the request", () => {
+    const bigTool = (name: string, description: string): ToolExecutor => ({
+      definition: {
+        type: "function",
+        function: {
+          name,
+          description: `${description} ${"extra schema documentation ".repeat(150)}`,
+          parameters: {
+            type: "object",
+            properties: {
+              input: { type: "string", description: "Input for this operation ".repeat(150) },
+            },
+          },
+        },
+      },
+      execute: async () => ({}),
+    });
+    const selected = selectToolsForBudget(
+      [
+        bigTool("list_channels", "List Slack channels"),
+        bigTool("search_messages", "Search Slack messages"),
+        ...Array.from({ length: 20 }, (_, index) => bigTool(`unrelated_${index}`, "Perform an unrelated operation")),
+      ],
+      "list the channels",
+      300
+    );
+    expect(selected.length).toBeGreaterThan(0);
+    expect(selected.length).toBeLessThan(22);
+    expect(selected[0].definition.function.name).toBe("list_channels");
+  });
+
   it("returns the plain reply when the model doesn't call any tool", async () => {
     const chat: LlmChatFn = async () => ({ role: "assistant", content: "Hello there!" });
     const result = await runAgentTurn({ history: [{ role: "user", content: "hi" }], tools: [], chat });
