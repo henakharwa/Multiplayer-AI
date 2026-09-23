@@ -89,7 +89,7 @@ function truncate(text: string, maxLen: number): string {
 }
 
 async function callMcpTool(client: Client, name: string, args: Record<string, unknown>): Promise<unknown> {
-  const result = await client.callTool({ name, arguments: args });
+  const result = await client.callTool({ name, arguments: normalizeGithubArguments(name, args) });
   const content = Array.isArray((result as { content?: unknown }).content)
     ? ((result as { content: { type: string; text?: string }[] }).content)
     : [];
@@ -107,4 +107,41 @@ async function callMcpTool(client: Client, name: string, args: Record<string, un
     throw new Error(error);
   }
   return text.length > 0 ? text : result;
+}
+
+// github-mcp-server's issue_write schema has ordinary top-level fields
+// (title, body, labels, etc.) plus issue_fields for *custom* GitHub Issue
+// fields. Smaller models occasionally treat the latter as a generic field
+// bag and send `{ issue_fields: [{ field_name: "title", value: "…" }] }`.
+// GitHub then tries to resolve a custom field literally called "title" and
+// rejects the call. Normalize only those well-known standard fields while
+// preserving genuine custom-field entries untouched.
+const STANDARD_ISSUE_FIELDS = new Set(["title", "body", "labels", "assignees", "milestone", "state", "state_reason"]);
+
+export function normalizeGithubArguments(name: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (name !== "issue_write" || !args.issue_fields) return args;
+  const normalized = { ...args };
+  const customFields: unknown[] = [];
+  const copyStandardField = (field: string, value: unknown) => {
+    if (STANDARD_ISSUE_FIELDS.has(field) && normalized[field] === undefined && value !== undefined) normalized[field] = value;
+    else customFields.push({ field_name: field, value });
+  };
+
+  if (Array.isArray(args.issue_fields)) {
+    for (const entry of args.issue_fields) {
+      if (!entry || typeof entry !== "object") { customFields.push(entry); continue; }
+      const record = entry as Record<string, unknown>;
+      const field = typeof record.field_name === "string" ? record.field_name : typeof record.name === "string" ? record.name : "";
+      if (field) copyStandardField(field, record.value);
+      else customFields.push(entry);
+    }
+  } else if (typeof args.issue_fields === "object") {
+    for (const [field, value] of Object.entries(args.issue_fields as Record<string, unknown>)) copyStandardField(field, value);
+  } else {
+    return args;
+  }
+
+  if (customFields.length) normalized.issue_fields = customFields;
+  else delete normalized.issue_fields;
+  return normalized;
 }

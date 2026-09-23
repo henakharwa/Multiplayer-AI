@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
-import { mcpToolToExecutor, listMcpToolExecutors } from "../src/mcp-tools.js";
+import { mcpToolToExecutor, listMcpToolExecutors, normalizeGithubArguments } from "../src/mcp-tools.js";
 
 function fakeClient(overrides: Partial<Client> = {}): Client {
   return {
@@ -89,6 +89,24 @@ describe("mcpToolToExecutor", () => {
     await expect(executor.execute({ number: 999 })).rejects.toThrow("404: no such issue");
     expect(errorSpy).toHaveBeenCalledWith('[mcp] tool "issue_read" failed: 404: no such issue');
     errorSpy.mockRestore();
+  });
+});
+
+describe("normalizeGithubArguments", () => {
+  it("moves standard issue fields out of issue_fields while preserving custom fields", () => {
+    expect(normalizeGithubArguments("issue_write", {
+      method: "create",
+      issue_fields: [
+        { field_name: "title", value: "Agent test" },
+        { field_name: "body", value: "Created by the agent." },
+        { field_name: "Priority", value: "High" },
+      ],
+    })).toEqual({
+      method: "create",
+      title: "Agent test",
+      body: "Created by the agent.",
+      issue_fields: [{ field_name: "Priority", value: "High" }],
+    });
   });
 });
 
