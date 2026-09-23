@@ -82,10 +82,13 @@ describe("mcpToolToExecutor", () => {
     expect(result).toBe("first line\nsecond line");
   });
 
-  it("execute() throws when the MCP result is marked isError, using its text as the message", async () => {
+  it("execute() logs and throws when the MCP result is marked isError, using its text as the message", async () => {
     const callTool = vi.fn(async () => ({ content: [{ type: "text", text: "404: no such issue" }], isError: true }));
     const executor = mcpToolToExecutor(fakeClient({ callTool }), tool({ name: "issue_read", annotations: { readOnlyHint: true } }));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(executor.execute({ number: 999 })).rejects.toThrow("404: no such issue");
+    expect(errorSpy).toHaveBeenCalledWith('[mcp] tool "issue_read" failed: 404: no such issue');
+    errorSpy.mockRestore();
   });
 });
 

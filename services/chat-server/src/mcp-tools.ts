@@ -98,7 +98,13 @@ async function callMcpTool(client: Client, name: string, args: Record<string, un
     .map((c) => c.text)
     .join("\n");
   if ((result as { isError?: boolean }).isError) {
-    throw new Error(text || `GitHub MCP tool "${name}" reported an error`);
+    const error = text || `GitHub MCP tool "${name}" reported an error`;
+    // The model receives this error as its tool result, but it may reduce
+    // it to a vague apology in the chat. Keep a bounded server-side record
+    // so a failed connected-tool request can be diagnosed without logging
+    // arguments (which may contain user or repository content).
+    console.error(`[mcp] tool "${name}" failed: ${error.slice(0, 500)}`);
+    throw new Error(error);
   }
   return text.length > 0 ? text : result;
 }
