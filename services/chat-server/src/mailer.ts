@@ -1,4 +1,6 @@
-// Outbound transactional email (password reset, email verification).
+// Outbound transactional email (password reset, email verification, and
+// workspace invitations). Gmail SMTP makes the prototype usable without a
+// custom sending domain; Resend remains available for a verified domain.
 // Same philosophy as llm-client.ts: prefer one well-documented HTTP call
 // over an SDK dependency, and make the unconfigured case still *work*
 // rather than just fail -- a missing EMAIL_* config logs the message
@@ -15,6 +17,10 @@ export interface MailerConfig {
   // onboarding@resend.dev sender works without verifying your own
   // domain, for testing.
   fromAddress?: string;
+  // A Gmail address with a Google App Password. This is intentionally two
+  // separate runtime secrets rather than a password in source control.
+  gmailUser?: string;
+  gmailAppPassword?: string;
 }
 
 export interface OutgoingEmail {
@@ -30,7 +36,9 @@ export interface Mailer {
 export function defaultMailerConfig(): MailerConfig {
   return {
     resendApiKey: process.env.RESEND_API_KEY || undefined,
-    fromAddress: process.env.EMAIL_FROM_ADDRESS || "Multiplayer AI <onboarding@resend.dev>",
+    fromAddress: process.env.EMAIL_FROM_ADDRESS || (process.env.GMAIL_SMTP_USER ? `Multiplayer AI <${process.env.GMAIL_SMTP_USER}>` : "Multiplayer AI <onboarding@resend.dev>"),
+    gmailUser: process.env.GMAIL_SMTP_USER || undefined,
+    gmailAppPassword: process.env.GMAIL_SMTP_APP_PASSWORD || undefined,
   };
 }
 
@@ -47,6 +55,17 @@ async function sendViaResend(config: MailerConfig, email: OutgoingEmail): Promis
   }
 }
 
+async function sendViaGmail(config: MailerConfig, email: OutgoingEmail): Promise<void> {
+  // Dynamic import keeps local development on the console fallback if Gmail
+  // has not been configured. Nodemailer is used only in the server process.
+  const nodemailer = await import("nodemailer");
+  const transport = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: config.gmailUser!, pass: config.gmailAppPassword! },
+  });
+  await transport.sendMail({ from: config.fromAddress, to: email.to, subject: email.subject, text: email.text });
+}
+
 // The always-works default: prints the email (link included) to this
 // server's own terminal instead of sending it. Real enough to develop
 // and test against without any provider account -- click the printed
@@ -60,6 +79,9 @@ function sendViaConsole(email: OutgoingEmail): void {
 }
 
 export function createMailer(config: MailerConfig = defaultMailerConfig()): Mailer {
+  if (config.gmailUser && config.gmailAppPassword) {
+    return { send: (email) => sendViaGmail(config, email) };
+  }
   if (config.resendApiKey) {
     return { send: (email) => sendViaResend(config, email) };
   }
