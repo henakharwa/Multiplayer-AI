@@ -275,8 +275,14 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
       });
     } catch (error) {
       await db.deleteWorkspaceInvitation(invite.token);
-      console.error(JSON.stringify({ level: "error", event: "workspace_invitation_email_failed", workspaceId, error: errMessage(error) }));
-      return res.status(502).json({ error: "The invitation email could not be sent. Please try again." });
+      const message = errMessage(error);
+      console.error(JSON.stringify({ level: "error", event: "workspace_invitation_email_failed", workspaceId, error: message }));
+      const publicError = /EAUTH|Invalid login|Username and Password not accepted/i.test(message)
+        ? "Gmail rejected the sign-in. Check the Gmail address and use a new Google App Password."
+        : /ETIMEDOUT|ECONNREFUSED|ECONNRESET|ENOTFOUND/i.test(message)
+          ? "The server could not connect to Gmail SMTP. Check Render’s logs and try again."
+          : "The invitation email could not be sent. Check the Gmail configuration and try again.";
+      return res.status(502).json({ error: publicError });
     }
     await db.recordAuditEvent({
       workspaceId,
