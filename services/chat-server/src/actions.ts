@@ -8,6 +8,16 @@ import { getRemoteMcpClient } from "./remote-mcp-pool.js";
 import { listMcpToolExecutors } from "./mcp-tools.js";
 import { buildNotionTools } from "./notion-tools.js";
 
+function completionAgentFor(toolName: string): string {
+  if (toolName.startsWith("slack_")) return "Slack Agent";
+  if (toolName.startsWith("linear_")) return "Linear Agent";
+  if (toolName.startsWith("notion_")) return "Notion Agent";
+  if (toolName.startsWith("figma_")) return "Figma Agent";
+  // The remaining mutating tools in the current workspace surface come
+  // from GitHub MCP (issue_write, create_pull_request, file writes, etc.).
+  return "GitHub Agent";
+}
+
 export interface WorkspaceTools {
   tools: ToolExecutor[];
   githubTools: ToolExecutor[];
@@ -282,6 +292,19 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
         content: `${actorName} confirmed: ${action.description}`,
       });
       rooms.broadcast(`${workspaceId}:${action.conversationId}`, { type: "message", message });
+      // A click acknowledgement only proves someone approved the action;
+      // it does not prove the provider call finished. Publish this separate
+      // agent message only after execute() succeeds, so a later question
+      // cannot leave the room with the stale "pending" wording the model
+      // used before the provider completed the write.
+      const completionMessage = await db.insertMessage({
+        workspaceId,
+        conversationId: action.conversationId,
+        role: "agent",
+        authorName: completionAgentFor(action.toolName),
+        content: `The requested action has completed: ${action.description}.`,
+      });
+      rooms.broadcast(`${workspaceId}:${action.conversationId}`, { type: "message", message: completionMessage });
       await db.recordAuditEvent({
         workspaceId,
         eventType: "action.confirmed",
