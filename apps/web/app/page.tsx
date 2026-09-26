@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { acceptWorkspaceInvitation, createWorkspace, getWorkspaceByJoinCode, ApiError } from "../lib/api";
+import type { Workspace } from "@mai-chat/shared-types";
 import BrandMark from "./_components/Logo";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { logout } from "../lib/api";
@@ -18,6 +19,7 @@ export default function HomePage() {
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [existingWorkspace, setExistingWorkspace] = useState<Workspace | null>(null);
   const [inviteToken, setInviteToken] = useState("");
   const inviteHandled = useRef(false);
 
@@ -52,11 +54,13 @@ export default function HomePage() {
     if (!auth.user) { setAuthMode("signin"); return; }
     setCreating(true);
     setError(null);
+    setExistingWorkspace(null);
     try {
       const workspace = await createWorkspace(name.trim());
       router.push(`/w/${workspace.id}`);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) { auth.refresh(); setAuthMode("signin"); }
+      if (err instanceof ApiError && err.status === 409 && err.workspace) setExistingWorkspace(err.workspace);
       setError(err instanceof ApiError ? err.message : "Could not create the workspace. Is the chat server running?");
       setCreating(false);
     }
@@ -138,6 +142,7 @@ export default function HomePage() {
                 {creating ? "Creating…" : "Create workspace"}
               </button>
             </form>
+            {existingWorkspace && <section className="home-existing-workspace" aria-live="polite"><strong>{existingWorkspace.name} already exists</strong><span>Join code: <code>{existingWorkspace.joinCode}</code></span><button className="btn secondary" type="button" onClick={() => router.push(`/w/${existingWorkspace.id}`)}>Open workspace</button></section>}
           </div>}
 
           {auth.user && <div className="home-panel">

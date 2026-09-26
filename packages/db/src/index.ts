@@ -31,9 +31,11 @@ function generateJoinCode(): string {
 }
 
 export class WorkspaceNameTakenError extends Error {
-  constructor() {
+  workspace: Workspace;
+  constructor(workspace: Workspace) {
     super("A workspace with this name already exists.");
     this.name = "WorkspaceNameTakenError";
+    this.workspace = workspace;
   }
 }
 
@@ -54,13 +56,13 @@ export async function createWorkspace(name: string, createdByUserId?: string | n
     // even when two browser tabs submit the same name at the same time.
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [normalizedName.toLowerCase()]);
     const existing = await client.query(
-      `SELECT id FROM workspaces
+      `SELECT id, name, join_code, created_at FROM workspaces
        WHERE lower(regexp_replace(btrim(name), '\\s+', ' ', 'g')) = $1
          AND created_by IS NOT DISTINCT FROM $2
        LIMIT 1`,
       [normalizedName.toLowerCase(), createdByUserId ?? null]
     );
-    if (existing.rows[0]) throw new WorkspaceNameTakenError();
+    if (existing.rows[0]) throw new WorkspaceNameTakenError(toWorkspace(existing.rows[0]));
     for (let attempt = 0; attempt < 3; attempt++) {
       const joinCode = generateJoinCode();
       try {

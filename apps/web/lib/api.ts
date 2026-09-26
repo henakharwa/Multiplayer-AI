@@ -7,9 +7,11 @@ function authenticatedFetch(input: RequestInfo | URL, init?: RequestInit) {
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  workspace?: Workspace;
+  constructor(status: number, message: string, workspace?: Workspace) {
     super(message);
     this.status = status;
+    this.workspace = workspace;
   }
 }
 
@@ -17,7 +19,10 @@ async function parseJsonOrThrow(res: Response): Promise<unknown> {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const message = typeof (body as { error?: unknown }).error === "string" ? (body as { error: string }).error : `request failed (${res.status})`;
-    throw new ApiError(res.status, message);
+    const workspace = typeof body === "object" && body !== null && "workspace" in body
+      ? (body as { workspace?: Workspace }).workspace
+      : undefined;
+    throw new ApiError(res.status, message, workspace);
   }
   return body;
 }

@@ -240,7 +240,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     try {
       workspace = await db.createWorkspace(name, req.user!.id);
     } catch (error) {
-      if (error instanceof db.WorkspaceNameTakenError) return res.status(409).json({ error: "A workspace with this name already exists." });
+      if (error instanceof db.WorkspaceNameTakenError) return res.status(409).json({ error: error.message, workspace: error.workspace });
       throw error;
     }
     await db.addWorkspaceMember(workspace.id, req.user!.id, "admin");

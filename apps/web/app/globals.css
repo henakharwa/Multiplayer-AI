@@ -491,6 +491,10 @@ textarea {
 .workspace-invite-form input:focus { outline: 2px solid #9cb8ff; outline-offset: 1px; border-color: #5f82e8; }
 .workspace-invite-form .btn { justify-self: start; margin-top: 6px; }
 .workspace-invite-success { margin: 14px 0 0; color: #087a50; font-size: 14px; font-weight: 600; }
+.home-existing-workspace { display: grid; gap: 8px; margin-top: 16px; padding: 14px; border: 1px solid #cbd9ff; border-radius: 10px; background: #f5f8ff; color: #31415a; font-size: 14px; }
+.home-existing-workspace strong { color: #172033; }
+.home-existing-workspace code { padding: 2px 6px; border-radius: 4px; background: #e4ecff; color: #244db5; font-weight: 700; }
+.home-existing-workspace .btn { justify-self: start; min-height: 34px; }
 .access-member-list { border-top: 1px solid #edf0f4; }
 .access-member { display: grid; grid-template-columns: 34px minmax(0,1fr) 104px; align-items: center; gap: 10px; padding: 12px 2px; border-bottom: 1px solid #edf0f4; }
 .access-member strong { min-width: 0; font-size: 14px; }
