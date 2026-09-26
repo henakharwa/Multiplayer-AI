@@ -12,6 +12,7 @@ import { listAuditEvents, ApiError } from "../../../../lib/api";
 const EVENT_TYPE_LABELS: Record<AuditEventType, string> = {
   "workspace.created": "Workspace created",
   "member.joined": "Member joined",
+  "member.invited": "Member invited",
   "integration.connected": "Integration connected",
   "action.proposed": "Action proposed",
   "action.confirmed": "Action confirmed",

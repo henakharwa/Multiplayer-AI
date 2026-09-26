@@ -256,6 +256,49 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.status(201).json(workspace);
   });
 
+  app.post("/workspaces/:id/invitations", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin"]))) return;
+    const workspaceId = paramString(req.params.id);
+    if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "invalid workspace id" });
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return res.status(400).json({ error: "A valid email address is required." });
+    const workspace = await db.getWorkspaceById(workspaceId);
+    if (!workspace) return res.status(404).json({ error: "not found" });
+    const invite = await db.createWorkspaceInvitation({ workspaceId, email, invitedByUserId: req.user!.id });
+    const inviteUrl = new URL("/", webAppUrl);
+    inviteUrl.searchParams.set("invite", invite.token);
+    try {
+      await deps.mailer.send({
+        to: invite.email,
+        subject: `You're invited to ${workspace.name} on Multiplayer AI`,
+        text: `${req.user!.displayName} invited you to join the ${workspace.name} workspace.\n\nOpen this invitation: ${inviteUrl}\n\nSign in or create an account with ${invite.email}. This invitation expires in 7 days.`,
+      });
+    } catch (error) {
+      await db.deleteWorkspaceInvitation(invite.token);
+      console.error(JSON.stringify({ level: "error", event: "workspace_invitation_email_failed", workspaceId, error: errMessage(error) }));
+      return res.status(502).json({ error: "The invitation email could not be sent. Please try again." });
+    }
+    await db.recordAuditEvent({
+      workspaceId,
+      eventType: "member.invited",
+      actorType: "user",
+      actorUserId: req.user!.id,
+      actorName: req.user!.displayName,
+      summary: `${req.user!.displayName} invited ${invite.email} to join the workspace`,
+    });
+    res.status(201).json({ email: invite.email, expiresAt: invite.expiresAt });
+  });
+
+  app.post("/workspace-invitations/accept", requireAuth, async (req: Request, res: Response) => {
+    const token = typeof req.body?.token === "string" ? req.body.token : "";
+    if (!token || token.length > 256) return res.status(400).json({ error: "A valid invitation is required." });
+    const result = await db.acceptWorkspaceInvitation(token, req.user!.id);
+    if (result.kind === "invalid") return res.status(404).json({ error: "This invitation is invalid, expired, or has already been used." });
+    if (result.kind === "email_mismatch") return res.status(403).json({ error: `This invitation was sent to ${result.email}. Sign in with that email address to join.` });
+    await db.recordAuditEvent({ workspaceId: result.workspaceId, eventType: "member.joined", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} joined the workspace through an email invitation` });
+    res.json({ workspaceId: result.workspaceId });
+  });
+
   app.get("/workspaces/by-code/:joinCode", async (req: Request, res: Response) => {
     const workspace = await db.getWorkspaceByJoinCode(paramString(req.params.joinCode));
     if (!workspace) return res.status(404).json({ error: "not found" });

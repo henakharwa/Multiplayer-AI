@@ -370,6 +370,7 @@ export type AuditActorType = "user" | "agent" | "system";
 export type AuditEventType =
   | "workspace.created"
   | "member.joined"
+  | "member.invited"
   | "integration.connected"
   | "action.proposed"
   | "action.confirmed"

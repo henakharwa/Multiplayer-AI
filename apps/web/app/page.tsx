@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createWorkspace, getWorkspaceByJoinCode, ApiError } from "../lib/api";
+import { acceptWorkspaceInvitation, createWorkspace, getWorkspaceByJoinCode, ApiError } from "../lib/api";
 import BrandMark from "./_components/Logo";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { logout } from "../lib/api";
@@ -18,20 +18,32 @@ export default function HomePage() {
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inviteToken, setInviteToken] = useState("");
+  const inviteHandled = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setName(params.get("workspaceName") ?? "");
     setJoinCode(params.get("joinCode") ?? "");
+    setInviteToken(params.get("invite") ?? "");
     if (params.get("loginError")) {
       setError(params.get("loginError"));
       setAuthMode("signin");
     }
   }, []);
 
+  useEffect(() => {
+    if (!auth.user || !inviteToken || inviteHandled.current) return;
+    inviteHandled.current = true;
+    acceptWorkspaceInvitation(inviteToken)
+      .then(({ workspaceId }) => router.replace(`/w/${workspaceId}`))
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not accept this invitation."));
+  }, [auth.user, inviteToken, router]);
+
   const returnParams = new URLSearchParams();
   if (name) returnParams.set("workspaceName", name);
   if (joinCode) returnParams.set("joinCode", joinCode);
+  if (inviteToken) returnParams.set("invite", inviteToken);
   const returnTo = returnParams.size ? `/?${returnParams}` : "/";
 
   async function handleCreate(e: React.FormEvent) {

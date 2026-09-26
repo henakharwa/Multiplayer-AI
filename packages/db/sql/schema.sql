@@ -93,6 +93,21 @@ ALTER TABLE workspace_members ALTER COLUMN role SET DEFAULT 'admin';
 UPDATE workspace_members wm SET role = 'admin'
 FROM workspaces w WHERE w.id = wm.workspace_id AND w.created_by = wm.user_id;
 
+-- Email invitations store only a hash of the bearer token. A leaked database
+-- row therefore cannot be used to enter a workspace, and the invite is bound
+-- to the recipient's verified account email when it is accepted.
+CREATE TABLE IF NOT EXISTS workspace_invitations (
+  token_hash TEXT PRIMARY KEY,
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  invited_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  accepted_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS workspace_invitations_workspace_email_idx
+  ON workspace_invitations (workspace_id, email);
+
 CREATE TABLE IF NOT EXISTS messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,

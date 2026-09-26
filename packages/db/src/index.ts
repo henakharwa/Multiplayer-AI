@@ -104,6 +104,63 @@ export async function addWorkspaceMember(workspaceId: string, userId: string, ro
   return (result.rowCount ?? 0) > 0;
 }
 
+const WORKSPACE_INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export async function createWorkspaceInvitation(input: { workspaceId: string; email: string; invitedByUserId: string }): Promise<{ token: string; email: string; expiresAt: string }> {
+  const email = normalizedEmail(input.email);
+  const token = randomBytes(32).toString("base64url");
+  const expiresAt = new Date(Date.now() + WORKSPACE_INVITATION_TTL_MS);
+  await getPool().query(
+    `INSERT INTO workspace_invitations (token_hash, workspace_id, email, invited_by_user_id, expires_at)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [hashSessionToken(token), input.workspaceId, email, input.invitedByUserId, expiresAt]
+  );
+  return { token, email, expiresAt: expiresAt.toISOString() };
+}
+
+export async function deleteWorkspaceInvitation(token: string): Promise<void> {
+  await getPool().query("DELETE FROM workspace_invitations WHERE token_hash = $1", [hashSessionToken(token)]);
+}
+
+export type AcceptWorkspaceInvitationResult =
+  | { kind: "accepted"; workspaceId: string }
+  | { kind: "invalid" }
+  | { kind: "email_mismatch"; email: string };
+
+export async function acceptWorkspaceInvitation(token: string, userId: string): Promise<AcceptWorkspaceInvitationResult> {
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    const invite = await client.query(
+      `SELECT workspace_id, email FROM workspace_invitations
+       WHERE token_hash = $1 AND accepted_at IS NULL AND expires_at > now() FOR UPDATE`,
+      [hashSessionToken(token)]
+    );
+    if (!invite.rows[0]) { await client.query("COMMIT"); return { kind: "invalid" }; }
+    const identity = await client.query(
+      "SELECT email FROM user_email_identities WHERE user_id = $1 ORDER BY verified_at DESC LIMIT 1",
+      [userId]
+    );
+    const invitedEmail = invite.rows[0].email as string;
+    if (!identity.rows[0] || identity.rows[0].email !== invitedEmail) {
+      await client.query("COMMIT");
+      return { kind: "email_mismatch", email: invitedEmail };
+    }
+    const workspaceId = invite.rows[0].workspace_id as string;
+    await client.query(
+      `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')
+       ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+      [workspaceId, userId]
+    );
+    await client.query("UPDATE workspace_invitations SET accepted_at = now() WHERE token_hash = $1", [hashSessionToken(token)]);
+    await client.query("COMMIT");
+    return { kind: "accepted", workspaceId };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally { client.release(); }
+}
+
 export async function getWorkspaceById(id: string): Promise<Workspace | null> {
   const pool = getPool();
   const result = await pool.query(
