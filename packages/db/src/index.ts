@@ -498,7 +498,7 @@ export async function deleteIntegration(workspaceId: string, type: "github" | "s
 // services/chat-server/src/actions.ts for the full flow this backs.
 
 const PENDING_ACTION_COLUMNS =
-  "id, workspace_id, conversation_id, tool_name, description, preview, args, status, result, created_at, resolved_at, requested_by_user_id, requested_by_name";
+  "id, workspace_id, conversation_id, tool_name, description, preview, args, status, result, created_at, resolved_at, requested_by_user_id, requested_by_name, agent_kind";
 
 export async function createPendingAction(input: {
   workspaceId: string;
@@ -511,11 +511,12 @@ export async function createPendingAction(input: {
   // see schema.sql's comment on these columns. Omitted when unknown.
   requestedByUserId?: string | null;
   requestedByName?: string | null;
+  agentKind?: PendingAction["agentKind"];
 }): Promise<PendingAction> {
   const pool = getPool();
   const result = await pool.query(
-    `INSERT INTO pending_actions (workspace_id, conversation_id, tool_name, description, preview, args, requested_by_user_id, requested_by_name)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO pending_actions (workspace_id, conversation_id, tool_name, description, preview, args, requested_by_user_id, requested_by_name, agent_kind)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING ${PENDING_ACTION_COLUMNS}`,
     [
       input.workspaceId,
@@ -526,6 +527,7 @@ export async function createPendingAction(input: {
       JSON.stringify(input.args),
       input.requestedByUserId ?? null,
       input.requestedByName ?? null,
+      input.agentKind ?? null,
     ]
   );
   return toPendingAction(result.rows[0]);
@@ -584,6 +586,7 @@ function toPendingAction(row: {
   resolved_at: Date | null;
   requested_by_user_id: string | null;
   requested_by_name: string | null;
+  agent_kind: PendingAction["agentKind"];
 }): PendingAction {
   return {
     id: row.id,
@@ -599,6 +602,7 @@ function toPendingAction(row: {
     resolvedAt: row.resolved_at ? row.resolved_at.toISOString() : null,
     requestedByUserId: row.requested_by_user_id ?? null,
     requestedByName: row.requested_by_name ?? null,
+    agentKind: row.agent_kind ?? null,
   };
 }
 

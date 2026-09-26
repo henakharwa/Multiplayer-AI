@@ -8,7 +8,17 @@ import { getRemoteMcpClient } from "./remote-mcp-pool.js";
 import { listMcpToolExecutors } from "./mcp-tools.js";
 import { buildNotionTools } from "./notion-tools.js";
 
-function completionAgentFor(toolName: string): string {
+type ActionAgentKind = "project" | "github" | "slack" | "linear" | "notion" | "figma";
+
+function completionAgentFor(agentKind: ActionAgentKind | null | undefined, toolName: string): string {
+  if (agentKind === "project") return "Project Agent";
+  if (agentKind === "github") return "GitHub Agent";
+  if (agentKind === "slack") return "Slack Agent";
+  if (agentKind === "linear") return "Linear Agent";
+  if (agentKind === "notion") return "Notion Agent";
+  if (agentKind === "figma") return "Figma Agent";
+  // Legacy pending actions predate agent_kind. Retain a best-effort label
+  // for them without changing their recorded request.
   if (toolName.startsWith("slack_")) return "Slack Agent";
   if (toolName.startsWith("linear_")) return "Linear Agent";
   if (toolName.startsWith("notion_")) return "Notion Agent";
@@ -120,7 +130,8 @@ export function wrapForProposal(
   // audit event below, so the trail answers "who asked for what", not
   // just "what did the agent do". Optional: some call sites (tests that
   // build tools directly) don't have a requesting user to attribute.
-  requestedBy?: { userId: string; name: string }
+  requestedBy?: { userId: string; name: string },
+  agentKind?: ActionAgentKind
 ): ToolExecutor[] {
   return tools.map((tool) => {
     if (!tool.mutates) return tool;
@@ -138,6 +149,7 @@ export function wrapForProposal(
           args,
           requestedByUserId: requestedBy?.userId,
           requestedByName: requestedBy?.name,
+          agentKind: agentKind ?? null,
         });
         rooms.broadcast(`${workspaceId}:${conversationId}`, { type: "pending_action", action });
         await db.notifyWorkspaceMembers({
@@ -301,7 +313,7 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
         workspaceId,
         conversationId: action.conversationId,
         role: "agent",
-        authorName: completionAgentFor(action.toolName),
+        authorName: completionAgentFor(action.agentKind, action.toolName),
         content: `The requested action has completed: ${action.description}.`,
       });
       rooms.broadcast(`${workspaceId}:${action.conversationId}`, { type: "message", message: completionMessage });

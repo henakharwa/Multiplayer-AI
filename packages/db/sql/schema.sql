@@ -264,6 +264,7 @@ CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx ON password_reset_toke
 -- written before this column existed have neither.
 ALTER TABLE pending_actions ADD COLUMN IF NOT EXISTS requested_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE pending_actions ADD COLUMN IF NOT EXISTS requested_by_name TEXT;
+ALTER TABLE pending_actions ADD COLUMN IF NOT EXISTS agent_kind TEXT;
 
 -- Action audit trail (docs/spec.md Phase 2: "who asked for what, what the
 -- agent did, when"). One append-only row per notable workspace event --

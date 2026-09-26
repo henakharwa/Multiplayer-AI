@@ -351,6 +351,7 @@ export interface PendingAction {
   // action, if known -- see schema.sql's comment on these two columns.
   requestedByUserId?: string | null;
   requestedByName?: string | null;
+  agentKind?: "project" | "github" | "slack" | "linear" | "notion" | "figma" | null;
 }
 
 // -- Action audit trail (docs/spec.md Phase 2: "who asked for what, what

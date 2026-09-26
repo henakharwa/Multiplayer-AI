@@ -500,7 +500,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     // Read tools run for real from the agent loop; write tools are
     // swapped for proposal-only stand-ins here -- see actions.ts.
     const specialistTools = agentKind === "github" ? built.githubTools : agentKind === "slack" ? built.slackTools : agentKind === "linear" ? built.linearTools : agentKind === "notion" ? built.notionTools : agentKind === "figma" ? built.figmaTools : [];
-    const tools = wrapForProposal(specialistTools, workspaceId, conversationId, rooms, requestedBy);
+    const tools = wrapForProposal(specialistTools, workspaceId, conversationId, rooms, requestedBy, agentKind);
     // Cheap, always-on diagnostic -- when someone reports "the agent says
     // it can't see GitHub" the first thing to know is whether the tool
     // list was actually empty for this turn (an integration/credential
