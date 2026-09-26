@@ -21,6 +21,11 @@ export interface MailerConfig {
   // separate runtime secrets rather than a password in source control.
   gmailUser?: string;
   gmailAppPassword?: string;
+  // OAuth credentials for Gmail's HTTPS API. This path is appropriate for
+  // Render's free plan, which blocks outbound SMTP ports.
+  gmailApiClientId?: string;
+  gmailApiClientSecret?: string;
+  gmailApiRefreshToken?: string;
 }
 
 export interface OutgoingEmail {
@@ -39,6 +44,9 @@ export function defaultMailerConfig(): MailerConfig {
     fromAddress: process.env.EMAIL_FROM_ADDRESS || (process.env.GMAIL_SMTP_USER ? `Multiplayer AI <${process.env.GMAIL_SMTP_USER}>` : "Multiplayer AI <onboarding@resend.dev>"),
     gmailUser: process.env.GMAIL_SMTP_USER || undefined,
     gmailAppPassword: process.env.GMAIL_SMTP_APP_PASSWORD || undefined,
+    gmailApiClientId: process.env.GMAIL_API_CLIENT_ID || undefined,
+    gmailApiClientSecret: process.env.GMAIL_API_CLIENT_SECRET || undefined,
+    gmailApiRefreshToken: process.env.GMAIL_API_REFRESH_TOKEN || undefined,
   };
 }
 
@@ -72,6 +80,41 @@ async function sendViaGmail(config: MailerConfig, email: OutgoingEmail): Promise
   await transport.sendMail({ from: config.fromAddress, to: email.to, subject: email.subject, text: email.text });
 }
 
+async function sendViaGmailApi(config: MailerConfig, email: OutgoingEmail): Promise<void> {
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: config.gmailApiClientId!,
+      client_secret: config.gmailApiClientSecret!,
+      refresh_token: config.gmailApiRefreshToken!,
+      grant_type: "refresh_token",
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const tokenBody = await tokenResponse.json().catch(() => ({})) as { access_token?: string; error_description?: string };
+  if (!tokenResponse.ok || !tokenBody.access_token) throw new Error(`Gmail API token refresh failed: ${tokenBody.error_description ?? tokenResponse.status}`);
+  // RFC 2822 message, then Gmail's URL-safe base64 encoding. Encode the
+  // subject to prevent untrusted workspace names from becoming headers.
+  const subject = `=?UTF-8?B?${Buffer.from(email.subject, "utf8").toString("base64")}?=`;
+  const message = [
+    `From: ${config.fromAddress}`,
+    `To: ${email.to}`,
+    `Subject: ${subject}`,
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=UTF-8",
+    "",
+    email.text,
+  ].join("\r\n");
+  const sendResponse = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: { authorization: `Bearer ${tokenBody.access_token}`, "content-type": "application/json" },
+    body: JSON.stringify({ raw: Buffer.from(message, "utf8").toString("base64url") }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!sendResponse.ok) throw new Error(`Gmail API send failed: ${sendResponse.status}`);
+}
+
 // The always-works default: prints the email (link included) to this
 // server's own terminal instead of sending it. Real enough to develop
 // and test against without any provider account -- click the printed
@@ -85,6 +128,9 @@ function sendViaConsole(email: OutgoingEmail): void {
 }
 
 export function createMailer(config: MailerConfig = defaultMailerConfig()): Mailer {
+  if (config.gmailUser && config.gmailApiClientId && config.gmailApiClientSecret && config.gmailApiRefreshToken) {
+    return { send: (email) => sendViaGmailApi(config, email) };
+  }
   if (config.gmailUser && config.gmailAppPassword) {
     return { send: (email) => sendViaGmail(config, email) };
   }
