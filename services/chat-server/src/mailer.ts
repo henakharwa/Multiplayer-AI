@@ -62,6 +62,12 @@ async function sendViaGmail(config: MailerConfig, email: OutgoingEmail): Promise
   const transport = nodemailer.createTransport({
     service: "gmail",
     auth: { user: config.gmailUser!, pass: config.gmailAppPassword! },
+    // Gmail can reject or block an SMTP connection from a hosting provider.
+    // Fail promptly so the invitation dialog can explain that instead of
+    // leaving its submit button in a permanent sending state.
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 20_000,
   });
   await transport.sendMail({ from: config.fromAddress, to: email.to, subject: email.subject, text: email.text });
 }
