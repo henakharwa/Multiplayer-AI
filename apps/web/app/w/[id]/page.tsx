@@ -634,7 +634,7 @@ export default function WorkspaceRoomPage() {
                   autoComplete="off"
                 />
                 <div className="workspace-hero-composer-footer">
-                  {workspaceAgents.some((agent) => agent.status === "published") && <select className="workspace-agent-config-select" aria-label="Workspace agent configuration" value={configuredAgent?.id ?? ""} onChange={(event) => { const agent = workspaceAgents.find((item) => item.id === event.target.value) ?? null; setConfiguredAgent(agent); if (agent) setSelectedAgent(agent.baseAgent); }}><option value="">Built-in agent configuration</option>{workspaceAgents.filter((agent) => agent.status === "published").map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · v{agent.publishedVersion}</option>)}</select>}<AgentSelector selected={selectedAgent} selectedName={selectedAgentInfo.name} open={agentPickerOpen} onToggle={() => setAgentPickerOpen((open) => !open)} onSelect={(agent) => { setSelectedAgent(agent); setConfiguredAgent(null); setAgentPickerOpen(false); }} />
+                  {workspaceAgents.some((agent) => agent.status === "published") && <select className="workspace-agent-config-select" aria-label="Workspace agent configuration" value={configuredAgent?.id ?? ""} onChange={(event) => { const agent = workspaceAgents.find((item) => item.id === event.target.value) ?? null; setConfiguredAgent(agent); if (agent) setSelectedAgent(agent.baseAgent); }}><option value="">Built-in agent configuration</option>{workspaceAgents.filter((agent) => agent.status === "published").map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · v{agent.publishedVersion}</option>)}</select>}<AgentSelector selected={selectedAgent} selectedName={selectedAgentInfo.name} customName={configuredAgent?.name} open={agentPickerOpen} onToggle={() => setAgentPickerOpen((open) => !open)} onSelect={(agent) => { setSelectedAgent(agent); setConfiguredAgent(null); setAgentPickerOpen(false); }} />
                   <button type="submit" data-testid="send-btn" disabled={chat.status !== "open" || !canEdit || !draft.trim()} aria-label="Start chat"><ArrowGlyph /></button>
                 </div>
               </form>
@@ -679,7 +679,7 @@ export default function WorkspaceRoomPage() {
             return (
               <div className={`msg${isCurrentUserMessage ? " own" : ""}${mentionsCurrentUser ? " mentions-you" : ""}`} key={m.id} data-testid="chat-message">
                 <span className={`avatar ${isAgent ? "agent" : ""}`} style={isAgent ? undefined : { background: colorForName(m.authorName) }}>
-                  {isAgent && agentIdentity ? <AgentIcon agent={agentIdentity.kind} /> : initialsForName(m.authorName)}
+                  {isAgent && agentIdentity ? (AGENTS.some((agent) => agent.name === agentIdentity.name) ? <AgentIcon agent={agentIdentity.kind} /> : <CustomAgentLogo name={agentIdentity.name} />) : initialsForName(m.authorName)}
                 </span>
                 <div className="msg-body">
                   <div className="meta">
@@ -749,7 +749,7 @@ export default function WorkspaceRoomPage() {
             disabled={chat.status !== "open" || !canEdit || (chat.agentBusy && !draftIsHandoff)}
             autoComplete="off"
           />
-          {workspaceAgents.some((agent) => agent.status === "published") && <select className="workspace-agent-config-select" aria-label="Workspace agent configuration" value={configuredAgent?.id ?? ""} onChange={(event) => { const agent = workspaceAgents.find((item) => item.id === event.target.value) ?? null; setConfiguredAgent(agent); if (agent) setSelectedAgent(agent.baseAgent); }}><option value="">Built-in agent configuration</option>{workspaceAgents.filter((agent) => agent.status === "published").map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · v{agent.publishedVersion}</option>)}</select>}<AgentSelector selected={selectedAgent} selectedName={selectedAgentInfo.name} open={agentPickerOpen} onToggle={() => setAgentPickerOpen((open) => !open)} onSelect={(agent) => { setSelectedAgent(agent); setConfiguredAgent(null); setAgentPickerOpen(false); }} compact />
+          {workspaceAgents.some((agent) => agent.status === "published") && <select className="workspace-agent-config-select" aria-label="Workspace agent configuration" value={configuredAgent?.id ?? ""} onChange={(event) => { const agent = workspaceAgents.find((item) => item.id === event.target.value) ?? null; setConfiguredAgent(agent); if (agent) setSelectedAgent(agent.baseAgent); }}><option value="">Built-in agent configuration</option>{workspaceAgents.filter((agent) => agent.status === "published").map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · v{agent.publishedVersion}</option>)}</select>}<AgentSelector selected={selectedAgent} selectedName={selectedAgentInfo.name} customName={configuredAgent?.name} open={agentPickerOpen} onToggle={() => setAgentPickerOpen((open) => !open)} onSelect={(agent) => { setSelectedAgent(agent); setConfiguredAgent(null); setAgentPickerOpen(false); }} compact />
           <button className="composer-send"
             type="submit"
             data-testid="send-btn"
@@ -775,7 +775,7 @@ function BrandGlyph() {
     <circle cx="4.65" cy="18.2" r="1.8" fill="#8D70FF" />
   </svg>;
 }
-function AgentSelector({ selected, selectedName, open, onToggle, onSelect, compact = false }: { selected: AgentKind; selectedName: string; open: boolean; onToggle: () => void; onSelect: (agent: AgentKind) => void; compact?: boolean }) {
+function AgentSelector({ selected, selectedName, customName, open, onToggle, onSelect, compact = false }: { selected: AgentKind; selectedName: string; customName?: string; open: boolean; onToggle: () => void; onSelect: (agent: AgentKind) => void; compact?: boolean }) {
   const [query, setQuery] = useState("");
   const [pickerPlacement, setPickerPlacement] = useState<"above" | "below">("above");
   const [pickerMaxHeight, setPickerMaxHeight] = useState(330);
@@ -793,7 +793,7 @@ function AgentSelector({ selected, selectedName, open, onToggle, onSelect, compa
     onToggle();
   }
   return <div className={`agent-selector${compact ? " compact" : ""}`}>
-    <button ref={triggerRef} type="button" className="workspace-agent-chip" onClick={togglePicker} title={`Select agent: ${selectedName}`} aria-label={`Select agent: ${selectedName}`}><AgentIcon agent={selected} /><span className="workspace-agent-chip-label">{selectedName}</span><span aria-hidden="true">⌄</span></button>
+    <button ref={triggerRef} type="button" className="workspace-agent-chip" onClick={togglePicker} title={`Select agent: ${selectedName}`} aria-label={`Select agent: ${selectedName}`}>{customName ? <CustomAgentLogo name={customName} /> : <AgentIcon agent={selected} />}<span className="workspace-agent-chip-label">{selectedName}</span><span aria-hidden="true">⌄</span></button>
     {open && <div className={`agent-picker ${pickerPlacement}`} style={{ maxHeight: pickerMaxHeight }} role="menu"><div className="agent-picker-toolbar"><label><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Agents" aria-label="Search agents" /><SearchGlyph /></label></div><div className="agent-picker-list">{matchingAgents.map((agent) => <button type="button" key={agent.id} className={agent.id === selected ? "selected" : ""} onClick={() => onSelect(agent.id)}><span><AgentIcon agent={agent.id} /></span><strong>{agent.name}</strong><small>{agent.description}</small>{agent.id === selected && <b>✓</b>}</button>)}{matchingAgents.length === 0 && <p>No agents match your search.</p>}</div></div>}
   </div>;
 }
@@ -828,6 +828,11 @@ function NotionIcon() { return <svg viewBox="0 0 24 24" fill="none" aria-hidden=
 function FigmaIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#F24E1E" d="M8 2h4v4H8a2 2 0 1 1 0-4Z" /><path fill="#FF7262" d="M12 2h4a2 2 0 1 1 0 4h-4V2Z" /><path fill="#A259FF" d="M8 6h4v4H8a2 2 0 1 1 0-4Z" /><path fill="#1ABCFE" d="M12 6h4a2 2 0 1 1 0 4h-4V6Z" /><path fill="#0ACF83" d="M8 10h4v4a2 2 0 1 1-4 0v-4Z" /></svg>; }
 function ToolIcon({ tool }: { tool: Exclude<IntegrationConfig["type"], "project"> }) { return tool === "github" ? <GithubIcon /> : tool === "slack" ? <SlackIcon /> : tool === "linear" ? <LinearIcon /> : tool === "notion" ? <NotionIcon /> : <FigmaIcon />; }
 function AgentIcon({ agent }: { agent: AgentKind }) { return <span className={`agent-logo ${agent}`}>{agent === "project" ? <AgentGlyph /> : <ToolIcon tool={agent} />}</span>; }
+function CustomAgentLogo({ name }: { name: string }) {
+  const hue = Array.from(name).reduce((total, character) => total + character.charCodeAt(0), 0) % 360;
+  const initials = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "AI";
+  return <span className="agent-logo custom-agent-logo" style={{ background: `linear-gradient(135deg, hsl(${hue} 72% 48%), hsl(${(hue + 44) % 360} 75% 61%))` }} aria-label={`${name} logo`}>{initials}</span>;
+}
 function AccessManager({ workspaceId, members, onClose, onChanged }: { workspaceId: string; members: WorkspaceMember[]; onClose: () => void; onChanged: (members: WorkspaceMember[]) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [invitations, setInvitations] = useState<Array<{ id: string; email: string; role: WorkspaceRole; expiresAt: string }>>([]);

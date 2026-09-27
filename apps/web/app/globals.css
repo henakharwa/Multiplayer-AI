@@ -1772,3 +1772,9 @@ textarea {
 .agent-selector .workspace-agent-chip > .agent-logo { width: 20px; height: 20px; }
 .agent-selector .workspace-agent-chip > span:last-child { display: inline; width: auto; height: auto; border-radius: 0; background: transparent; color: #65738a; font-size: 14px; }
 .workspace-agent-config-select { grid-row: 2; }
+/* Custom workspace agents use a deterministic monogram logo derived from their name. */
+.custom-agent-logo { display: inline-grid !important; place-items: center; flex: 0 0 auto; width: 22px !important; height: 22px !important; border-radius: 7px !important; color: #fff !important; font-size: 9px; font-weight: 800; letter-spacing: .04em; line-height: 1; }
+.msg .avatar.agent .custom-agent-logo { width: 30px !important; height: 30px !important; border-radius: 9px !important; font-size: 10px; }
+.workspace-agent-config-select { grid-column: 1 / -1; grid-row: 3; justify-self: start; margin: 2px 0 0 2px; }
+.workspace-hero-composer,
+.workspace-composer-wrap .composer { grid-template-rows: auto minmax(34px, auto) auto; }
