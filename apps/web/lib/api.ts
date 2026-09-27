@@ -36,6 +36,11 @@ export async function createWorkspace(name: string): Promise<Workspace> {
   return (await parseJsonOrThrow(res)) as Workspace;
 }
 
+export async function listMyWorkspaces(): Promise<Workspace[]> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces`);
+  return (await parseJsonOrThrow(res)) as Workspace[];
+}
+
 export async function getWorkspaceByJoinCode(joinCode: string): Promise<Workspace> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/by-code/${encodeURIComponent(joinCode)}`);
   return (await parseJsonOrThrow(res)) as Workspace;

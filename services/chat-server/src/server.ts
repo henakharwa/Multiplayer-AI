@@ -311,6 +311,10 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.json(workspace);
   });
 
+  app.get("/workspaces", async (req: Request, res: Response) => {
+    res.json(await db.listWorkspacesForUser(req.user!.id));
+  });
+
   app.get("/workspaces/:id", async (req: Request, res: Response) => {
     if (!UUID_RE.test(paramString(req.params.id))) return res.status(400).json({ error: "invalid workspace id" });
     const workspace = await db.getWorkspaceById(paramString(req.params.id));

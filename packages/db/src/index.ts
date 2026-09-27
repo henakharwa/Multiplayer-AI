@@ -181,6 +181,18 @@ export async function getWorkspaceByJoinCode(joinCode: string): Promise<Workspac
   return result.rows[0] ? toWorkspace(result.rows[0]) : null;
 }
 
+// A user's home screen only needs workspaces they are already a recorded
+// member of; it must not become a directory of every workspace in the app.
+export async function listWorkspacesForUser(userId: string): Promise<Workspace[]> {
+  const result = await getPool().query(
+    `SELECT w.id, w.name, w.join_code, w.created_at
+     FROM workspace_members wm JOIN workspaces w ON w.id = wm.workspace_id
+     WHERE wm.user_id = $1 ORDER BY w.created_at DESC`,
+    [userId]
+  );
+  return result.rows.map(toWorkspace);
+}
+
 function toWorkspace(row: {
   id: string;
   name: string;

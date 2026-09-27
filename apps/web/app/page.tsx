@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { acceptWorkspaceInvitation, createWorkspace, getWorkspaceByJoinCode, ApiError } from "../lib/api";
+import { acceptWorkspaceInvitation, createWorkspace, getWorkspaceByJoinCode, listMyWorkspaces, ApiError } from "../lib/api";
 import type { Workspace } from "@mai-chat/shared-types";
 import BrandMark from "./_components/Logo";
 import { useCurrentUser } from "../lib/useCurrentUser";
@@ -20,6 +20,7 @@ export default function HomePage() {
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [existingWorkspace, setExistingWorkspace] = useState<Workspace | null>(null);
+  const [myWorkspaces, setMyWorkspaces] = useState<Workspace[]>([]);
   const [inviteToken, setInviteToken] = useState("");
   const inviteHandled = useRef(false);
 
@@ -41,6 +42,11 @@ export default function HomePage() {
       .then(({ workspaceId }) => router.replace(`/w/${workspaceId}`))
       .catch((err) => setError(err instanceof ApiError ? err.message : "Could not accept this invitation."));
   }, [auth.user, inviteToken, router]);
+
+  useEffect(() => {
+    if (!auth.user) { setMyWorkspaces([]); return; }
+    listMyWorkspaces().then(setMyWorkspaces).catch(() => setMyWorkspaces([]));
+  }, [auth.user]);
 
   const returnParams = new URLSearchParams();
   if (name) returnParams.set("workspaceName", name);
@@ -176,6 +182,8 @@ export default function HomePage() {
               </button>
             </form>
           </div>}
+
+          {auth.user && myWorkspaces.length > 0 && <section className="home-panel home-workspaces"><h2>Your workspaces</h2><p className="panel-hint">Open a workspace you&apos;re already part of.</p><div className="home-workspace-list">{myWorkspaces.map((workspace) => <article key={workspace.id}><div><strong>{workspace.name}</strong><span>Join code: <code>{workspace.joinCode}</code></span></div><button className="btn secondary" type="button" onClick={() => router.push(`/w/${workspace.id}`)}>Open</button></article>)}</div></section>}
         </div>
 
         {error && (
