@@ -623,6 +623,7 @@ export default function WorkspaceRoomPage() {
               <h2>What&apos;s next, {greetingName}?</h2>
               <p className="workspace-empty-copy">Choose an agent, ask a question, and approve actions only when your team is ready.</p>
               <form className="workspace-hero-composer" onSubmit={handleSend}>
+                <div className="active-agent-indicator" aria-live="polite">Using <strong>{selectedAgentInfo.name}</strong>{configuredAgent ? ` · published version ${configuredAgent.publishedVersion}` : " · built-in configuration"}</div>
                 <input
                   ref={composerInputRef}
                   data-testid="chat-input"
@@ -732,6 +733,7 @@ export default function WorkspaceRoomPage() {
           onConnect={() => setShowConnectModal(true)}
         />
         <form className="composer" onSubmit={handleSend}>
+          <div className="active-agent-indicator" aria-live="polite">Using <strong>{selectedAgentInfo.name}</strong>{configuredAgent ? ` · published version ${configuredAgent.publishedVersion}` : " · built-in configuration"}</div>
           <input
             ref={composerInputRef}
             data-testid="chat-input"
@@ -791,7 +793,7 @@ function AgentSelector({ selected, selectedName, open, onToggle, onSelect, compa
     onToggle();
   }
   return <div className={`agent-selector${compact ? " compact" : ""}`}>
-    <button ref={triggerRef} type="button" className="workspace-agent-chip" onClick={togglePicker} title={`Select agent: ${selectedName}`} aria-label={`Select agent: ${selectedName}`}><AgentIcon agent={selected} /></button>
+    <button ref={triggerRef} type="button" className="workspace-agent-chip" onClick={togglePicker} title={`Select agent: ${selectedName}`} aria-label={`Select agent: ${selectedName}`}><AgentIcon agent={selected} /><span className="workspace-agent-chip-label">{selectedName}</span><span aria-hidden="true">⌄</span></button>
     {open && <div className={`agent-picker ${pickerPlacement}`} style={{ maxHeight: pickerMaxHeight }} role="menu"><div className="agent-picker-toolbar"><label><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Agents" aria-label="Search agents" /><SearchGlyph /></label></div><div className="agent-picker-list">{matchingAgents.map((agent) => <button type="button" key={agent.id} className={agent.id === selected ? "selected" : ""} onClick={() => onSelect(agent.id)}><span><AgentIcon agent={agent.id} /></span><strong>{agent.name}</strong><small>{agent.description}</small>{agent.id === selected && <b>✓</b>}</button>)}{matchingAgents.length === 0 && <p>No agents match your search.</p>}</div></div>}
   </div>;
 }
