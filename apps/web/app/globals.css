@@ -1804,3 +1804,6 @@ textarea {
 .workspace-composer-wrap .composer > input,
 .workspace-composer-wrap .composer > .agent-selector,
 .workspace-composer-wrap .composer > .composer-send { grid-row: 1; }
+/* Compact the two-column agent picker without changing its section layout. */
+.agent-picker { width: min(480px, calc(100vw - 32px)); }
+.agent-picker-columns .agent-picker-list { max-height: 230px; }
