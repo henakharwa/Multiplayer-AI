@@ -82,6 +82,18 @@ describe("mcpToolToExecutor", () => {
     expect(result).toBe("first line\nsecond line");
   });
 
+  it("accepts lowercase enum values from the model and sends the GitHub MCP form", async () => {
+    const callTool = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const executor = mcpToolToExecutor(fakeClient({ callTool }), tool({
+      name: "list_issues",
+      annotations: { readOnlyHint: true },
+      inputSchema: { type: "object", properties: { state: { type: "string", enum: ["OPEN", "CLOSED"] } } },
+    }));
+    expect((executor.definition.function.parameters.properties as Record<string, { enum: string[] }>).state.enum).toContain("open");
+    await executor.execute({ owner: "o", repo: "r", state: "open" });
+    expect(callTool).toHaveBeenCalledWith({ name: "list_issues", arguments: { owner: "o", repo: "r", state: "OPEN" } });
+  });
+
   it("execute() logs and throws when the MCP result is marked isError, using its text as the message", async () => {
     const callTool = vi.fn(async () => ({ content: [{ type: "text", text: "404: no such issue" }], isError: true }));
     const executor = mcpToolToExecutor(fakeClient({ callTool }), tool({ name: "issue_read", annotations: { readOnlyHint: true } }));
