@@ -1793,3 +1793,14 @@ textarea {
 .workspace-composer-wrap .composer .agent-selector .workspace-agent-chip { width: 28px; min-width: 28px; height: 28px; padding: 2px; border: 0; border-radius: 7px; background: transparent; }
 .agent-selector .workspace-agent-chip > .agent-logo { width: 24px; height: 24px; }
 @media (max-width: 620px) { .agent-picker-columns { grid-template-columns: 1fr; }.agent-picker-columns > section + section { border-top: 1px solid #edf0f4; border-left: 0; }.agent-picker-columns .agent-picker-list { max-height: 160px; } }
+.agent-delete-button { border: 1px solid #e7b8b8; border-radius: 9px; background: #fff7f7; color: #b42318; padding: 10px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+.agent-delete-button:disabled { opacity: .55; cursor: wait; }
+/* The picker itself shows the active agent; no duplicate status line in the composer. */
+.workspace-hero-composer,
+.workspace-composer-wrap .composer { grid-template-rows: minmax(34px, auto) auto; }
+.workspace-hero-composer > input,
+.workspace-hero-composer-footer .agent-selector,
+.workspace-hero-composer-footer > button,
+.workspace-composer-wrap .composer > input,
+.workspace-composer-wrap .composer > .agent-selector,
+.workspace-composer-wrap .composer > .composer-send { grid-row: 1; }

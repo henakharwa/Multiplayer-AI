@@ -17,6 +17,7 @@ const EVENT_TYPE_LABELS: Record<AuditEventType, string> = {
   "workspace.permissions_updated": "Permissions updated",
   "agent.created": "Agent draft created",
   "agent.updated": "Agent draft updated",
+  "agent.deleted": "Agent deleted",
   "agent.published": "Agent published",
   "action.proposed": "Action proposed",
   "action.confirmed": "Action confirmed",

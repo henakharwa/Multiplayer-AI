@@ -528,6 +528,11 @@ export async function listWorkspaceAgentVersions(workspaceId: string, agentId: s
   return result.rows.map((row) => ({ id: row.id, agentId: row.agent_id, version: Number(row.version), instructions: row.instructions, knowledge: row.knowledge, approvedProviders: row.approved_providers ?? [], model: row.model, publishedByUserId: row.published_by_user_id, createdAt: row.created_at.toISOString() }));
 }
 
+export async function deleteWorkspaceAgent(workspaceId: string, agentId: string): Promise<WorkspaceAgent | null> {
+  const result = await getPool().query(`DELETE FROM workspace_agents WHERE workspace_id = $1 AND id = $2 RETURNING *`, [workspaceId, agentId]);
+  return result.rows[0] ? toWorkspaceAgent(result.rows[0]) : null;
+}
+
 export async function upsertGithubIntegration(input: {
   workspaceId: string;
   owner: string;

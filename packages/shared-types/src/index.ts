@@ -444,6 +444,7 @@ export type AuditEventType =
   | "workspace.permissions_updated"
   | "agent.created"
   | "agent.updated"
+  | "agent.deleted"
   | "agent.published"
   | "action.proposed"
   | "action.confirmed"

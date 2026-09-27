@@ -623,7 +623,6 @@ export default function WorkspaceRoomPage() {
               <h2>What&apos;s next, {greetingName}?</h2>
               <p className="workspace-empty-copy">Choose an agent, ask a question, and approve actions only when your team is ready.</p>
               <form className="workspace-hero-composer" onSubmit={handleSend}>
-                <div className="active-agent-indicator" aria-live="polite">Using <strong>{selectedAgentInfo.name}</strong>{configuredAgent ? ` · published version ${configuredAgent.publishedVersion}` : " · built-in configuration"}</div>
                 <input
                   ref={composerInputRef}
                   data-testid="chat-input"
@@ -733,7 +732,6 @@ export default function WorkspaceRoomPage() {
           onConnect={() => setShowConnectModal(true)}
         />
         <form className="composer" onSubmit={handleSend}>
-          <div className="active-agent-indicator" aria-live="polite">Using <strong>{selectedAgentInfo.name}</strong>{configuredAgent ? ` · published version ${configuredAgent.publishedVersion}` : " · built-in configuration"}</div>
           <input
             ref={composerInputRef}
             data-testid="chat-input"

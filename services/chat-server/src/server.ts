@@ -403,6 +403,13 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     await db.recordAuditEvent({ workspaceId: agent.workspaceId, eventType: "agent.published", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} published ${agent.name} version ${agent.publishedVersion}` });
     res.json(agent);
   });
+  app.delete("/workspaces/:id/agents/:agentId", async (req: Request, res: Response) => {
+    if (!(await requirePermission(req, res, "createAgents"))) return;
+    const agent = await db.deleteWorkspaceAgent(paramString(req.params.id), paramString(req.params.agentId));
+    if (!agent) return res.status(404).json({ error: "Agent not found." });
+    await db.recordAuditEvent({ workspaceId: agent.workspaceId, eventType: "agent.deleted", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} deleted agent ${agent.name}` });
+    res.status(204).end();
+  });
   app.get("/workspaces/:id/agents/:agentId/versions", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     res.json(await db.listWorkspaceAgentVersions(paramString(req.params.id), paramString(req.params.agentId)));
