@@ -50,14 +50,13 @@ export interface WorkspaceTools {
 // unwrapped, to actually run one once a human approves it).
 export async function buildToolsForWorkspace(workspaceId: string, deps: CreateServerDeps, requestingUserId?: string): Promise<WorkspaceTools> {
   const available = await db.listIntegrations(workspaceId);
-  // Prefer the requesting member's personal connection for each provider.
-  // This lets the provider enforce that member's original source access;
-  // a shared account remains the deliberate fallback for the workspace.
+  // A member can work only through a connection they own. This preserves
+  // source access boundaries even though every member can see the connected
+  // account directory in the workspace UI.
   const integrations = (["github", "slack", "linear", "notion", "figma"] as const).flatMap((type) => {
     const accounts = available.filter((integration) => integration.type === type);
-    const personal = accounts.find((integration) => integration.connectionScope === "personal" && integration.ownerUserId === requestingUserId);
-    const shared = accounts.find((integration) => integration.connectionScope !== "personal");
-    return personal ?? shared ? [personal ?? shared!] : [];
+    const owned = accounts.find((integration) => integration.ownerUserId === requestingUserId);
+    return owned ? [owned] : [];
   });
   const tools: ToolExecutor[] = [];
   const githubAgentTools: ToolExecutor[] = [];

@@ -1822,3 +1822,5 @@ textarea {
 .permission-row > .toggle-switch .toggle-track { pointer-events: none; }
 .agent-builder-form .check-row { justify-content: space-between; min-width: 138px; padding: 7px 9px; border: 1px solid #e0e6ef; border-radius: 9px; background: #fafbfe; }
 .agent-builder-form .check-row .toggle-switch { margin-left: 8px; }
+.tool-connector { display: block; margin-top: 2px; color: #7a8799; font-size: 10px; font-weight: 500; }
+.toggle-switch input:disabled + .toggle-track { opacity: .55; cursor: not-allowed; }

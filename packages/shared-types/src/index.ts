@@ -149,6 +149,7 @@ export interface GithubIntegrationConfig {
   connectionName?: string;
   connectionScope?: ConnectionScope;
   ownerUserId?: string;
+  connectedByName?: string;
   // Both are undefined right after a GitHub OAuth login completes but
   // before a repository has been chosen (see the OAuth flow in
   // services/chat-server/src/github-oauth.ts) -- `connected` is true as
@@ -172,6 +173,7 @@ export interface SlackIntegrationConfig {
   connectionName?: string;
   connectionScope?: ConnectionScope;
   ownerUserId?: string;
+  connectedByName?: string;
   teamName: string;
   connected: boolean;
   connectedAt: string;
@@ -184,6 +186,7 @@ export interface RemoteMcpIntegrationConfig {
   connectionName?: string;
   connectionScope?: ConnectionScope;
   ownerUserId?: string;
+  connectedByName?: string;
   endpoint: string;
   accountName?: string;
   connected: boolean;

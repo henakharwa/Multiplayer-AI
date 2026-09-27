@@ -567,7 +567,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     }
     const connectionName = typeof req.body?.connectionName === "string" ? req.body.connectionName.trim().slice(0, 80) : "Shared connection";
     const connectionScope = req.body?.connectionScope === "personal" ? "personal" : "shared";
-    const config = await db.upsertGithubIntegration({ workspaceId: paramString(req.params.id), owner, repo, token, connectionName: connectionName || "Shared connection", connectionScope, ownerUserId: connectionScope === "personal" ? req.user!.id : undefined });
+    const config = await db.upsertGithubIntegration({ workspaceId: paramString(req.params.id), owner, repo, token, connectionName: connectionName || "Shared connection", connectionScope, ownerUserId: req.user!.id });
     await db.recordAuditEvent({
       workspaceId: paramString(req.params.id),
       eventType: "integration.connected",

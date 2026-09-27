@@ -293,6 +293,7 @@ export function registerUserAuthRoutes(
   });
 
   app.post("/auth/logout", async (req: Request, res: Response) => {
+    if (req.user) await db.deletePersonalIntegrationsForUser(req.user.id);
     const token = parseSessionToken(req.headers.cookie);
     if (token) await db.deleteSession(token);
     clearSessionCookie(res, config);

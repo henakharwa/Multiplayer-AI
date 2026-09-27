@@ -658,8 +658,8 @@ export async function upsertRemoteMcpIntegration(input: { workspaceId: string; t
 export async function listIntegrations(workspaceId: string): Promise<IntegrationConfig[]> {
   const pool = getPool();
   const result = await pool.query(
-    `SELECT id, type, owner, repo, team_name, connection_name, connection_scope, owner_user_id, connected_at
-     FROM integrations WHERE workspace_id = $1`,
+    `SELECT i.id, i.type, i.owner, i.repo, i.team_name, i.connection_name, i.connection_scope, i.owner_user_id, i.connected_at, u.display_name AS connected_by_name
+     FROM integrations i LEFT JOIN users u ON u.id = i.owner_user_id WHERE i.workspace_id = $1`,
     [workspaceId]
   );
   return result.rows.map((row): IntegrationConfig => {
@@ -671,6 +671,7 @@ export async function listIntegrations(workspaceId: string): Promise<Integration
         connectionName: row.connection_name,
         connectionScope: row.connection_scope,
         ownerUserId: row.owner_user_id ?? undefined,
+        connectedByName: row.connected_by_name ?? undefined,
         owner: row.owner ?? undefined,
         repo: row.repo ?? undefined,
         connected: true,
@@ -684,6 +685,7 @@ export async function listIntegrations(workspaceId: string): Promise<Integration
       connectionName: row.connection_name,
       connectionScope: row.connection_scope,
       ownerUserId: row.owner_user_id ?? undefined,
+      connectedByName: row.connected_by_name ?? undefined,
       teamName: row.team_name,
       connected: true,
       connectedAt: row.connected_at.toISOString(),
@@ -695,6 +697,7 @@ export async function listIntegrations(workspaceId: string): Promise<Integration
       connectionName: row.connection_name,
       connectionScope: row.connection_scope,
       ownerUserId: row.owner_user_id ?? undefined,
+      connectedByName: row.connected_by_name ?? undefined,
       endpoint: row.owner,
       accountName: row.team_name ?? undefined,
       connected: true,
@@ -729,6 +732,10 @@ export async function getIntegrationCredential(
 export async function deleteIntegration(workspaceId: string, type: "github" | "slack" | "linear" | "notion" | "figma"): Promise<boolean> {
   const result = await getPool().query(`DELETE FROM integrations WHERE workspace_id = $1 AND type = $2`, [workspaceId, type]);
   return (result.rowCount ?? 0) > 0;
+}
+
+export async function deletePersonalIntegrationsForUser(userId: string): Promise<void> {
+  await getPool().query(`DELETE FROM integrations WHERE owner_user_id = $1 AND connection_scope = 'personal'`, [userId]);
 }
 
 
