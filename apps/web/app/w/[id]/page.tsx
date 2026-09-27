@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import type { Conversation, GithubRepoSummary, IntegrationConfig, Workspace, WorkspaceMember, WorkspaceRole } from "@mai-chat/shared-types";
-import { createConversation, deleteConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, removeWorkspaceMember, listWorkspaceInvitations, revokeWorkspaceInvitation, disconnectIntegration, githubOAuthStartUrl, sendWorkspaceInvitation, updateConversation, ApiError } from "../../../lib/api";
+import type { Conversation, GithubRepoSummary, IntegrationConfig, Workspace, WorkspaceAgent, WorkspaceMember, WorkspaceRole } from "@mai-chat/shared-types";
+import { createConversation, deleteConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, removeWorkspaceMember, listWorkspaceInvitations, revokeWorkspaceInvitation, disconnectIntegration, githubOAuthStartUrl, sendWorkspaceInvitation, updateConversation, listWorkspaceAgents, ApiError } from "../../../lib/api";
 import { useWorkspaceChat } from "../../../lib/useWorkspaceChat";
 import { colorForName, initialsForName } from "../../../lib/avatar";
 import ConnectChannelModal from "../../_components/ConnectChannelModal";
@@ -159,6 +159,7 @@ export default function WorkspaceRoomPage() {
   const [conversationMenu, setConversationMenu] = useState<string | null>(null);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<AgentKind>("project");
+  const [configuredAgent, setConfiguredAgent] = useState<WorkspaceAgent | null>(null);
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
   const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMember[]>([]);
   const [showAccessManager, setShowAccessManager] = useState(false);
@@ -181,6 +182,15 @@ export default function WorkspaceRoomPage() {
   const [slackNotice, setSlackNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationConfig[]>([]);
   const [toolMenu, setToolMenu] = useState<IntegrationConfig["type"] | null>(null);
+
+  useEffect(() => {
+    const agentId = new URLSearchParams(window.location.search).get("agentId");
+    if (!agentId) return;
+    listWorkspaceAgents(workspaceId).then((agents) => {
+      const agent = agents.find((item) => item.id === agentId && item.status === "published") ?? null;
+      if (agent) { setConfiguredAgent(agent); setSelectedAgent(agent.baseAgent); }
+    }).catch(() => {});
+  }, [workspaceId]);
 
   // Lands here right after the GitHub or Slack OAuth redirect
   // (services/chat-server/src/github-oauth.ts / slack-oauth.ts always
@@ -418,7 +428,7 @@ export default function WorkspaceRoomPage() {
           : conversation
       ));
     }
-    chat.sendMessage(draft, selectedAgent);
+    chat.sendMessage(draft, selectedAgent, configuredAgent?.id);
     setDraft("");
   }
 
@@ -439,7 +449,7 @@ export default function WorkspaceRoomPage() {
     ? chat.messages.filter((message) => `${message.authorName} ${message.content}`.toLowerCase().includes(conversationSearch.trim().toLowerCase()))
     : chat.messages;
   const isNewWorkspaceConversation = chat.messages.length === 0;
-  const selectedAgentInfo = AGENTS.find((agent) => agent.id === selectedAgent) ?? AGENTS[0];
+  const selectedAgentInfo = configuredAgent ? { ...(AGENTS.find((agent) => agent.id === selectedAgent) ?? AGENTS[0]), name: configuredAgent.name } : (AGENTS.find((agent) => agent.id === selectedAgent) ?? AGENTS[0]);
   const workspaceRole = workspaceMembers.find((member) => member.id === user.id)?.role ?? "admin";
   const canEdit = workspaceRole === "admin" || workspaceRole === "editor";
   const selectedAgentConnected = selectedAgent === "project" || integrations.some((integration) => integration.type === selectedAgent);
@@ -540,6 +550,7 @@ export default function WorkspaceRoomPage() {
           <a className="active" href="#conversation"><ChatGlyph /> Conversation</a>
           <Link href={`/w/${workspaceId}/audit`}><ActivityGlyph /> Activity</Link>
           <Link href={`/w/${workspaceId}/integrations`}><GridGlyph /> Integrations</Link>
+          <Link href={`/w/${workspaceId}/agents`}><GridGlyph /> Agents</Link>
         </nav>
 
         <div className="workspace-conversations" aria-label="Conversations">

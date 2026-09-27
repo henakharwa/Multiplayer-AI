@@ -113,6 +113,35 @@ export interface WorkspacePermissionPolicy {
   editor: WorkspacePermissions;
 }
 
+export interface WorkspaceAgent {
+  id: string;
+  workspaceId: string;
+  name: string;
+  slug: string;
+  baseAgent: "project" | IntegrationType;
+  instructions: string;
+  knowledge: string;
+  approvedProviders: IntegrationType[];
+  model: string;
+  status: "draft" | "published";
+  ownerUserId: string | null;
+  publishedVersion: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceAgentVersion {
+  id: string;
+  agentId: string;
+  version: number;
+  instructions: string;
+  knowledge: string;
+  approvedProviders: IntegrationType[];
+  model: string;
+  publishedByUserId: string | null;
+  createdAt: string;
+}
+
 export interface GithubIntegrationConfig {
   id?: string;
   type: "github";
@@ -413,6 +442,9 @@ export type AuditEventType =
   | "member.invited"
   | "integration.connected"
   | "workspace.permissions_updated"
+  | "agent.created"
+  | "agent.updated"
+  | "agent.published"
   | "action.proposed"
   | "action.confirmed"
   | "action.cancelled"

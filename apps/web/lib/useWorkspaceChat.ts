@@ -37,7 +37,7 @@ export interface WorkspaceChatState {
   // next successful send.
   sendError: string | null;
   historyLoaded: boolean;
-  sendMessage: (content: string, agentKind?: "project" | "github" | "slack" | "linear" | "notion" | "figma") => void;
+  sendMessage: (content: string, agentKind?: "project" | "github" | "slack" | "linear" | "notion" | "figma", agentId?: string) => void;
   reconnect: () => void;
 }
 
@@ -168,7 +168,7 @@ export function useWorkspaceChat(workspaceId: string | null, conversationId: str
     if (conversationId) setUnreadConversationIds((current) => current.filter((id) => id !== conversationId));
   }, [conversationId]);
 
-  const sendMessage = useCallback((content: string, agentKind: "project" | "github" | "slack" | "linear" | "notion" | "figma" = "project") => {
+  const sendMessage = useCallback((content: string, agentKind: "project" | "github" | "slack" | "linear" | "notion" | "figma" = "project", agentId?: string) => {
     const trimmed = content.trim();
     if (!trimmed) return;
     const ws = socketRef.current;
@@ -177,7 +177,7 @@ export function useWorkspaceChat(workspaceId: string | null, conversationId: str
       return;
     }
     setSendError(null);
-    ws.send(JSON.stringify({ type: "chat", content: trimmed, agentKind }));
+    ws.send(JSON.stringify({ type: "chat", content: trimmed, agentKind, agentId }));
   }, []);
 
   const reconnect = useCallback(() => { setReconnecting(true); setSendError(null); setGeneration((g) => g + 1); }, []);

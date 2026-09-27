@@ -338,3 +338,36 @@ CREATE INDEX IF NOT EXISTS audit_events_workspace_created_idx
   ON audit_events (workspace_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS audit_events_workspace_type_idx
   ON audit_events (workspace_id, event_type);
+
+-- Configurable workspace agents. Drafts are editable; a publish creates an
+-- immutable version snapshot used by live agent turns.
+CREATE TABLE IF NOT EXISTS workspace_agents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  base_agent TEXT NOT NULL DEFAULT 'project' CHECK (base_agent IN ('project', 'github', 'slack', 'linear', 'notion', 'figma')),
+  instructions TEXT NOT NULL DEFAULT '',
+  knowledge TEXT NOT NULL DEFAULT '',
+  approved_providers TEXT[] NOT NULL DEFAULT '{}',
+  model TEXT NOT NULL DEFAULT 'workspace-default',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
+  owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  published_version INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (workspace_id, slug)
+);
+ALTER TABLE workspace_agents ADD COLUMN IF NOT EXISTS base_agent TEXT NOT NULL DEFAULT 'project';
+CREATE TABLE IF NOT EXISTS workspace_agent_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id UUID NOT NULL REFERENCES workspace_agents(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  instructions TEXT NOT NULL,
+  knowledge TEXT NOT NULL,
+  approved_providers TEXT[] NOT NULL DEFAULT '{}',
+  model TEXT NOT NULL,
+  published_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (agent_id, version)
+);

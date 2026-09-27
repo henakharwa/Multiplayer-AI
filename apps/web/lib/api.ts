@@ -138,6 +138,13 @@ export async function updateWorkspacePermissionPolicy(workspaceId: string, polic
   return (await parseJsonOrThrow(res)) as import("@mai-chat/shared-types").WorkspacePermissionPolicy;
 }
 
+type AgentInput = { name: string; baseAgent: "project" | "github" | "slack" | "linear" | "notion" | "figma"; instructions?: string; knowledge?: string; approvedProviders?: string[]; model?: string };
+export async function listWorkspaceAgents(workspaceId: string): Promise<import("@mai-chat/shared-types").WorkspaceAgent[]> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/agents`); return (await parseJsonOrThrow(res)) as import("@mai-chat/shared-types").WorkspaceAgent[]; }
+export async function createWorkspaceAgent(workspaceId: string, input: AgentInput): Promise<import("@mai-chat/shared-types").WorkspaceAgent> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/agents`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }); return (await parseJsonOrThrow(res)) as import("@mai-chat/shared-types").WorkspaceAgent; }
+export async function updateWorkspaceAgent(workspaceId: string, agentId: string, input: Partial<AgentInput>): Promise<import("@mai-chat/shared-types").WorkspaceAgent> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(agentId)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }); return (await parseJsonOrThrow(res)) as import("@mai-chat/shared-types").WorkspaceAgent; }
+export async function publishWorkspaceAgent(workspaceId: string, agentId: string): Promise<import("@mai-chat/shared-types").WorkspaceAgent> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(agentId)}/publish`, { method: "POST" }); return (await parseJsonOrThrow(res)) as import("@mai-chat/shared-types").WorkspaceAgent; }
+export async function listWorkspaceAgentVersions(workspaceId: string, agentId: string): Promise<import("@mai-chat/shared-types").WorkspaceAgentVersion[]> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(agentId)}/versions`); return (await parseJsonOrThrow(res)) as import("@mai-chat/shared-types").WorkspaceAgentVersion[]; }
+
 export async function checkToolConnectionPermission(workspaceId: string): Promise<void> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/capabilities/connect-tools`);
   if (!res.ok) await parseJsonOrThrow(res);

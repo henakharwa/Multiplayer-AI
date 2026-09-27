@@ -23,6 +23,8 @@ export interface RunAgentTurnInput {
    */
   actionContext?: string | null;
   agentKind?: AgentKind;
+  customInstructions?: string;
+  knowledge?: string;
   chat?: LlmChatFn;
   llmConfig?: LlmConfig;
   maxTurns?: number;
@@ -43,7 +45,9 @@ export interface RunAgentTurnResult {
 function buildSystemPrompt(
   githubContext?: { owner: string; repo: string } | null,
   agentKind: AgentKind = "project",
-  actionContext?: string | null
+  actionContext?: string | null,
+  customInstructions?: string,
+  knowledge?: string
 ): string {
   const specialist = agentKind === "github"
     ? "You are the GitHub specialist. Focus on repository code, issues, pull requests, branches, and CI. Only use the GitHub tools supplied for this turn."
@@ -120,7 +124,7 @@ or is happening. Instead, tell them to click Confirm on the pending
 action's card. Likewise, never invent or claim a confirmation happened
 that you weren't shown proof of via a tool result.
 
-Keep replies concise -- this is a live chat, not a report.`;
+Keep replies concise -- this is a live chat, not a report.${customInstructions ? `\n\nWorkspace agent instructions (follow unless they conflict with safety or the user's request):\n${customInstructions}${knowledge ? `\n\nWorkspace knowledge:\n${knowledge}` : ""}` : ""}`;
 }
 
 // Kept back from the model's per-minute token quota so this project's own
@@ -252,7 +256,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   // against an 8000 limit, almost entirely from tool schema + system
   // prompt + the (then 4096) completion reserve, with nothing left over
   // for history at all.
-  const systemPrompt = buildSystemPrompt(input.githubContext, input.agentKind, input.actionContext);
+  const systemPrompt = buildSystemPrompt(input.githubContext, input.agentKind, input.actionContext, input.customInstructions, input.knowledge);
   const toolsTokens = estimateTokens(JSON.stringify(toolDefs));
   const systemTokens = estimateTokens(systemPrompt);
   const historyBudget = config.tpmLimit - toolsTokens - systemTokens - config.maxTokens - TOKEN_BUDGET_SAFETY_MARGIN;
