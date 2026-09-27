@@ -304,6 +304,9 @@ textarea {
 }
 
 .auth-nav { display: flex; align-items: center; gap: 10px; }
+.marketing-nav { display: flex; align-items: center; gap: 22px; margin-left: auto; margin-right: 28px; }
+.marketing-nav a { color: var(--text-dim); font-size: 13px; font-weight: 600; text-decoration: none; }
+.marketing-nav a:hover { color: var(--text); }
 .auth-nav-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text); background: var(--surface); font-size: 13px; font-weight: 600; }
 .auth-nav-button:hover { background: var(--bg-subtle); }
 .auth-nav-button.primary { background: var(--accent); border-color: var(--accent); color: white; }
@@ -450,8 +453,67 @@ textarea {
   text-align: center;
 }
 .home-primary-actions { display: grid; gap: 10px; width: min(100%, 330px); margin: -8px 0 30px; }
+.hero-cta-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
 .home-primary-cta { min-height: 46px; }
 .home-text-action { border: 0; background: transparent; color: var(--accent); font-size: 13px; font-weight: 650; }
+.marketing-secondary-cta { min-height: 46px; padding: 0 16px; border: 1px solid var(--border-strong); border-radius: var(--radius-pill); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; font-weight: 700; }
+.marketing-secondary-cta:hover { background: var(--bg-subtle); }
+
+.marketing-content { width: min(1120px, calc(100% - 40px)); margin: 0 auto; padding: 12px 0 80px; }
+.marketing-proof { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--border); }
+.marketing-proof > div { display: grid; gap: 5px; padding: 18px; background: var(--surface); }
+.marketing-proof strong { color: var(--text); font-size: 14px; }
+.marketing-proof span { color: var(--text-dim); font-size: 12px; line-height: 1.45; }
+.marketing-section { margin-top: 110px; }
+.marketing-kicker { margin: 0 0 10px; color: var(--accent); font-size: 11px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.marketing-section h2, .marketing-demo h2, .marketing-final-cta h2 { max-width: 700px; margin: 0; color: var(--text); font-size: clamp(30px, 4vw, 46px); letter-spacing: -.04em; line-height: 1.06; }
+.marketing-steps > div, .marketing-outcomes, .marketing-safety > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 34px; }
+.marketing-steps article { padding: 20px 4px 4px; border-top: 1px solid var(--border-strong); }
+.marketing-steps article span { color: var(--accent); font-size: 12px; font-weight: 750; }
+.marketing-steps h3, .marketing-outcomes h3, .marketing-safety h3 { margin: 16px 0 8px; font-size: 17px; letter-spacing: -.02em; }
+.marketing-steps p, .marketing-outcomes p, .marketing-safety p, .marketing-demo > div > p, .marketing-activity > div > p { margin: 0; color: var(--text-dim); font-size: 14px; line-height: 1.6; }
+.marketing-demo { display: grid; grid-template-columns: minmax(0, .9fr) minmax(320px, .8fr); gap: 56px; align-items: center; margin-top: 110px; padding: 54px; border-radius: 24px; background: linear-gradient(135deg, #f0f4ff, #fcfdff 58%, #f6f2ff); }
+.marketing-demo > div > p { max-width: 500px; margin-top: 16px; }
+.marketing-demo-cta { width: auto; margin-top: 24px; }
+.marketing-demo article { padding: 18px; border: 1px solid #e4d7bb; border-radius: 16px; background: #fffaf1; box-shadow: 0 18px 36px rgba(62, 54, 39, .12); transform: rotate(1deg); }
+.marketing-demo article header, .marketing-demo article footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.marketing-demo article header span { color: #5d4b2e; font-size: 12px; font-weight: 750; }
+.marketing-demo article header small { padding: 4px 7px; border-radius: var(--radius-pill); background: #ffedcb; color: #9a6212; font-size: 10px; font-weight: 750; }
+.marketing-demo article h3 { margin: 22px 0 10px; font-size: 18px; line-height: 1.35; }
+.marketing-demo article p { margin: 0 0 22px; color: #6d6253; font-size: 12px; }
+.marketing-demo article footer { justify-content: flex-end; }
+.marketing-demo article footer button { min-height: 32px; padding: 0 10px; border: 1px solid #d6c5a4; border-radius: 8px; background: white; color: #5b4b30; font: inherit; font-size: 12px; font-weight: 700; }
+.marketing-demo article footer button:last-child { border-color: var(--accent); background: var(--accent); color: white; }
+.marketing-outcomes { grid-template-columns: repeat(4, 1fr); }
+.marketing-outcomes article { min-height: 220px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); }
+.marketing-outcomes article > span { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font-weight: 800; }
+.marketing-comparison { display: grid; grid-template-columns: .75fr 1.25fr; gap: 56px; align-items: start; margin-top: 110px; padding: 42px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.marketing-comparison table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+.marketing-comparison th, .marketing-comparison td { padding: 12px 10px; border-bottom: 1px solid var(--border); line-height: 1.4; }
+.marketing-comparison thead th { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.marketing-comparison tbody th { color: var(--text); font-size: 12px; }
+.marketing-comparison td:last-child { color: #2453bd; font-weight: 650; }
+.marketing-safety { padding: 54px; border-radius: 24px; background: #172033; color: white; }
+.marketing-safety .marketing-kicker { color: #9fb7ff; }
+.marketing-safety h2 { color: white; }
+.marketing-safety > div { grid-template-columns: repeat(3, 1fr); }
+.marketing-safety article { padding: 18px; border: 1px solid rgba(255,255,255,.13); border-radius: var(--radius); background: rgba(255,255,255,.04); }
+.marketing-safety h3 { color: white; }
+.marketing-safety p { color: #c2cad7; }
+.marketing-activity { display: grid; grid-template-columns: 1fr .8fr; gap: 72px; align-items: center; }
+.marketing-activity article { display: grid; gap: 13px; padding: 24px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
+.marketing-activity article span { color: var(--text-faint); font-size: 11px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.marketing-activity article strong { padding-bottom: 12px; border-bottom: 1px solid var(--border); color: var(--text); font-size: 18px; }
+.marketing-activity article small { color: var(--text-dim); font-size: 12px; }
+.marketing-faq { max-width: 780px; margin-left: auto; margin-right: auto; }
+.marketing-faq details { padding: 17px 0; border-bottom: 1px solid var(--border); }
+.marketing-faq summary { color: var(--text); cursor: pointer; font-size: 15px; font-weight: 700; }
+.marketing-faq details p { max-width: 650px; margin: 10px 0 0; color: var(--text-dim); font-size: 14px; line-height: 1.6; }
+.marketing-final-cta { display: grid; justify-items: center; margin-top: 110px; padding: 70px 24px; border-radius: 24px; background: linear-gradient(135deg, #eaf0ff, #f8f6ff); text-align: center; }
+.marketing-final-cta h2 { max-width: 680px; }
+.marketing-final-cta .btn { width: auto; margin-top: 24px; }
+@media (max-width: 800px) { .marketing-nav { display: none; } .marketing-proof, .marketing-outcomes { grid-template-columns: repeat(2, 1fr); } .marketing-demo, .marketing-comparison, .marketing-activity { grid-template-columns: 1fr; gap: 28px; } .marketing-demo, .marketing-safety { padding: 30px 22px; } .marketing-steps > div, .marketing-safety > div { grid-template-columns: 1fr; } .marketing-section, .marketing-demo, .marketing-comparison { margin-top: 72px; } }
+@media (max-width: 520px) { .marketing-content { width: min(100% - 28px, 1120px); } .home-hero { padding-bottom: 46px; } .hero-cta-row { grid-template-columns: 1fr; } .marketing-proof { grid-template-columns: 1fr; } .marketing-outcomes { grid-template-columns: 1fr; } .marketing-comparison { overflow-x: auto; } .marketing-comparison table { min-width: 540px; } .marketing-final-cta { margin-top: 72px; padding: 52px 18px; } }
 
 /* Chat room layout -------------------------------------------------------*/
 
