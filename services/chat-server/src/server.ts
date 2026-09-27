@@ -440,7 +440,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     const target = members.find((member) => member.id === userId);
     if (!target) return res.status(404).json({ error: "member not found" });
     if (target.role === "admin" && members.filter((member) => member.role === "admin").length === 1) return res.status(409).json({ error: "A workspace must keep at least one admin." });
-    if (!(await db.removeWorkspaceMember(workspaceId, userId))) return res.status(404).json({ error: "member not found" });
+    if (!(await db.removeWorkspaceMemberAndPersonalIntegrations(workspaceId, userId))) return res.status(404).json({ error: "member not found" });
     res.status(204).end();
   });
 

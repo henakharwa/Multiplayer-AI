@@ -434,6 +434,35 @@ export async function removeWorkspaceMember(workspaceId: string, userId: string)
   return result.rowCount === 1;
 }
 
+// A personal integration is valid only while its owner belongs to this
+// workspace. Removing a member must remove those credentials as part of the
+// same transaction so a later invitation starts with no retained tools.
+export async function removeWorkspaceMemberAndPersonalIntegrations(workspaceId: string, userId: string): Promise<boolean> {
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    const membership = await client.query(
+      "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+      [workspaceId, userId]
+    );
+    if (membership.rowCount !== 1) {
+      await client.query("ROLLBACK");
+      return false;
+    }
+    await client.query(
+      "DELETE FROM integrations WHERE workspace_id = $1 AND owner_user_id = $2 AND connection_scope = 'personal'",
+      [workspaceId, userId]
+    );
+    await client.query("COMMIT");
+    return true;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function notifyWorkspaceMembers(input: { workspaceId: string; conversationId?: string | null; kind: WorkspaceNotification["kind"]; text: string; excludeUserIds?: string[] }): Promise<void> {
   const pool = getPool();
   await pool.query(
