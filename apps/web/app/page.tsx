@@ -10,6 +10,15 @@ import { logout } from "../lib/api";
 import AuthDialog from "./_components/AuthDialog";
 import EmailVerificationBanner from "./_components/EmailVerificationBanner";
 
+const MOTION_OPTIONS = [
+  { id: "still", label: "Still" },
+  { id: "calm", label: "Calm" },
+  { id: "float", label: "Float" },
+  { id: "shimmer", label: "Shimmer" },
+  { id: "spotlight", label: "Spotlight" },
+] as const;
+type MotionOption = (typeof MOTION_OPTIONS)[number]["id"];
+
 export default function HomePage() {
   const router = useRouter();
   const auth = useCurrentUser();
@@ -22,6 +31,7 @@ export default function HomePage() {
   const [existingWorkspace, setExistingWorkspace] = useState<Workspace | null>(null);
   const [myWorkspaces, setMyWorkspaces] = useState<Workspace[]>([]);
   const [inviteToken, setInviteToken] = useState("");
+  const [motion, setMotion] = useState<MotionOption>("still");
   const inviteHandled = useRef(false);
 
   useEffect(() => {
@@ -34,6 +44,16 @@ export default function HomePage() {
       setAuthMode("signin");
     }
   }, []);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("mai:landing-motion") as MotionOption | null;
+    if (stored && MOTION_OPTIONS.some((option) => option.id === stored)) setMotion(stored);
+  }, []);
+
+  function chooseMotion(option: MotionOption) {
+    setMotion(option);
+    window.localStorage.setItem("mai:landing-motion", option);
+  }
 
   useEffect(() => {
     if (!auth.user || !inviteToken || inviteHandled.current) return;
@@ -89,7 +109,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="home-shell home-background-slate">
+    <div className={`home-shell home-background-slate home-motion-${motion}`}>
       <nav className="home-nav">
         <BrandMark />
         {!auth.user && <div className="marketing-nav"><a href="#how-it-works">How it works</a><a href="#product">Product</a><a href="#security">Security</a><a href="#faq">FAQ</a></div>}
@@ -109,6 +129,7 @@ export default function HomePage() {
           </>}
         </div>
       </nav>
+      {!auth.user && <section className="motion-switcher" aria-label="Landing page motion options"><span>Motion preview</span><div>{MOTION_OPTIONS.map((option) => <button key={option.id} type="button" className={motion === option.id ? "active" : ""} onClick={() => chooseMotion(option.id)} aria-pressed={motion === option.id}>{option.label}</button>)}</div></section>}
       {authMode && <AuthDialog mode={authMode} returnTo={returnTo} error={error} onClose={() => setAuthMode(null)} />}
       {auth.user && <EmailVerificationBanner user={auth.user} />}
 
