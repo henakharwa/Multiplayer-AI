@@ -49,7 +49,11 @@ export function registerEmailAuthRoutes(app: Express, config: UserAuthConfig, ma
       } else {
         const credential = await db.getPasswordCredential(email);
         const matches = await verifyPassword(password, credential?.passwordHash ?? null);
-        if (!matches || !credential) return res.status(401).json({ error: "Incorrect email or password." });
+        // Keep the dummy password derivation above even when no account is
+        // found, then give the person an actionable sign-up message instead
+        // of suggesting that an account already exists with a bad password.
+        if (!credential) return res.status(401).json({ error: "No existing account found for this email. Please sign up." });
+        if (!matches) return res.status(401).json({ error: "Incorrect email or password." });
         user = await db.getUserById(credential.userId);
       }
       if (!user) return res.status(401).json({ error: "Incorrect email or password." });
