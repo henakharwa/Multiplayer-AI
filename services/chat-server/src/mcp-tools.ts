@@ -40,7 +40,10 @@ export function mcpToolToExecutor(client: Client, tool: McpTool): ToolExecutor {
       function: {
         name: tool.name,
         description: tool.description ?? tool.name,
-        parameters: tool.inputSchema as Record<string, unknown>,
+        // Some GitHub MCP schemas use uppercase enum values (OPEN/CLOSED),
+        // while models naturally emit lowercase. Accept either at the LLM
+        // boundary and normalize immediately before the MCP call.
+        parameters: compatibilitySchema(tool.inputSchema as Record<string, unknown>),
       },
     },
     mutates,
@@ -51,8 +54,28 @@ export function mcpToolToExecutor(client: Client, tool: McpTool): ToolExecutor {
     // as the fuller "here's exactly what you're about to run" detail.
     describe: mutates ? (args) => describeCall(tool, args) : undefined,
     preview: mutates ? (args) => previewCall(tool, args) : undefined,
-    execute: (args) => callMcpTool(client, tool.name, args),
+    execute: (args) => callMcpTool(client, tool.name, normalizeCompatibilityArgs(args)),
   };
+}
+
+function compatibilitySchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const copy = structuredClone(schema) as Record<string, unknown>;
+  const walk = (value: unknown): void => {
+    if (!value || typeof value !== "object") return;
+    const record = value as Record<string, unknown>;
+    if (Array.isArray(record.enum) && record.enum.every((item) => typeof item === "string")) {
+      record.enum = [...new Set([...record.enum as string[], ...(record.enum as string[]).map((item) => item.toLowerCase())])];
+    }
+    Object.values(record).forEach(walk);
+  };
+  walk(copy);
+  return copy;
+}
+
+function normalizeCompatibilityArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const copy = { ...args };
+  if (typeof copy.state === "string") copy.state = copy.state.toUpperCase();
+  return copy;
 }
 
 /** Fetches this MCP client's full tool list and converts every one of them. */
