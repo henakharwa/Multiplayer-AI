@@ -108,16 +108,25 @@ export async function addWorkspaceMember(workspaceId: string, userId: string, ro
 
 const WORKSPACE_INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-export async function createWorkspaceInvitation(input: { workspaceId: string; email: string; invitedByUserId: string }): Promise<{ token: string; email: string; expiresAt: string }> {
+export async function isWorkspaceMemberEmail(workspaceId: string, email: string): Promise<boolean> {
+  const result = await getPool().query(
+    `SELECT 1 FROM workspace_members wm JOIN user_email_identities ei ON ei.user_id = wm.user_id
+     WHERE wm.workspace_id = $1 AND ei.email = $2 LIMIT 1`,
+    [workspaceId, normalizedEmail(email)]
+  );
+  return Boolean(result.rows[0]);
+}
+
+export async function createWorkspaceInvitation(input: { workspaceId: string; email: string; invitedByUserId: string; role: WorkspaceRole }): Promise<{ token: string; email: string; role: WorkspaceRole; expiresAt: string }> {
   const email = normalizedEmail(input.email);
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + WORKSPACE_INVITATION_TTL_MS);
   await getPool().query(
-    `INSERT INTO workspace_invitations (token_hash, workspace_id, email, invited_by_user_id, expires_at)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [hashSessionToken(token), input.workspaceId, email, input.invitedByUserId, expiresAt]
+    `INSERT INTO workspace_invitations (token_hash, workspace_id, email, invited_by_user_id, role, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [hashSessionToken(token), input.workspaceId, email, input.invitedByUserId, input.role, expiresAt]
   );
-  return { token, email, expiresAt: expiresAt.toISOString() };
+  return { token, email, role: input.role, expiresAt: expiresAt.toISOString() };
 }
 
 export async function deleteWorkspaceInvitation(token: string): Promise<void> {
@@ -134,7 +143,7 @@ export async function acceptWorkspaceInvitation(token: string, userId: string): 
   try {
     await client.query("BEGIN");
     const invite = await client.query(
-      `SELECT workspace_id, email FROM workspace_invitations
+      `SELECT workspace_id, email, role FROM workspace_invitations
        WHERE token_hash = $1 AND accepted_at IS NULL AND expires_at > now() FOR UPDATE`,
       [hashSessionToken(token)]
     );
@@ -150,9 +159,9 @@ export async function acceptWorkspaceInvitation(token: string, userId: string): 
     }
     const workspaceId = invite.rows[0].workspace_id as string;
     await client.query(
-      `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')
+      `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, $3)
        ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-      [workspaceId, userId]
+      [workspaceId, userId, invite.rows[0].role]
     );
     await client.query("UPDATE workspace_invitations SET accepted_at = now() WHERE token_hash = $1", [hashSessionToken(token)]);
     await client.query("COMMIT");

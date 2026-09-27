@@ -105,6 +105,9 @@ CREATE TABLE IF NOT EXISTS workspace_invitations (
   expires_at TIMESTAMPTZ NOT NULL,
   accepted_at TIMESTAMPTZ
 );
+ALTER TABLE workspace_invitations ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'editor';
+ALTER TABLE workspace_invitations DROP CONSTRAINT IF EXISTS workspace_invitations_role_check;
+ALTER TABLE workspace_invitations ADD CONSTRAINT workspace_invitations_role_check CHECK (role IN ('admin', 'editor'));
 CREATE INDEX IF NOT EXISTS workspace_invitations_workspace_email_idx
   ON workspace_invitations (workspace_id, email);
 

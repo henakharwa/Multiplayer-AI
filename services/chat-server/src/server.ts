@@ -262,16 +262,19 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "invalid workspace id" });
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return res.status(400).json({ error: "A valid email address is required." });
+    const role = req.body?.role;
+    if (role !== "admin" && role !== "editor") return res.status(400).json({ error: "Choose Admin or Editor access." });
     const workspace = await db.getWorkspaceById(workspaceId);
     if (!workspace) return res.status(404).json({ error: "not found" });
-    const invite = await db.createWorkspaceInvitation({ workspaceId, email, invitedByUserId: req.user!.id });
+    if (await db.isWorkspaceMemberEmail(workspaceId, email)) return res.status(409).json({ error: "This user is already in the workspace." });
+    const invite = await db.createWorkspaceInvitation({ workspaceId, email, invitedByUserId: req.user!.id, role });
     const inviteUrl = new URL("/", webAppUrl);
     inviteUrl.searchParams.set("invite", invite.token);
     try {
       await deps.mailer.send({
         to: invite.email,
         subject: `You're invited to ${workspace.name} on Multiplayer AI`,
-        text: `${req.user!.displayName} invited you to join the ${workspace.name} workspace.\n\nOpen this invitation: ${inviteUrl}\n\nSign in or create an account with ${invite.email}. This invitation expires in 7 days.`,
+        text: `${req.user!.displayName} invited you to join the ${workspace.name} workspace as an ${invite.role}.\n\nOpen this invitation: ${inviteUrl}\n\nSign in or create an account with ${invite.email}. This invitation expires in 7 days.`,
       });
     } catch (error) {
       await db.deleteWorkspaceInvitation(invite.token);
@@ -290,9 +293,9 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
       actorType: "user",
       actorUserId: req.user!.id,
       actorName: req.user!.displayName,
-      summary: `${req.user!.displayName} invited ${invite.email} to join the workspace`,
+      summary: `${req.user!.displayName} invited ${invite.email} to join the workspace as ${invite.role}`,
     });
-    res.status(201).json({ email: invite.email, expiresAt: invite.expiresAt });
+    res.status(201).json({ email: invite.email, role: invite.role, expiresAt: invite.expiresAt });
   });
 
   app.post("/workspace-invitations/accept", requireAuth, async (req: Request, res: Response) => {

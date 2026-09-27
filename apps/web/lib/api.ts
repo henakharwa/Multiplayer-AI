@@ -61,9 +61,9 @@ export async function updateWorkspaceMemberRole(workspaceId: string, userId: str
   await parseJsonOrThrow(res);
 }
 
-export async function sendWorkspaceInvitation(workspaceId: string, email: string): Promise<{ email: string; expiresAt: string }> {
-  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/invitations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email }) });
-  return (await parseJsonOrThrow(res)) as { email: string; expiresAt: string };
+export async function sendWorkspaceInvitation(workspaceId: string, input: { email: string; role: WorkspaceRole }): Promise<{ email: string; role: WorkspaceRole; expiresAt: string }> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/invitations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
+  return (await parseJsonOrThrow(res)) as { email: string; role: WorkspaceRole; expiresAt: string };
 }
 
 export async function acceptWorkspaceInvitation(token: string): Promise<{ workspaceId: string }> {

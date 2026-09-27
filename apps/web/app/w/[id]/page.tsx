@@ -166,6 +166,7 @@ export default function WorkspaceRoomPage() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<WorkspaceRole>("editor");
   const [inviteState, setInviteState] = useState<{ sending: boolean; message: string | null; error: string | null }>({ sending: false, message: null, error: null });
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLInputElement | null>(null);
@@ -411,8 +412,8 @@ export default function WorkspaceRoomPage() {
     if (!inviteEmail.trim()) return;
     setInviteState({ sending: true, message: null, error: null });
     try {
-      const invitation = await sendWorkspaceInvitation(workspaceId, inviteEmail.trim());
-      setInviteState({ sending: false, message: `Invitation sent to ${invitation.email}.`, error: null });
+      const invitation = await sendWorkspaceInvitation(workspaceId, { email: inviteEmail.trim(), role: inviteRole });
+      setInviteState({ sending: false, message: `Invitation sent to ${invitation.email} as ${invitation.role}.`, error: null });
       setInviteEmail("");
     } catch (error) {
       setInviteState({ sending: false, message: null, error: error instanceof ApiError ? error.message : "Could not send the invitation." });
@@ -489,7 +490,7 @@ export default function WorkspaceRoomPage() {
       {showRepoPicker && (
         <GithubRepoPickerModal workspaceId={workspaceId} onClose={() => setShowRepoPicker(false)} onSelected={handleRepoSelected} />
       )}
-      {showInviteModal && <div className="access-modal-backdrop" role="presentation" onMouseDown={() => setShowInviteModal(false)}><section className="access-modal workspace-invite-modal" role="dialog" aria-modal="true" aria-labelledby="invite-title" onMouseDown={(event) => event.stopPropagation()}><header><div><p>Workspace access</p><h2 id="invite-title">Invite a teammate</h2></div><button type="button" onClick={() => setShowInviteModal(false)} aria-label="Close">×</button></header><p className="access-modal-intro">They will receive an email with a secure link to join {workspace.name}. They must sign in with the invited email address.</p><form className="workspace-invite-form" onSubmit={(event) => void sendInvitation(event)}><label htmlFor="invite-email">Email address</label><input id="invite-email" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="teammate@example.com" autoComplete="email" required autoFocus /><button className="btn" type="submit" disabled={inviteState.sending || !inviteEmail.trim()}>{inviteState.sending ? "Sending…" : "Send invitation"}</button></form>{inviteState.message && <p className="workspace-invite-success" role="status">{inviteState.message}</p>}{inviteState.error && <p className="error-text" role="alert">{inviteState.error}</p>}</section></div>}
+      {showInviteModal && <div className="access-modal-backdrop" role="presentation" onMouseDown={() => setShowInviteModal(false)}><section className="access-modal workspace-invite-modal" role="dialog" aria-modal="true" aria-labelledby="invite-title" onMouseDown={(event) => event.stopPropagation()}><header><div><p>Workspace access</p><h2 id="invite-title">Invite a teammate</h2></div><button type="button" onClick={() => setShowInviteModal(false)} aria-label="Close">×</button></header><p className="access-modal-intro">They will receive an email with a secure link to join {workspace.name}. They must sign in with the invited email address.</p><form className="workspace-invite-form" onSubmit={(event) => void sendInvitation(event)}><label htmlFor="invite-email">Email address</label><input id="invite-email" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="teammate@example.com" autoComplete="email" required autoFocus /><label htmlFor="invite-role">Workspace role</label><select id="invite-role" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as WorkspaceRole)}><option value="editor">Editor</option><option value="admin">Admin</option></select><button className="btn" type="submit" disabled={inviteState.sending || !inviteEmail.trim()}>{inviteState.sending ? "Sending…" : "Send invitation"}</button></form>{inviteState.message && <p className="workspace-invite-success" role="status">{inviteState.message}</p>}{inviteState.error && <p className="error-text" role="alert">{inviteState.error}</p>}</section></div>}
 
       <aside className="workspace-sidebar">
         <div className="workspace-sidebar-top">
