@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 render_port="${PORT:?Render must provide PORT}"
+if [ "${RESET_DATABASE_ON_START:-}" = "DELETE_ALL_USERS_AND_WORKSPACES" ]; then
+  echo "RESET_DATABASE_ON_START is set; clearing all workspace and user data."
+  CONFIRM_DATABASE_RESET=DELETE_ALL_USERS_AND_WORKSPACES node scripts/reset-database.mjs
+fi
 npm run migrate
 PORT=4000 npm run start:server &
 chat_pid=$!
