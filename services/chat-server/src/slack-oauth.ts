@@ -150,7 +150,7 @@ export const defaultSlackOAuthDeps: SlackOAuthDeps = {
 // in-memory, single-process design to github-oauth.ts's pendingStates,
 // for the same reasons given there.
 const STATE_TTL_MS = 10 * 60 * 1000;
-const pendingStates = new Map<string, { workspaceId: string; expiresAt: number }>();
+const pendingStates = new Map<string, { workspaceId: string; userId: string; expiresAt: number }>();
 
 function cleanupExpiredStates(now = Date.now()): void {
   for (const [state, entry] of pendingStates) {
@@ -186,7 +186,7 @@ export function registerSlackOAuthRoutes(app: Express, config: SlackOAuthConfig,
 
     cleanupExpiredStates();
     const state = randomUUID();
-    pendingStates.set(state, { workspaceId, expiresAt: Date.now() + STATE_TTL_MS });
+    pendingStates.set(state, { workspaceId, userId: req.user!.id, expiresAt: Date.now() + STATE_TTL_MS });
 
     const authorizeUrl = new URL(SLACK_AUTHORIZE_URL);
     authorizeUrl.searchParams.set("client_id", config.clientId);
@@ -234,6 +234,7 @@ export function registerSlackOAuthRoutes(app: Express, config: SlackOAuthConfig,
       workspaceId: pending.workspaceId,
       teamName: result.teamName ?? "Slack",
       token: result.accessToken,
+      ownerUserId: pending.userId,
     });
     if (req.user) {
       await db.recordAuditEvent({

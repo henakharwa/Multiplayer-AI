@@ -622,16 +622,22 @@ export async function upsertSlackIntegration(input: {
   workspaceId: string;
   teamName: string;
   token: string;
+  ownerUserId?: string;
 }): Promise<SlackIntegrationConfig> {
   const pool = getPool();
   const encrypted = encryptToken(input.token);
+  // A Slack OAuth grant is a user token, so it must remain attributable to
+  // the member who authorized it. This also gives each member an independent
+  // Slack connection within the same workspace.
+  const accountKey = input.ownerUserId ? `personal:${input.ownerUserId}:slack` : "shared";
+  const connectionScope = input.ownerUserId ? "personal" : "shared";
   const result = await pool.query(
-    `INSERT INTO integrations (workspace_id, type, team_name, encrypted_token, account_key)
-     VALUES ($1, 'slack', $2, $3, 'shared')
+    `INSERT INTO integrations (workspace_id, type, team_name, encrypted_token, connection_scope, owner_user_id, account_key)
+     VALUES ($1, 'slack', $2, $3, $4, $5, $6)
      ON CONFLICT (workspace_id, type, account_key)
-     DO UPDATE SET team_name = $2, encrypted_token = $3, connected_at = now()
+     DO UPDATE SET team_name = $2, encrypted_token = $3, connection_scope = $4, owner_user_id = $5, connected_at = now()
      RETURNING id, workspace_id, connection_name, connection_scope, owner_user_id, connected_at`,
-    [input.workspaceId, input.teamName, encrypted]
+    [input.workspaceId, input.teamName, encrypted, connectionScope, input.ownerUserId ?? null, accountKey]
   );
   return {
     id: result.rows[0].id,
