@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import type { GithubRepoSummary, IntegrationConfig } from "@mai-chat/shared-types";
-import { connectGithub, githubOAuthStartUrl, slackOAuthStartUrl, listIntegrations, ApiError } from "../../../../lib/api";
+import type { GithubRepoSummary, IntegrationConfig, WorkspacePermissionPolicy, WorkspacePermissions } from "@mai-chat/shared-types";
+import { connectGithub, githubOAuthStartUrl, slackOAuthStartUrl, listIntegrations, getWorkspacePermissionPolicy, updateWorkspacePermissionPolicy, ApiError } from "../../../../lib/api";
 import GithubRepoPickerModal from "../../../_components/GithubRepoPickerModal";
 
 export default function IntegrationsPage() {
@@ -17,11 +17,16 @@ export default function IntegrationsPage() {
   const [owner, setOwner] = useState("");
   const [repo, setRepo] = useState("");
   const [githubToken, setGithubToken] = useState("");
+  const [connectionName, setConnectionName] = useState("Shared connection");
+  const [connectionScope, setConnectionScope] = useState<"shared" | "personal">("shared");
   const [githubBusy, setGithubBusy] = useState(false);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [githubSuccess, setGithubSuccess] = useState(false);
 
   const [showRepoPicker, setShowRepoPicker] = useState(false);
+  const [policy, setPolicy] = useState<WorkspacePermissionPolicy | null>(null);
+  const [policyBusy, setPolicyBusy] = useState(false);
+  const [policyError, setPolicyError] = useState<string | null>(null);
 
   async function refresh() {
     try {
@@ -34,8 +39,21 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     refresh();
+    getWorkspacePermissionPolicy(workspaceId).then(setPolicy).catch(() => setPolicy(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
+
+  function setPermission(role: "admin" | "editor", permission: keyof WorkspacePermissions, value: boolean) {
+    setPolicy((current) => current ? { ...current, [role]: { ...current[role], [permission]: value } } : current);
+  }
+
+  async function savePolicy() {
+    if (!policy) return;
+    setPolicyBusy(true); setPolicyError(null);
+    try { setPolicy(await updateWorkspacePermissionPolicy(workspaceId, policy)); }
+    catch (error) { setPolicyError(error instanceof ApiError ? error.message : "Could not save workspace permissions."); }
+    finally { setPolicyBusy(false); }
+  }
 
   const githubConnected = integrations.find((i): i is Extract<IntegrationConfig, { type: "github" }> => i.type === "github");
   const slackConnected = integrations.find((i): i is Extract<IntegrationConfig, { type: "slack" }> => i.type === "slack");
@@ -46,7 +64,7 @@ export default function IntegrationsPage() {
     setGithubError(null);
     setGithubSuccess(false);
     try {
-      await connectGithub(workspaceId, { owner: owner.trim(), repo: repo.trim(), token: githubToken.trim() });
+      await connectGithub(workspaceId, { owner: owner.trim(), repo: repo.trim(), token: githubToken.trim(), connectionName: connectionName.trim(), connectionScope });
       setGithubSuccess(true);
       setGithubToken("");
       await refresh();
@@ -72,6 +90,20 @@ export default function IntegrationsPage() {
           <span>{loading ? "Checking connections…" : integrations.length ? "Ready for agent requests" : "Connect your first tool"}</span>
         </div>
       </section>
+
+      {policy && <section className="integration-panel permission-panel">
+        <h2>Tool and agent permissions</h2>
+        <p className="hint">Admins can decide which workspace roles may connect tools, use each provider, create or publish agents, and approve external actions.</p>
+        <div className="permission-grid" role="table" aria-label="Workspace permissions">
+          <div className="permission-row permission-heading" role="row"><span>Capability</span><span>Admin</span><span>Editor</span></div>
+          {([
+            ["connectTools", "Connect and manage tools"], ["createAgents", "Create agents"], ["publishAgents", "Publish agents"], ["approveActions", "Approve actions"],
+            ["github", "Use GitHub"], ["slack", "Use Slack"], ["linear", "Use Linear"], ["notion", "Use Notion"], ["figma", "Use Figma"],
+          ] as Array<[keyof WorkspacePermissions, string]>).map(([permission, label]) => <div className="permission-row" role="row" key={permission}><span>{label}</span>{(["admin", "editor"] as const).map((role) => <label key={role}><input type="checkbox" checked={policy[role][permission]} onChange={(event) => setPermission(role, permission, event.target.checked)} /><span className="sr-only">Allow {role} to {label.toLowerCase()}</span></label>)}</div>)}
+        </div>
+        <div className="integration-actions"><button type="button" className="btn" onClick={() => void savePolicy()} disabled={policyBusy}>{policyBusy ? "Saving…" : "Save permissions"}</button></div>
+        {policyError && <p className="error-text">{policyError}</p>}
+      </section>}
 
       <div className="integration-panel integration-panel-featured">
         <h2>
@@ -117,9 +149,11 @@ export default function IntegrationsPage() {
         )}</div>
 
         <p className="hint" style={{ marginTop: 16 }}>
-          Or paste a personal access token with read access to the repo directly. It&apos;s encrypted at rest and never shown again.
+          Add a named shared account for the team or a personal account attributed to you. Its token is encrypted at rest and never shown again.
         </p>
         <form onSubmit={handleGithubSubmit}>
+          <div className="field"><label htmlFor="gh-connection-name">Connection name</label><input id="gh-connection-name" value={connectionName} onChange={(e) => setConnectionName(e.target.value)} placeholder="Engineering GitHub" autoComplete="off" /></div>
+          <div className="field"><label htmlFor="gh-connection-scope">Account access</label><select id="gh-connection-scope" value={connectionScope} onChange={(e) => setConnectionScope(e.target.value as "shared" | "personal")}><option value="shared">Shared with this workspace</option><option value="personal">Personal to me</option></select></div>
           <div className="field">
             <label htmlFor="gh-owner">Owner</label>
             <input id="gh-owner" data-testid="github-owner-input" value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="octocat" autoComplete="off" />

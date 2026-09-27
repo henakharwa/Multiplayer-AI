@@ -211,8 +211,8 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
       return;
     }
     const role = await db.getWorkspaceRole(workspaceId, req.user!.id);
-    if (role !== "admin") {
-      res.status(403).json({ error: "Only workspace admins can approve or cancel write actions." });
+    if (!role || !(await db.hasWorkspacePermission(workspaceId, role, "approveActions"))) {
+      res.status(403).json({ error: "Your workspace role does not have permission to approve or cancel write actions." });
       return;
     }
     if (action.status !== "pending") {

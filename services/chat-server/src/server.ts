@@ -207,6 +207,16 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     return true;
   }
 
+  async function requirePermission(req: Request, res: Response, permission: keyof import("@mai-chat/shared-types").WorkspacePermissions): Promise<boolean> {
+    const workspaceId = paramString(req.params.id);
+    const role = await db.getWorkspaceRole(workspaceId, req.user!.id);
+    if (!role || !(await db.hasWorkspacePermission(workspaceId, role, permission))) {
+      res.status(403).json({ error: "Your workspace role does not have permission for this action." });
+      return false;
+    }
+    return true;
+  }
+
   // Liveness proves the process can answer HTTP; readiness also proves its
   // required datastore is reachable. Neither endpoint leaks configuration.
   app.get("/healthz", (_req: Request, res: Response) => res.json({ ok: true, service: "chat-server" }));
@@ -346,6 +356,20 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.json(await db.listWorkspaceMembersWithRoles(workspaceId));
   });
 
+  app.get("/workspaces/:id/permissions", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    res.json(await db.getWorkspacePermissionPolicy(paramString(req.params.id)));
+  });
+
+  app.put("/workspaces/:id/permissions", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin"]))) return;
+    const policy = req.body;
+    if (!policy?.admin || !policy?.editor) return res.status(400).json({ error: "Admin and Editor permissions are required." });
+    const saved = await db.setWorkspacePermissionPolicy(paramString(req.params.id), policy);
+    await db.recordAuditEvent({ workspaceId: paramString(req.params.id), eventType: "workspace.permissions_updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} updated workspace permissions` });
+    res.json(saved);
+  });
+
   app.patch("/workspaces/:id/members/:userId", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin"]))) return;
     const role = req.body?.role;
@@ -462,6 +486,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   });
 
   app.delete("/workspaces/:id/integrations/:provider", async (req: Request, res: Response) => {
+    if (!(await requirePermission(req, res, "connectTools"))) return;
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const workspaceId = paramString(req.params.id);
     const provider = paramString(req.params.provider);
@@ -474,6 +499,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   });
 
   app.post("/workspaces/:id/integrations/github", async (req: Request, res: Response) => {
+    if (!(await requirePermission(req, res, "connectTools"))) return;
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     if (!UUID_RE.test(paramString(req.params.id))) return res.status(400).json({ error: "invalid workspace id" });
     const workspace = await db.getWorkspaceById(paramString(req.params.id));
@@ -489,7 +515,9 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     } catch (err) {
       return res.status(400).json({ error: `could not verify GitHub access: ${errMessage(err)}` });
     }
-    const config = await db.upsertGithubIntegration({ workspaceId: paramString(req.params.id), owner, repo, token });
+    const connectionName = typeof req.body?.connectionName === "string" ? req.body.connectionName.trim().slice(0, 80) : "Shared connection";
+    const connectionScope = req.body?.connectionScope === "personal" ? "personal" : "shared";
+    const config = await db.upsertGithubIntegration({ workspaceId: paramString(req.params.id), owner, repo, token, connectionName: connectionName || "Shared connection", connectionScope, ownerUserId: connectionScope === "personal" ? req.user!.id : undefined });
     await db.recordAuditEvent({
       workspaceId: paramString(req.params.id),
       eventType: "integration.connected",
@@ -503,6 +531,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   });
 
   app.post("/workspaces/:id/integrations/:provider/mcp", async (req: Request, res: Response) => {
+    if (!(await requirePermission(req, res, "connectTools"))) return;
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const workspaceId = paramString(req.params.id);
     const provider = paramString(req.params.provider);
@@ -520,6 +549,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   registerSlackOAuthRoutes(app, deps.slackOAuthConfig, deps.slackOAuthDeps);
 
   app.post("/workspaces/:id/integrations/github/repo", async (req: Request, res: Response) => {
+    if (!(await requirePermission(req, res, "connectTools"))) return;
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     if (!UUID_RE.test(paramString(req.params.id))) return res.status(400).json({ error: "invalid workspace id" });
     const workspaceId = paramString(req.params.id);
@@ -751,6 +781,10 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
           const agentKind: AgentKind = parsed.agentKind === "github" || parsed.agentKind === "slack" || parsed.agentKind === "linear" || parsed.agentKind === "notion" || parsed.agentKind === "figma" || parsed.agentKind === "project"
             ? parsed.agentKind
             : /@github\b/i.test(content) ? "github" : /@slack\b/i.test(content) ? "slack" : "project";
+          if (agentKind !== "project" && (!workspaceRole || !(await db.hasWorkspacePermission(workspaceId, workspaceRole, agentKind)))) {
+            ws.send(JSON.stringify({ type: "error", error: `Your workspace role cannot use the ${agentKind} provider.` }));
+            return;
+          }
 
           // @-mention / handoff mechanics (docs/spec.md Phase 2). Matched
           // against real workspace membership, not just who's currently

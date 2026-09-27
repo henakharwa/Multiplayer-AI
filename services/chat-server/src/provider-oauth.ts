@@ -45,7 +45,7 @@ export function registerProviderOAuthRoutes(app: Express): void {
     if (!kind) return next();
     if (!(await db.getWorkspaceById(workspaceId))) return res.status(404).json({ error: "not found" });
     const role = await db.getWorkspaceRole(workspaceId, req.user!.id);
-    if (!role || !["admin", "editor"].includes(role)) return res.status(403).json({ error: "You do not have permission to connect this tool." });
+    if (!role || !(await db.hasWorkspacePermission(workspaceId, role, "connectTools"))) return res.status(403).json({ error: "You do not have permission to connect this tool." });
     const oauth = config(kind); const info = infoFor(kind);
     if (!oauth.clientId || !oauth.clientSecret || !info.endpoint) return res.status(503).json({ error: `${kind} account login needs ${kind.toUpperCase()}_OAUTH_CLIENT_ID and ${kind.toUpperCase()}_OAUTH_CLIENT_SECRET${kind === "figma" ? `, plus FIGMA_MCP_URL` : ""} configured on the server.` });
     const state = randomUUID(); states.set(state, { workspaceId, provider: kind, expiresAt: Date.now() + 600_000 });

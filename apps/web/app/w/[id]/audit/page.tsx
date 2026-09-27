@@ -14,6 +14,7 @@ const EVENT_TYPE_LABELS: Record<AuditEventType, string> = {
   "member.joined": "Member joined",
   "member.invited": "Member invited",
   "integration.connected": "Integration connected",
+  "workspace.permissions_updated": "Permissions updated",
   "action.proposed": "Action proposed",
   "action.confirmed": "Action confirmed",
   "action.cancelled": "Action cancelled",

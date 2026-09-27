@@ -193,6 +193,32 @@ CREATE TABLE IF NOT EXISTS integrations (
 ALTER TABLE integrations DROP CONSTRAINT IF EXISTS integrations_type_check;
 ALTER TABLE integrations ADD CONSTRAINT integrations_type_check CHECK (type IN ('github', 'slack', 'linear', 'notion', 'figma'));
 
+-- A workspace may hold more than one account for the same provider. Existing
+-- connections become the default shared account during this migration.
+ALTER TABLE integrations ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid();
+UPDATE integrations SET id = gen_random_uuid() WHERE id IS NULL;
+ALTER TABLE integrations ALTER COLUMN id SET NOT NULL;
+ALTER TABLE integrations ADD COLUMN IF NOT EXISTS connection_name TEXT NOT NULL DEFAULT 'Shared connection';
+ALTER TABLE integrations ADD COLUMN IF NOT EXISTS connection_scope TEXT NOT NULL DEFAULT 'shared';
+ALTER TABLE integrations ADD COLUMN IF NOT EXISTS owner_user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE integrations ADD COLUMN IF NOT EXISTS account_key TEXT NOT NULL DEFAULT 'shared';
+ALTER TABLE integrations DROP CONSTRAINT IF EXISTS integrations_pkey;
+ALTER TABLE integrations ADD CONSTRAINT integrations_pkey PRIMARY KEY (id);
+CREATE UNIQUE INDEX IF NOT EXISTS integrations_workspace_type_account_key_idx
+  ON integrations (workspace_id, type, account_key);
+ALTER TABLE integrations DROP CONSTRAINT IF EXISTS integrations_connection_scope_check;
+ALTER TABLE integrations ADD CONSTRAINT integrations_connection_scope_check CHECK (connection_scope IN ('shared', 'personal'));
+
+-- Workspace administrators can control sensitive collaboration capabilities
+-- independently for Admins and Editors. Provider use is recorded separately
+-- so an integration can be available without being available to every role.
+CREATE TABLE IF NOT EXISTS workspace_permission_policies (
+  workspace_id UUID PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+  admin_permissions JSONB NOT NULL DEFAULT '{"connectTools":true,"createAgents":true,"publishAgents":true,"approveActions":true,"github":true,"slack":true,"linear":true,"notion":true,"figma":true}'::jsonb,
+  editor_permissions JSONB NOT NULL DEFAULT '{"connectTools":true,"createAgents":false,"publishAgents":false,"approveActions":false,"github":true,"slack":true,"linear":true,"notion":true,"figma":true}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Queued repo-changing GitHub actions the agent has proposed but not yet
 -- run. args is the exact JSON the tool would be called with; result is a
 -- short human-readable summary of what happened once confirmed/failed.

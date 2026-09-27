@@ -94,10 +94,32 @@ export interface ChatMessage {
 }
 
 export type IntegrationType = "github" | "slack" | "linear" | "notion" | "figma";
+export type ConnectionScope = "shared" | "personal";
+
+export interface WorkspacePermissions {
+  connectTools: boolean;
+  createAgents: boolean;
+  publishAgents: boolean;
+  approveActions: boolean;
+  github: boolean;
+  slack: boolean;
+  linear: boolean;
+  notion: boolean;
+  figma: boolean;
+}
+
+export interface WorkspacePermissionPolicy {
+  admin: WorkspacePermissions;
+  editor: WorkspacePermissions;
+}
 
 export interface GithubIntegrationConfig {
+  id?: string;
   type: "github";
   workspaceId: string;
+  connectionName?: string;
+  connectionScope?: ConnectionScope;
+  ownerUserId?: string;
   // Both are undefined right after a GitHub OAuth login completes but
   // before a repository has been chosen (see the OAuth flow in
   // services/chat-server/src/github-oauth.ts) -- `connected` is true as
@@ -115,16 +137,24 @@ export interface GithubIntegrationConfig {
 }
 
 export interface SlackIntegrationConfig {
+  id?: string;
   type: "slack";
   workspaceId: string;
+  connectionName?: string;
+  connectionScope?: ConnectionScope;
+  ownerUserId?: string;
   teamName: string;
   connected: boolean;
   connectedAt: string;
 }
 
 export interface RemoteMcpIntegrationConfig {
+  id?: string;
   type: "linear" | "notion" | "figma";
   workspaceId: string;
+  connectionName?: string;
+  connectionScope?: ConnectionScope;
+  ownerUserId?: string;
   endpoint: string;
   accountName?: string;
   connected: boolean;
@@ -382,6 +412,7 @@ export type AuditEventType =
   | "member.joined"
   | "member.invited"
   | "integration.connected"
+  | "workspace.permissions_updated"
   | "action.proposed"
   | "action.confirmed"
   | "action.cancelled"

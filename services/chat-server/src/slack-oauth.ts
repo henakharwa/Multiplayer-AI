@@ -176,6 +176,8 @@ export function registerSlackOAuthRoutes(app: Express, config: SlackOAuthConfig,
     if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "invalid workspace id" });
     const workspace = await db.getWorkspaceById(workspaceId);
     if (!workspace) return res.status(404).json({ error: "not found" });
+    const role = await db.getWorkspaceRole(workspaceId, req.user!.id);
+    if (!role || !(await db.hasWorkspacePermission(workspaceId, role, "connectTools"))) return res.status(403).json({ error: "You do not have permission to connect this tool." });
     if (!config.clientId || !config.clientSecret) {
       return res
         .status(503)

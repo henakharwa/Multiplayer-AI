@@ -126,12 +126,24 @@ export async function listIntegrations(workspaceId: string): Promise<Integration
   return (await parseJsonOrThrow(res)) as IntegrationConfig[];
 }
 
+export async function getWorkspacePermissionPolicy(workspaceId: string): Promise<import("@mai-chat/shared-types").WorkspacePermissionPolicy> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/permissions`);
+  return (await parseJsonOrThrow(res)) as import("@mai-chat/shared-types").WorkspacePermissionPolicy;
+}
+
+export async function updateWorkspacePermissionPolicy(workspaceId: string, policy: import("@mai-chat/shared-types").WorkspacePermissionPolicy): Promise<import("@mai-chat/shared-types").WorkspacePermissionPolicy> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/permissions`, {
+    method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(policy),
+  });
+  return (await parseJsonOrThrow(res)) as import("@mai-chat/shared-types").WorkspacePermissionPolicy;
+}
+
 export async function disconnectIntegration(workspaceId: string, provider: IntegrationConfig["type"]): Promise<void> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/integrations/${provider}`, { method: "DELETE" });
   if (!res.ok) await parseJsonOrThrow(res);
 }
 
-export async function connectGithub(workspaceId: string, input: { owner: string; repo: string; token: string }): Promise<IntegrationConfig> {
+export async function connectGithub(workspaceId: string, input: { owner: string; repo: string; token: string; connectionName?: string; connectionScope?: "shared" | "personal" }): Promise<IntegrationConfig> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/integrations/github`, {
     method: "POST",
     headers: { "content-type": "application/json" },

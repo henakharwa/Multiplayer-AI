@@ -17,6 +17,8 @@ import type {
   WorkspaceMember,
   WorkspaceRole,
   Workspace,
+  WorkspacePermissionPolicy,
+  WorkspacePermissions,
 } from "@mai-chat/shared-types";
 import { getPool } from "./pool.js";
 import { encryptToken, decryptToken, hashSessionToken } from "./crypto.js";
@@ -452,25 +454,65 @@ export async function markNotificationsRead(userId: string, workspaceId: string)
   await getPool().query(`UPDATE workspace_notifications SET read_at = now() WHERE user_id = $1 AND workspace_id = $2 AND read_at IS NULL`, [userId, workspaceId]);
 }
 
+const DEFAULT_ADMIN_PERMISSIONS: WorkspacePermissions = { connectTools: true, createAgents: true, publishAgents: true, approveActions: true, github: true, slack: true, linear: true, notion: true, figma: true };
+const DEFAULT_EDITOR_PERMISSIONS: WorkspacePermissions = { connectTools: true, createAgents: false, publishAgents: false, approveActions: false, github: true, slack: true, linear: true, notion: true, figma: true };
+
+function sanitizePermissions(value: unknown, fallback: WorkspacePermissions): WorkspacePermissions {
+  const source = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return Object.fromEntries(Object.keys(fallback).map((key) => [key, typeof source[key] === "boolean" ? source[key] : fallback[key as keyof WorkspacePermissions]])) as unknown as WorkspacePermissions;
+}
+
+export async function getWorkspacePermissionPolicy(workspaceId: string): Promise<WorkspacePermissionPolicy> {
+  const result = await getPool().query(`SELECT admin_permissions, editor_permissions FROM workspace_permission_policies WHERE workspace_id = $1`, [workspaceId]);
+  const row = result.rows[0];
+  return { admin: sanitizePermissions(row?.admin_permissions, DEFAULT_ADMIN_PERMISSIONS), editor: sanitizePermissions(row?.editor_permissions, DEFAULT_EDITOR_PERMISSIONS) };
+}
+
+export async function setWorkspacePermissionPolicy(workspaceId: string, policy: WorkspacePermissionPolicy): Promise<WorkspacePermissionPolicy> {
+  const admin = sanitizePermissions(policy.admin, DEFAULT_ADMIN_PERMISSIONS);
+  const editor = sanitizePermissions(policy.editor, DEFAULT_EDITOR_PERMISSIONS);
+  await getPool().query(
+    `INSERT INTO workspace_permission_policies (workspace_id, admin_permissions, editor_permissions, updated_at) VALUES ($1, $2, $3, now())
+     ON CONFLICT (workspace_id) DO UPDATE SET admin_permissions = $2, editor_permissions = $3, updated_at = now()`,
+    [workspaceId, JSON.stringify(admin), JSON.stringify(editor)]
+  );
+  return { admin, editor };
+}
+
+export async function hasWorkspacePermission(workspaceId: string, role: WorkspaceRole, permission: keyof WorkspacePermissions): Promise<boolean> {
+  const policy = await getWorkspacePermissionPolicy(workspaceId);
+  return policy[role][permission];
+}
+
 export async function upsertGithubIntegration(input: {
   workspaceId: string;
   owner: string;
   repo: string;
   token: string;
+  connectionName?: string;
+  connectionScope?: "shared" | "personal";
+  ownerUserId?: string;
 }): Promise<GithubIntegrationConfig> {
   const pool = getPool();
   const encrypted = encryptToken(input.token);
+  const connectionName = input.connectionName?.trim() || "Shared connection";
+  const connectionScope = input.connectionScope ?? "shared";
+  const accountKey = connectionScope === "personal" ? `personal:${input.ownerUserId}:${connectionName}` : connectionName === "Shared connection" ? "shared" : `shared:${connectionName}`;
   const result = await pool.query(
-    `INSERT INTO integrations (workspace_id, type, owner, repo, encrypted_token)
-     VALUES ($1, 'github', $2, $3, $4)
-     ON CONFLICT (workspace_id, type)
-     DO UPDATE SET owner = $2, repo = $3, encrypted_token = $4, connected_at = now()
-     RETURNING workspace_id, connected_at`,
-    [input.workspaceId, input.owner, input.repo, encrypted]
+    `INSERT INTO integrations (workspace_id, type, owner, repo, encrypted_token, connection_name, connection_scope, owner_user_id, account_key)
+     VALUES ($1, 'github', $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (workspace_id, type, account_key)
+     DO UPDATE SET owner = $2, repo = $3, encrypted_token = $4, connection_name = $5, connected_at = now()
+     RETURNING id, workspace_id, connection_name, connection_scope, owner_user_id, connected_at`,
+    [input.workspaceId, input.owner, input.repo, encrypted, connectionName, connectionScope, input.ownerUserId ?? null, accountKey]
   );
   return {
+    id: result.rows[0].id,
     type: "github",
     workspaceId: result.rows[0].workspace_id,
+    connectionName: result.rows[0].connection_name,
+    connectionScope: result.rows[0].connection_scope,
+    ownerUserId: result.rows[0].owner_user_id ?? undefined,
     owner: input.owner,
     repo: input.repo,
     connected: true,
@@ -487,9 +529,9 @@ export async function saveGithubOAuthToken(input: { workspaceId: string; token: 
   const pool = getPool();
   const encrypted = encryptToken(input.token);
   await pool.query(
-    `INSERT INTO integrations (workspace_id, type, encrypted_token)
-     VALUES ($1, 'github', $2)
-     ON CONFLICT (workspace_id, type)
+    `INSERT INTO integrations (workspace_id, type, encrypted_token, account_key)
+     VALUES ($1, 'github', $2, 'shared')
+     ON CONFLICT (workspace_id, type, account_key)
      DO UPDATE SET encrypted_token = $2, connected_at = now()`,
     [input.workspaceId, encrypted]
   );
@@ -504,15 +546,19 @@ export async function setGithubRepo(input: { workspaceId: string; owner: string;
   const pool = getPool();
   const result = await pool.query(
     `UPDATE integrations SET owner = $2, repo = $3
-     WHERE workspace_id = $1 AND type = 'github'
-     RETURNING workspace_id, owner, repo, connected_at`,
+     WHERE workspace_id = $1 AND type = 'github' AND account_key = 'shared'
+     RETURNING id, workspace_id, connection_name, connection_scope, owner_user_id, owner, repo, connected_at`,
     [input.workspaceId, input.owner, input.repo]
   );
   if (result.rows.length === 0) return null;
   const row = result.rows[0];
   return {
+    id: row.id,
     type: "github",
     workspaceId: row.workspace_id,
+    connectionName: row.connection_name,
+    connectionScope: row.connection_scope,
+    ownerUserId: row.owner_user_id ?? undefined,
     owner: row.owner,
     repo: row.repo,
     connected: true,
@@ -528,16 +574,20 @@ export async function upsertSlackIntegration(input: {
   const pool = getPool();
   const encrypted = encryptToken(input.token);
   const result = await pool.query(
-    `INSERT INTO integrations (workspace_id, type, team_name, encrypted_token)
-     VALUES ($1, 'slack', $2, $3)
-     ON CONFLICT (workspace_id, type)
+    `INSERT INTO integrations (workspace_id, type, team_name, encrypted_token, account_key)
+     VALUES ($1, 'slack', $2, $3, 'shared')
+     ON CONFLICT (workspace_id, type, account_key)
      DO UPDATE SET team_name = $2, encrypted_token = $3, connected_at = now()
-     RETURNING workspace_id, connected_at`,
+     RETURNING id, workspace_id, connection_name, connection_scope, owner_user_id, connected_at`,
     [input.workspaceId, input.teamName, encrypted]
   );
   return {
+    id: result.rows[0].id,
     type: "slack",
     workspaceId: result.rows[0].workspace_id,
+    connectionName: result.rows[0].connection_name,
+    connectionScope: result.rows[0].connection_scope,
+    ownerUserId: result.rows[0].owner_user_id ?? undefined,
     teamName: input.teamName,
     connected: true,
     connectedAt: result.rows[0].connected_at.toISOString(),
@@ -546,28 +596,32 @@ export async function upsertSlackIntegration(input: {
 
 export async function upsertRemoteMcpIntegration(input: { workspaceId: string; type: "linear" | "notion" | "figma"; endpoint: string; token: string; accountName?: string }): Promise<import("@mai-chat/shared-types").RemoteMcpIntegrationConfig> {
   const result = await getPool().query(
-    `INSERT INTO integrations (workspace_id, type, owner, team_name, encrypted_token) VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (workspace_id, type) DO UPDATE SET owner = $3, team_name = $4, encrypted_token = $5, connected_at = now()
-     RETURNING workspace_id, type, owner, team_name, connected_at`,
+    `INSERT INTO integrations (workspace_id, type, owner, team_name, encrypted_token, account_key) VALUES ($1, $2, $3, $4, $5, 'shared')
+     ON CONFLICT (workspace_id, type, account_key) DO UPDATE SET owner = $3, team_name = $4, encrypted_token = $5, connected_at = now()
+     RETURNING id, workspace_id, type, connection_name, connection_scope, owner_user_id, owner, team_name, connected_at`,
     [input.workspaceId, input.type, input.endpoint, input.accountName ?? null, encryptToken(input.token)]
   );
   const row = result.rows[0];
-  return { type: row.type, workspaceId: row.workspace_id, endpoint: row.owner, accountName: row.team_name ?? undefined, connected: true, connectedAt: row.connected_at.toISOString() };
+  return { id: row.id, type: row.type, workspaceId: row.workspace_id, connectionName: row.connection_name, connectionScope: row.connection_scope, ownerUserId: row.owner_user_id ?? undefined, endpoint: row.owner, accountName: row.team_name ?? undefined, connected: true, connectedAt: row.connected_at.toISOString() };
 }
 
 // Client-safe listing -- never includes the decrypted token.
 export async function listIntegrations(workspaceId: string): Promise<IntegrationConfig[]> {
   const pool = getPool();
   const result = await pool.query(
-    `SELECT type, owner, repo, team_name, connected_at
+    `SELECT id, type, owner, repo, team_name, connection_name, connection_scope, owner_user_id, connected_at
      FROM integrations WHERE workspace_id = $1`,
     [workspaceId]
   );
   return result.rows.map((row): IntegrationConfig => {
     if (row.type === "github") {
       return {
+        id: row.id,
         type: "github",
         workspaceId,
+        connectionName: row.connection_name,
+        connectionScope: row.connection_scope,
+        ownerUserId: row.owner_user_id ?? undefined,
         owner: row.owner ?? undefined,
         repo: row.repo ?? undefined,
         connected: true,
@@ -575,15 +629,23 @@ export async function listIntegrations(workspaceId: string): Promise<Integration
       };
     }
     if (row.type === "slack") return {
+      id: row.id,
       type: "slack",
       workspaceId,
+      connectionName: row.connection_name,
+      connectionScope: row.connection_scope,
+      ownerUserId: row.owner_user_id ?? undefined,
       teamName: row.team_name,
       connected: true,
       connectedAt: row.connected_at.toISOString(),
     };
     return {
+      id: row.id,
       type: row.type,
       workspaceId,
+      connectionName: row.connection_name,
+      connectionScope: row.connection_scope,
+      ownerUserId: row.owner_user_id ?? undefined,
       endpoint: row.owner,
       accountName: row.team_name ?? undefined,
       connected: true,
@@ -601,7 +663,7 @@ export async function getIntegrationCredential(
   const pool = getPool();
   const result = await pool.query(
     `SELECT owner, repo, team_name, encrypted_token
-     FROM integrations WHERE workspace_id = $1 AND type = $2`,
+     FROM integrations WHERE workspace_id = $1 AND type = $2 ORDER BY (connection_scope = 'shared') DESC, connected_at DESC LIMIT 1`,
     [workspaceId, type]
   );
   const row = result.rows[0];
