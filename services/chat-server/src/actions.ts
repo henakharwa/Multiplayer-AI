@@ -260,7 +260,7 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
       return;
     }
 
-    const { tools } = await buildToolsForWorkspace(workspaceId, deps);
+    const { tools } = await buildToolsForWorkspace(workspaceId, deps, action.requestedByUserId ?? req.user?.id);
     const tool = tools.find((t) => t.definition.function.name === action.toolName);
     if (!tool) {
       console.error(
