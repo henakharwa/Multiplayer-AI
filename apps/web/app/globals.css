@@ -1778,3 +1778,6 @@ textarea {
 .workspace-agent-config-select { grid-column: 1 / -1; grid-row: 3; justify-self: start; margin: 2px 0 0 2px; }
 .workspace-hero-composer,
 .workspace-composer-wrap .composer { grid-template-rows: auto minmax(34px, auto) auto; }
+.agent-picker-section { margin: 10px 8px 5px; color: #718097; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.agent-picker-list .agent-picker-section:first-child { margin-top: 3px; }
+.agent-picker button > span .custom-agent-logo { width: 28px !important; height: 28px !important; font-size: 10px; }

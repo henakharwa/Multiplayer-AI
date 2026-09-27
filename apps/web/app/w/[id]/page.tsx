@@ -634,7 +634,7 @@ export default function WorkspaceRoomPage() {
                   autoComplete="off"
                 />
                 <div className="workspace-hero-composer-footer">
-                  {workspaceAgents.some((agent) => agent.status === "published") && <select className="workspace-agent-config-select" aria-label="Workspace agent configuration" value={configuredAgent?.id ?? ""} onChange={(event) => { const agent = workspaceAgents.find((item) => item.id === event.target.value) ?? null; setConfiguredAgent(agent); if (agent) setSelectedAgent(agent.baseAgent); }}><option value="">Built-in agent configuration</option>{workspaceAgents.filter((agent) => agent.status === "published").map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · v{agent.publishedVersion}</option>)}</select>}<AgentSelector selected={selectedAgent} selectedName={selectedAgentInfo.name} customName={configuredAgent?.name} open={agentPickerOpen} onToggle={() => setAgentPickerOpen((open) => !open)} onSelect={(agent) => { setSelectedAgent(agent); setConfiguredAgent(null); setAgentPickerOpen(false); }} />
+                  <AgentSelector selected={selectedAgent} selectedName={selectedAgentInfo.name} customName={configuredAgent?.name} customAgents={workspaceAgents.filter((agent) => agent.status === "published")} selectedCustomId={configuredAgent?.id} open={agentPickerOpen} onToggle={() => setAgentPickerOpen((open) => !open)} onSelect={(agent) => { setSelectedAgent(agent); setConfiguredAgent(null); setAgentPickerOpen(false); }} onSelectCustom={(agent) => { setConfiguredAgent(agent); setSelectedAgent(agent.baseAgent); setAgentPickerOpen(false); }} />
                   <button type="submit" data-testid="send-btn" disabled={chat.status !== "open" || !canEdit || !draft.trim()} aria-label="Start chat"><ArrowGlyph /></button>
                 </div>
               </form>
@@ -749,7 +749,7 @@ export default function WorkspaceRoomPage() {
             disabled={chat.status !== "open" || !canEdit || (chat.agentBusy && !draftIsHandoff)}
             autoComplete="off"
           />
-          {workspaceAgents.some((agent) => agent.status === "published") && <select className="workspace-agent-config-select" aria-label="Workspace agent configuration" value={configuredAgent?.id ?? ""} onChange={(event) => { const agent = workspaceAgents.find((item) => item.id === event.target.value) ?? null; setConfiguredAgent(agent); if (agent) setSelectedAgent(agent.baseAgent); }}><option value="">Built-in agent configuration</option>{workspaceAgents.filter((agent) => agent.status === "published").map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · v{agent.publishedVersion}</option>)}</select>}<AgentSelector selected={selectedAgent} selectedName={selectedAgentInfo.name} customName={configuredAgent?.name} open={agentPickerOpen} onToggle={() => setAgentPickerOpen((open) => !open)} onSelect={(agent) => { setSelectedAgent(agent); setConfiguredAgent(null); setAgentPickerOpen(false); }} compact />
+          <AgentSelector selected={selectedAgent} selectedName={selectedAgentInfo.name} customName={configuredAgent?.name} customAgents={workspaceAgents.filter((agent) => agent.status === "published")} selectedCustomId={configuredAgent?.id} open={agentPickerOpen} onToggle={() => setAgentPickerOpen((open) => !open)} onSelect={(agent) => { setSelectedAgent(agent); setConfiguredAgent(null); setAgentPickerOpen(false); }} onSelectCustom={(agent) => { setConfiguredAgent(agent); setSelectedAgent(agent.baseAgent); setAgentPickerOpen(false); }} compact />
           <button className="composer-send"
             type="submit"
             data-testid="send-btn"
@@ -775,12 +775,13 @@ function BrandGlyph() {
     <circle cx="4.65" cy="18.2" r="1.8" fill="#8D70FF" />
   </svg>;
 }
-function AgentSelector({ selected, selectedName, customName, open, onToggle, onSelect, compact = false }: { selected: AgentKind; selectedName: string; customName?: string; open: boolean; onToggle: () => void; onSelect: (agent: AgentKind) => void; compact?: boolean }) {
+function AgentSelector({ selected, selectedName, customName, customAgents, selectedCustomId, open, onToggle, onSelect, onSelectCustom, compact = false }: { selected: AgentKind; selectedName: string; customName?: string; customAgents: WorkspaceAgent[]; selectedCustomId?: string; open: boolean; onToggle: () => void; onSelect: (agent: AgentKind) => void; onSelectCustom: (agent: WorkspaceAgent) => void; compact?: boolean }) {
   const [query, setQuery] = useState("");
   const [pickerPlacement, setPickerPlacement] = useState<"above" | "below">("above");
   const [pickerMaxHeight, setPickerMaxHeight] = useState(330);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const matchingAgents = AGENTS.filter((agent) => `${agent.name} ${agent.description}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const matchingCustomAgents = customAgents.filter((agent) => agent.name.toLowerCase().includes(query.trim().toLowerCase()));
   function togglePicker() {
     if (!open && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
@@ -794,7 +795,7 @@ function AgentSelector({ selected, selectedName, customName, open, onToggle, onS
   }
   return <div className={`agent-selector${compact ? " compact" : ""}`}>
     <button ref={triggerRef} type="button" className="workspace-agent-chip" onClick={togglePicker} title={`Select agent: ${selectedName}`} aria-label={`Select agent: ${selectedName}`}>{customName ? <CustomAgentLogo name={customName} /> : <AgentIcon agent={selected} />}<span className="workspace-agent-chip-label">{selectedName}</span><span aria-hidden="true">⌄</span></button>
-    {open && <div className={`agent-picker ${pickerPlacement}`} style={{ maxHeight: pickerMaxHeight }} role="menu"><div className="agent-picker-toolbar"><label><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Agents" aria-label="Search agents" /><SearchGlyph /></label></div><div className="agent-picker-list">{matchingAgents.map((agent) => <button type="button" key={agent.id} className={agent.id === selected ? "selected" : ""} onClick={() => onSelect(agent.id)}><span><AgentIcon agent={agent.id} /></span><strong>{agent.name}</strong><small>{agent.description}</small>{agent.id === selected && <b>✓</b>}</button>)}{matchingAgents.length === 0 && <p>No agents match your search.</p>}</div></div>}
+    {open && <div className={`agent-picker ${pickerPlacement}`} style={{ maxHeight: pickerMaxHeight }} role="menu"><div className="agent-picker-toolbar"><label><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search agents" aria-label="Search agents" /><SearchGlyph /></label></div><div className="agent-picker-list"><p className="agent-picker-section">Built-in agents</p>{matchingAgents.map((agent) => <button type="button" key={agent.id} className={!selectedCustomId && agent.id === selected ? "selected" : ""} onClick={() => onSelect(agent.id)}><span><AgentIcon agent={agent.id} /></span><strong>{agent.name}</strong><small>{agent.description}</small>{!selectedCustomId && agent.id === selected && <b>✓</b>}</button>)}{matchingCustomAgents.length > 0 && <><p className="agent-picker-section">Your agents</p>{matchingCustomAgents.map((agent) => <button type="button" key={agent.id} className={agent.id === selectedCustomId ? "selected" : ""} onClick={() => onSelectCustom(agent)}><span><CustomAgentLogo name={agent.name} /></span><strong>{agent.name}</strong><small>{agent.baseAgent} · published version {agent.publishedVersion}</small>{agent.id === selectedCustomId && <b>✓</b>}</button>)}</>}{matchingAgents.length === 0 && matchingCustomAgents.length === 0 && <p>No agents match your search.</p>}</div></div>}
   </div>;
 }
 function StarterPrompts({ agent, agentName, connected, canEdit, chatOpen, onChoose, onConnect, compact = false }: {
