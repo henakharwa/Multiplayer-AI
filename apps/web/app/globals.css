@@ -307,8 +307,16 @@ textarea {
 .home-motion-calm::after { top: 0; left: 6%; opacity: 1; width: 52vw; height: 52vw; background: radial-gradient(circle, rgba(87, 138, 255, .42) 0%, rgba(165, 120, 255, .24) 36%, transparent 68%); animation: ambient-drift 9s ease-in-out infinite alternate; }
 .home-motion-calm .home-hero { animation: hero-breathe 4.5s ease-in-out infinite; }
 
+[data-scroll-reveal] { opacity: 0; transform: translateY(40px) scale(.98); filter: blur(4px); transition: opacity .7s ease, transform .7s cubic-bezier(.2, .75, .25, 1), filter .7s ease; }
+[data-scroll-reveal].is-revealed { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+.marketing-steps.is-revealed article, #product.is-revealed .marketing-outcomes article, .marketing-safety.is-revealed article { animation: scroll-card-in .55s cubic-bezier(.2, .75, .25, 1) both; }
+.marketing-steps.is-revealed article:nth-child(2), #product.is-revealed .marketing-outcomes article:nth-child(2), .marketing-safety.is-revealed article:nth-child(2) { animation-delay: .12s; }
+.marketing-steps.is-revealed article:nth-child(3), #product.is-revealed .marketing-outcomes article:nth-child(3), .marketing-safety.is-revealed article:nth-child(3) { animation-delay: .24s; }
+#product.is-revealed .marketing-outcomes article:nth-child(4) { animation-delay: .36s; }
+
 @keyframes ambient-drift { from { transform: translate(-14%, -10%) scale(.82); } to { transform: translate(70%, 34%) scale(1.22); } }
 @keyframes hero-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes scroll-card-in { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: translateX(0); } }
 
 @media (prefers-reduced-motion: reduce) { .home-shell *, .home-shell::after { animation: none !important; transition-duration: .01ms !important; } }
 
