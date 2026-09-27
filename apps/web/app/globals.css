@@ -1781,3 +1781,15 @@ textarea {
 .agent-picker-section { margin: 10px 8px 5px; color: #718097; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .agent-picker-list .agent-picker-section:first-child { margin-top: 3px; }
 .agent-picker button > span .custom-agent-logo { width: 28px !important; height: 28px !important; font-size: 10px; }
+/* Agent picker: compare built-in and workspace-published agents side by side. */
+.agent-picker { width: min(620px, calc(100vw - 32px)); }
+.agent-picker-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 0; overflow: hidden; }
+.agent-picker-columns > section { min-width: 0; }
+.agent-picker-columns > section + section { border-left: 1px solid #edf0f4; }
+.agent-picker-columns .agent-picker-section { margin: 9px 10px 6px; }
+.agent-picker-columns .agent-picker-list { max-height: 255px; padding: 0 5px 8px; overflow-y: auto; }
+.agent-picker-columns .agent-picker-list > p { margin: 18px 8px; }
+.agent-selector .workspace-agent-chip,
+.workspace-composer-wrap .composer .agent-selector .workspace-agent-chip { width: 28px; min-width: 28px; height: 28px; padding: 2px; border: 0; border-radius: 7px; background: transparent; }
+.agent-selector .workspace-agent-chip > .agent-logo { width: 24px; height: 24px; }
+@media (max-width: 620px) { .agent-picker-columns { grid-template-columns: 1fr; }.agent-picker-columns > section + section { border-top: 1px solid #edf0f4; border-left: 0; }.agent-picker-columns .agent-picker-list { max-height: 160px; } }
