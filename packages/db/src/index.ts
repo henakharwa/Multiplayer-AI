@@ -658,13 +658,14 @@ export async function listIntegrations(workspaceId: string): Promise<Integration
 // token. Never called from an HTTP route that returns straight to a client.
 export async function getIntegrationCredential(
   workspaceId: string,
-  type: "github" | "slack" | "linear" | "notion" | "figma"
+  type: "github" | "slack" | "linear" | "notion" | "figma",
+  connectionId?: string
 ): Promise<{ token: string; owner?: string; repo?: string; teamName?: string } | null> {
   const pool = getPool();
   const result = await pool.query(
     `SELECT owner, repo, team_name, encrypted_token
-     FROM integrations WHERE workspace_id = $1 AND type = $2 ORDER BY (connection_scope = 'shared') DESC, connected_at DESC LIMIT 1`,
-    [workspaceId, type]
+     FROM integrations WHERE workspace_id = $1 AND type = $2 AND ($3::uuid IS NULL OR id = $3) ORDER BY (connection_scope = 'shared') DESC, connected_at DESC LIMIT 1`,
+    [workspaceId, type, connectionId ?? null]
   );
   const row = result.rows[0];
   if (!row) return null;

@@ -48,8 +48,17 @@ export interface WorkspaceTools {
 // wraps the mutating ones via wrapForProposal below before handing them to
 // the LLM) and by the confirm route below (which needs the SAME tools,
 // unwrapped, to actually run one once a human approves it).
-export async function buildToolsForWorkspace(workspaceId: string, deps: CreateServerDeps): Promise<WorkspaceTools> {
-  const integrations = await db.listIntegrations(workspaceId);
+export async function buildToolsForWorkspace(workspaceId: string, deps: CreateServerDeps, requestingUserId?: string): Promise<WorkspaceTools> {
+  const available = await db.listIntegrations(workspaceId);
+  // Prefer the requesting member's personal connection for each provider.
+  // This lets the provider enforce that member's original source access;
+  // a shared account remains the deliberate fallback for the workspace.
+  const integrations = (["github", "slack", "linear", "notion", "figma"] as const).flatMap((type) => {
+    const accounts = available.filter((integration) => integration.type === type);
+    const personal = accounts.find((integration) => integration.connectionScope === "personal" && integration.ownerUserId === requestingUserId);
+    const shared = accounts.find((integration) => integration.connectionScope !== "personal");
+    return personal ?? shared ? [personal ?? shared!] : [];
+  });
   const tools: ToolExecutor[] = [];
   const githubAgentTools: ToolExecutor[] = [];
   const slackAgentTools: ToolExecutor[] = [];
@@ -57,7 +66,7 @@ export async function buildToolsForWorkspace(workspaceId: string, deps: CreateSe
   let githubContext: { owner: string; repo: string } | undefined;
   for (const integration of integrations) {
     if (integration.type === "github") {
-      const credential = await db.getIntegrationCredential(workspaceId, "github");
+      const credential = await db.getIntegrationCredential(workspaceId, "github", integration.id);
       if (credential?.owner && credential?.repo) {
         try {
           const githubTools = await deps.githubMcpToolsFactory({ workspaceId, token: credential.token });
@@ -74,7 +83,7 @@ export async function buildToolsForWorkspace(workspaceId: string, deps: CreateSe
         }
       }
     } else if (integration.type === "slack") {
-      const credential = await db.getIntegrationCredential(workspaceId, "slack");
+      const credential = await db.getIntegrationCredential(workspaceId, "slack", integration.id);
       if (credential?.token) {
         try {
           const slackTools = await deps.slackMcpToolsFactory({ workspaceId, accessToken: credential.token });
@@ -89,14 +98,14 @@ export async function buildToolsForWorkspace(workspaceId: string, deps: CreateSe
         }
       }
     } else if (integration.type === "notion") {
-      const credential = await db.getIntegrationCredential(workspaceId, "notion");
+      const credential = await db.getIntegrationCredential(workspaceId, "notion", integration.id);
       if (credential?.token) {
         const notionTools = buildNotionTools(credential.token);
         tools.push(...notionTools);
         remoteAgentTools.notion.push(...notionTools);
       }
     } else {
-      const credential = await db.getIntegrationCredential(workspaceId, integration.type);
+      const credential = await db.getIntegrationCredential(workspaceId, integration.type, integration.id);
       if (credential?.token && integration.endpoint) {
         try {
           const client = await getRemoteMcpClient(workspaceId, integration.type, integration.endpoint, credential.token);

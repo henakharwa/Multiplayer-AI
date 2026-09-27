@@ -630,7 +630,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     // that's easy to mistake for "the LLM is slow" if you're only
     // watching the chat, not the terminal.
     const buildStart = Date.now();
-    const built = await buildToolsForWorkspace(workspaceId, deps);
+    const built = await buildToolsForWorkspace(workspaceId, deps, requestedBy.userId);
     console.log(`[timing] workspace ${workspaceId}: buildToolsForWorkspace (incl. GitHub MCP container) took ${Date.now() - buildStart}ms`);
     // Read tools run for real from the agent loop; write tools are
     // swapped for proposal-only stand-ins here -- see actions.ts.
