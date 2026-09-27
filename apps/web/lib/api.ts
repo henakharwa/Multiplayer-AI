@@ -151,6 +151,9 @@ export async function checkToolConnectionPermission(workspaceId: string): Promis
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/capabilities/connect-tools`);
   if (!res.ok) await parseJsonOrThrow(res);
 }
+export async function requestWorkspacePermission(workspaceId:string,permission:string):Promise<void>{const res=await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/permission-requests`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({permission})});if(!res.ok)await parseJsonOrThrow(res);}
+export async function listPermissionRequests(workspaceId:string):Promise<Array<{id:string;permission:string;display_name:string}>>{const res=await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/permission-requests`);return await parseJsonOrThrow(res) as Array<{id:string;permission:string;display_name:string}>;}
+export async function approvePermissionRequest(workspaceId:string,id:string):Promise<void>{const res=await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/permission-requests/${encodeURIComponent(id)}/approve`,{method:"POST"});if(!res.ok)await parseJsonOrThrow(res);}
 
 export async function disconnectIntegration(workspaceId: string, provider: IntegrationConfig["type"]): Promise<void> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/integrations/${provider}`, { method: "DELETE" });

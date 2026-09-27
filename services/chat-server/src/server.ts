@@ -370,6 +370,9 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     await db.recordAuditEvent({ workspaceId: paramString(req.params.id), eventType: "workspace.permissions_updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} updated workspace permissions` });
     res.json(saved);
   });
+  app.get("/workspaces/:id/permission-requests", async (req: Request, res: Response) => { if (!(await requireRole(req,res,["admin"]))) return; res.json(await db.listPermissionRequests(paramString(req.params.id))); });
+  app.post("/workspaces/:id/permission-requests", async (req: Request,res: Response) => { if (!(await requireRole(req,res,["editor"]))) return; const permission=req.body?.permission; if (!Object.keys((await db.getWorkspacePermissionPolicy(paramString(req.params.id))).editor).includes(permission)) return res.status(400).json({error:"Invalid permission."}); res.status(201).json(await db.createPermissionRequest(paramString(req.params.id),req.user!.id,permission)); });
+  app.post("/workspaces/:id/permission-requests/:requestId/approve", async (req: Request,res: Response) => { if (!(await requireRole(req,res,["admin"]))) return; const workspaceId=paramString(req.params.id); const permission=await db.approvePermissionRequest(workspaceId,paramString(req.params.requestId)); if(!permission)return res.status(404).json({error:"Request not found."}); const policy=await db.getWorkspacePermissionPolicy(workspaceId); policy.editor[permission]=true; await db.setWorkspacePermissionPolicy(workspaceId,policy); res.status(204).end(); });
 
   app.get("/workspaces/:id/agents", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;

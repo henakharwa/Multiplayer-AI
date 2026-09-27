@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import type { GithubRepoSummary, IntegrationConfig, WorkspacePermissionPolicy, WorkspacePermissions, WorkspaceRole } from "@mai-chat/shared-types";
-import { connectGithub, githubOAuthStartUrl, slackOAuthStartUrl, listIntegrations, getWorkspacePermissionPolicy, updateWorkspacePermissionPolicy, listWorkspaceMembers, ApiError } from "../../../../lib/api";
+import { connectGithub, githubOAuthStartUrl, slackOAuthStartUrl, listIntegrations, getWorkspacePermissionPolicy, updateWorkspacePermissionPolicy, listWorkspaceMembers, requestWorkspacePermission, listPermissionRequests, approvePermissionRequest, ApiError } from "../../../../lib/api";
 import { useWorkspaceUser } from "../../../_components/WorkspaceAuth";
 import GithubRepoPickerModal from "../../../_components/GithubRepoPickerModal";
 
@@ -13,6 +13,7 @@ export default function IntegrationsPage() {
   const workspaceId = params.id;
   const user = useWorkspaceUser();
   const [workspaceRole, setWorkspaceRole] = useState<WorkspaceRole>("editor");
+  const [requests, setRequests] = useState<Array<{id:string;permission:string;display_name:string}>>([]);
 
   const [integrations, setIntegrations] = useState<IntegrationConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,6 +45,7 @@ export default function IntegrationsPage() {
     refresh();
     getWorkspacePermissionPolicy(workspaceId).then(setPolicy).catch(() => setPolicy(null));
     listWorkspaceMembers(workspaceId).then((members) => setWorkspaceRole(members.find((member) => member.id === user.id)?.role ?? "editor")).catch(() => {});
+    listPermissionRequests(workspaceId).then(setRequests).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, user.id]);
 
@@ -106,6 +108,8 @@ export default function IntegrationsPage() {
           ] as Array<[keyof WorkspacePermissions, string]>).map(([permission, label]) => <div className="permission-row" role="row" key={permission}><span>{label}</span>{(["admin", "editor"] as const).map((role) => <label className="toggle-switch" key={role}><input type="checkbox" disabled={workspaceRole !== "admin"} checked={policy[role][permission]} onChange={(event) => setPermission(role, permission, event.target.checked)} /><span className="toggle-track" aria-hidden="true" /><span className="sr-only">Allow {role} to {label.toLowerCase()}</span></label>)}</div>)}
         </div>
         {workspaceRole === "admin" && <div className="integration-actions"><button type="button" className="btn" onClick={() => void savePolicy()} disabled={policyBusy}>{policyBusy ? "Saving…" : "Save permissions"}</button></div>}
+        {workspaceRole === "editor" && <div className="integration-actions"><select aria-label="Request permission" onChange={(event) => { if (event.target.value) void requestWorkspacePermission(workspaceId,event.target.value).then(()=>alert("Request sent to admins.")).catch((error)=>setPolicyError(error.message)); event.currentTarget.value=""; }}><option value="">Request access from an admin…</option>{Object.entries(policy.editor).filter(([,allowed])=>!allowed).map(([permission])=><option key={permission} value={permission}>{permission}</option>)}</select></div>}
+        {workspaceRole === "admin" && requests.length > 0 && <section className="permission-request-list"><h3>Permission requests</h3>{requests.map((request)=><p key={request.id}>{request.display_name} requested {request.permission} <button onClick={() => void approvePermissionRequest(workspaceId,request.id).then(()=>setRequests((items)=>items.filter((item)=>item.id!==request.id)))}>Approve</button></p>)}</section>}
         {policyError && <p className="error-text">{policyError}</p>}
       </section>}
 

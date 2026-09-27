@@ -485,6 +485,9 @@ export async function hasWorkspacePermission(workspaceId: string, role: Workspac
   const policy = await getWorkspacePermissionPolicy(workspaceId);
   return policy[role][permission];
 }
+export async function createPermissionRequest(workspaceId:string,userId:string,permission:keyof WorkspacePermissions){const r=await getPool().query(`INSERT INTO workspace_permission_requests (workspace_id,user_id,permission) VALUES ($1,$2,$3) RETURNING id,permission,status,created_at`,[workspaceId,userId,permission]);return r.rows[0];}
+export async function listPermissionRequests(workspaceId:string){const r=await getPool().query(`SELECT r.id,r.permission,r.status,r.created_at,u.display_name FROM workspace_permission_requests r JOIN users u ON u.id=r.user_id WHERE r.workspace_id=$1 AND r.status='pending' ORDER BY r.created_at DESC`,[workspaceId]);return r.rows;}
+export async function approvePermissionRequest(workspaceId:string,id:string){const r=await getPool().query(`UPDATE workspace_permission_requests SET status='approved',resolved_at=now() WHERE workspace_id=$1 AND id=$2 AND status='pending' RETURNING permission`,[workspaceId,id]);return r.rows[0]?.permission as keyof WorkspacePermissions|undefined;}
 
 function toWorkspaceAgent(row: Record<string, unknown>): WorkspaceAgent {
   return { id: String(row.id), workspaceId: String(row.workspace_id), name: String(row.name), slug: String(row.slug), baseAgent: row.base_agent as WorkspaceAgent["baseAgent"], instructions: String(row.instructions), knowledge: String(row.knowledge), approvedProviders: (row.approved_providers ?? []) as WorkspaceAgent["approvedProviders"], model: String(row.model), status: row.status as WorkspaceAgent["status"], ownerUserId: row.owner_user_id ? String(row.owner_user_id) : null, publishedVersion: row.published_version === null ? null : Number(row.published_version), createdAt: (row.created_at as Date).toISOString(), updatedAt: (row.updated_at as Date).toISOString() };
