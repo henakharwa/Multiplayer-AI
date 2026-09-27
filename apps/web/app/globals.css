@@ -91,10 +91,7 @@ textarea {
   font: inherit;
 }
 
-/* Logo mark -------------------------------------------------------------
-   A small original mark (two overlapping rounded chat-bubble/cursor
-   shapes) -- not a copy of any competitor's logo, just built in the same
-   "playful geometric mark next to a plain wordmark" spirit as Dust's. */
+/* Logo mark ------------------------------------------------------------- */
 .brand-mark {
   display: inline-flex;
   align-items: center;
@@ -109,8 +106,8 @@ textarea {
 
 .brand-mark-word {
   font-weight: 700;
-  font-size: 16px;
-  letter-spacing: -0.01em;
+  font-size: 20px;
+  letter-spacing: -0.025em;
   color: var(--text);
 }
 
