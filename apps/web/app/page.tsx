@@ -16,6 +16,10 @@ const BACKGROUND_OPTIONS = [
   { id: "paper", label: "Paper" },
   { id: "midnight", label: "Midnight" },
   { id: "warm", label: "Warm" },
+  { id: "halo", label: "Halo" },
+  { id: "ribbons", label: "Ribbons" },
+  { id: "linen", label: "Linen" },
+  { id: "minimal", label: "Minimal" },
 ] as const;
 type BackgroundOption = (typeof BACKGROUND_OPTIONS)[number]["id"];
 

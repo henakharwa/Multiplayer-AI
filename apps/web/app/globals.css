@@ -317,6 +317,14 @@ textarea {
 .home-background-midnight .marketing-demo article p { color: #c7c9d6; }
 .home-background-warm { background: radial-gradient(820px 620px at 0% 0%, rgba(255, 207, 157, .62) 0%, transparent 66%), radial-gradient(760px 560px at 100% 2%, rgba(253, 180, 200, .52) 0%, transparent 67%), radial-gradient(720px 520px at 55% 100%, rgba(213, 207, 255, .46) 0%, transparent 72%), linear-gradient(145deg, #fff8ef, #fffafb 54%, #f6f5ff); }
 .home-background-warm::before { opacity: .42; background-image: linear-gradient(rgba(132, 96, 70, .08) 1px, transparent 1px), linear-gradient(90deg, rgba(132, 96, 70, .08) 1px, transparent 1px); }
+.home-background-halo { background: radial-gradient(circle at 50% 25%, rgba(255,255,255,.96) 0 8%, rgba(229, 238, 255, .76) 28%, transparent 52%), radial-gradient(circle at 12% 18%, rgba(144, 181, 255, .55), transparent 38%), radial-gradient(circle at 90% 18%, rgba(202, 167, 255, .55), transparent 38%), radial-gradient(circle at 52% 95%, rgba(153, 220, 255, .44), transparent 42%), #f3f6ff; }
+.home-background-halo::before { display: none; }
+.home-background-ribbons { background: radial-gradient(120% 65% at -15% 4%, transparent 54%, rgba(112, 151, 255, .28) 54.5% 62%, transparent 62.5%), radial-gradient(120% 65% at 115% 8%, transparent 53%, rgba(185, 146, 255, .27) 53.5% 61%, transparent 61.5%), radial-gradient(100% 62% at 48% 104%, transparent 55%, rgba(114, 208, 226, .22) 55.5% 63%, transparent 63.5%), linear-gradient(145deg, #f7f9ff, #fdfbff 52%, #f6fbff); }
+.home-background-ribbons::before { display: none; }
+.home-background-linen { background-color: #f7f7f4; background-image: repeating-linear-gradient(0deg, rgba(113, 103, 84, .035) 0 1px, transparent 1px 5px), repeating-linear-gradient(90deg, rgba(113, 103, 84, .025) 0 1px, transparent 1px 7px), radial-gradient(900px 560px at 50% -15%, rgba(229, 219, 193, .46), transparent 68%); }
+.home-background-linen::before { display: none; }
+.home-background-minimal { background: linear-gradient(180deg, #f8fafc, #ffffff 45%, #f7f9fc); }
+.home-background-minimal::before { display: none; }
 
 .background-switcher { display: flex; align-items: center; justify-content: center; gap: 10px; width: min(100% - 32px, 820px); margin: -6px auto 0; padding: 8px 10px; border: 1px solid rgba(207, 215, 231, .82); border-radius: var(--radius-pill); background: rgba(255, 255, 255, .66); box-shadow: 0 8px 24px rgba(54, 72, 110, .08); backdrop-filter: blur(14px); }
 .background-switcher > span { color: var(--text-dim); font-size: 11px; font-weight: 700; white-space: nowrap; }
