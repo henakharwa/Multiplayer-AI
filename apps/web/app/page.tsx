@@ -183,7 +183,7 @@ export default function HomePage() {
             </form>
           </div>}
 
-          {auth.user && myWorkspaces.length > 0 && <section className="home-panel home-workspaces"><h2>Your workspaces</h2><p className="panel-hint">Open a workspace you&apos;re already part of.</p><div className="home-workspace-list">{myWorkspaces.map((workspace) => <article key={workspace.id}><div className="home-workspace-details"><strong>{workspace.name}</strong><span>Join code: <code>{workspace.joinCode}</code></span></div><button className="btn secondary home-workspace-open" type="button" onClick={() => router.push(`/w/${workspace.id}`)}>Open</button></article>)}</div></section>}
+          {auth.user && myWorkspaces.length > 0 && <section className="home-panel home-workspaces"><div className="home-workspaces-header"><div><p>Your workspaces</p><h2>Pick up where your team left off</h2></div><span>{myWorkspaces.length} {myWorkspaces.length === 1 ? "workspace" : "workspaces"}</span></div><p className="panel-hint">Open a workspace you&apos;re already part of, or use a join code to enter another one.</p><div className="home-workspace-list">{myWorkspaces.map((workspace) => <article key={workspace.id}><div className="home-workspace-details"><strong>{workspace.name}</strong><span>Join code: <code>{workspace.joinCode}</code></span></div><button className="btn secondary home-workspace-open" type="button" onClick={() => router.push(`/w/${workspace.id}`)}>Open</button></article>)}</div></section>}
         </div>
 
         {error && (

@@ -62,14 +62,18 @@ export default function IntegrationsPage() {
       <Link className="back-link" href={`/w/${workspaceId}`}>
         ← Back to chat
       </Link>
-      <h1 className="title">Integrations</h1>
-      <p style={{ color: "var(--text-dim)", fontSize: 13, marginTop: -10, marginBottom: 24, lineHeight: 1.5 }}>
-        GitHub reads issues, PRs, commits, and files, and Slack reads channels and message history. Both can also write -- GitHub can
-        comment, open a PR, or push a change; Slack can post a message to a channel -- once a human confirms the action from a card in
-        the chat.
-      </p>
+      <section className="integration-hero">
+        <p>Workspace tools</p>
+        <h1 className="title">Integrations</h1>
+        <span>Connect the systems your team uses. Agents can read context immediately; write actions always require an approval in chat.</span>
+        <div className="integration-summary" aria-label="Integration status">
+          <strong>{integrations.length} connected</strong>
+          <span>•</span>
+          <span>{loading ? "Checking connections…" : integrations.length ? "Ready for agent requests" : "Connect your first tool"}</span>
+        </div>
+      </section>
 
-      <div className="integration-panel">
+      <div className="integration-panel integration-panel-featured">
         <h2>
           <span className="channel-icon" aria-hidden style={{ marginRight: 10 }}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -89,7 +93,7 @@ export default function IntegrationsPage() {
           </p>
         )}
 
-        <button
+        <div className="integration-actions"><button
           className="btn"
           type="button"
           data-testid="github-oauth-btn"
@@ -110,7 +114,7 @@ export default function IntegrationsPage() {
           >
             {githubConnected.repo ? "Change repository" : "Choose a repository"}
           </button>
-        )}
+        )}</div>
 
         <p className="hint" style={{ marginTop: 16 }}>
           Or paste a personal access token with read access to the repo directly. It&apos;s encrypted at rest and never shown again.
@@ -169,7 +173,7 @@ export default function IntegrationsPage() {
           Slack&apos;s own official MCP server needs a real login, not a pasted token -- your Slack account&apos;s own read/write
           access is what the agent uses (see the chat for exactly what it&apos;s about to do before anything happens).
         </p>
-        <button
+        <div className="integration-actions"><button
           className="btn"
           type="button"
           data-testid="slack-oauth-btn"
@@ -178,7 +182,7 @@ export default function IntegrationsPage() {
           }}
         >
           {slackConnected ? "Log in with Slack again" : "Log in with Slack"}
-        </button>
+        </button></div>
       </div>
 
       {!loading && integrations.length === 0 && <p style={{ color: "var(--text-dim)", fontSize: 13 }}>No integrations connected yet.</p>}

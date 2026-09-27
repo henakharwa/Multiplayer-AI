@@ -428,6 +428,12 @@ export default function WorkspaceRoomPage() {
   const workspaceRole = workspaceMembers.find((member) => member.id === user.id)?.role ?? "admin";
   const canEdit = workspaceRole === "admin" || workspaceRole === "editor";
   const selectedAgentConnected = selectedAgent === "project" || integrations.some((integration) => integration.type === selectedAgent);
+  const onboardingSteps = [
+    { label: "Create your workspace", complete: true },
+    { label: "Invite a teammate", complete: workspaceMembers.length > 1, action: workspaceRole === "admin" ? () => setShowInviteModal(true) : undefined },
+    { label: "Connect a tool", complete: integrations.length > 0, action: canEdit ? () => setShowConnectModal(true) : undefined },
+    { label: "Ask an agent a question", complete: conversations.some((conversation) => conversation.id === selectedConversationId && chat.messages.length > 0) },
+  ];
   const notificationsToday = notifications.filter((notification) => new Date(notification.createdAt).toDateString() === new Date().toDateString());
   const notificationsEarlier = notifications.filter((notification) => !notificationsToday.includes(notification));
 
@@ -574,10 +580,19 @@ export default function WorkspaceRoomPage() {
           </div>
         </header>
 
+        <section className="workspace-overview" aria-label="Workspace overview">
+          <div><span>Team</span><strong>{workspaceMembers.length || 1} {workspaceMembers.length === 1 ? "member" : "members"}</strong></div>
+          <div><span>Tools</span><strong>{integrations.length ? `${integrations.length} connected` : "None connected"}</strong></div>
+          <div><span>Conversations</span><strong>{conversations.length || 1} {conversations.length === 1 ? "chat" : "chats"}</strong></div>
+          <Link href={`/w/${workspaceId}/integrations`} className="workspace-overview-link">Manage tools →</Link>
+        </section>
+
         <div className="workspace-chat-scroll" data-testid="message-list">
           {isNewWorkspaceConversation ? (
             <section className="workspace-empty-state">
+              <p className="workspace-empty-eyebrow">Your shared AI workspace</p>
               <h2>What&apos;s next, {greetingName}?</h2>
+              <p className="workspace-empty-copy">Choose an agent, ask a question, and approve actions only when your team is ready.</p>
               <form className="workspace-hero-composer" onSubmit={handleSend}>
                 <input
                   ref={composerInputRef}
@@ -602,6 +617,10 @@ export default function WorkspaceRoomPage() {
                 onChoose={useStarterTemplate}
                 onConnect={() => setShowConnectModal(true)}
               />
+              <section className="workspace-onboarding" aria-label="Getting started">
+                <div><p>Getting started</p><span>{onboardingSteps.filter((step) => step.complete).length} of {onboardingSteps.length} complete</span></div>
+                <ol>{onboardingSteps.map((step) => <li key={step.label} className={step.complete ? "complete" : ""}>{step.complete ? <span aria-label="Complete">✓</span> : <span aria-hidden>○</span>}{step.action && !step.complete ? <button type="button" onClick={step.action}>{step.label}</button> : <em>{step.label}</em>}</li>)}</ol>
+              </section>
             </section>
           ) : visibleMessages.map((m) => {
             if (m.role === "system") {

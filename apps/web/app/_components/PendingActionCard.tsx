@@ -42,11 +42,12 @@ export default function PendingActionCard({
 
   return (
     <div className="pending-action" data-testid="pending-action-card">
-      <div className="pending-action-label">The agent wants to:</div>
+      <div className="pending-action-header"><div className="pending-action-label">Approval required</div><span>Nothing has changed yet</span></div>
       <div className="pending-action-desc">{action.description}</div>
       <dl className="pending-action-details"><div><dt>Action</dt><dd>{action.toolName.replace(/[_-]/g, " ")}</dd></div><div><dt>Target</dt><dd>{target}</dd></div><div><dt>Requested by</dt><dd>{action.requestedByName ?? "A workspace member"}</dd></div></dl>
       {action.preview && <pre className="pending-action-preview">{action.preview}</pre>}
       {error && <div className="pending-action-error">{error}</div>}
+      <p className="pending-action-note">Review the target and preview, then approve to run this action.</p>
       <div className="pending-action-buttons">
         <button className="btn" disabled={busy !== null} onClick={() => handle("confirm")} data-testid="confirm-action-btn">
           {busy === "confirm" ? "Confirming…" : "Confirm"}
