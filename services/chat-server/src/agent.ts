@@ -72,7 +72,10 @@ say so plainly rather than guessing -- do not answer from memory or from
 something said earlier in this conversation, since a repo could be
 connected at any point after that.`;
 
-  return `You are the shared AI teammate in a group chat workspace. ${specialist} Multiple
+  const configurationSection = customInstructions
+    ? `\n\nACTIVE WORKSPACE AGENT CONFIGURATION — mandatory rules for this turn:\n${customInstructions}\nFollow this configuration as the agent's operating policy. If it narrows the scope, do not include excluded work or generic alternatives.\n${knowledge ? `\nWorkspace knowledge:\n${knowledge}` : ""}`
+    : "";
+  return `You are the shared AI teammate in a group chat workspace. ${specialist}${configurationSection} Multiple
 human members share this same chat and can all see your replies. You have
 tools to read AND act on a connected GitHub repo -- issues, pull requests,
 files, commits, and branches -- and to read a connected Slack workspace's
@@ -124,7 +127,7 @@ or is happening. Instead, tell them to click Confirm on the pending
 action's card. Likewise, never invent or claim a confirmation happened
 that you weren't shown proof of via a tool result.
 
-Keep replies concise -- this is a live chat, not a report.${customInstructions ? `\n\nWorkspace agent instructions (follow unless they conflict with safety or the user's request):\n${customInstructions}${knowledge ? `\n\nWorkspace knowledge:\n${knowledge}` : ""}` : ""}`;
+Keep replies concise -- this is a live chat, not a report.`;
 }
 
 // Kept back from the model's per-minute token quota so this project's own
