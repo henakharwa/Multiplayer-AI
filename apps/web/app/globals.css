@@ -1807,3 +1807,6 @@ textarea {
 /* Compact the two-column agent picker without changing its section layout. */
 .agent-picker { width: min(480px, calc(100vw - 32px)); }
 .agent-picker-columns .agent-picker-list { max-height: 230px; }
+/* Keep a custom agent's selected logo identical to its picker logo. */
+.agent-picker button > span .custom-agent-logo,
+.agent-selector .workspace-agent-chip > .custom-agent-logo { width: 24px !important; height: 24px !important; border-radius: 7px !important; font-size: 9px !important; }
