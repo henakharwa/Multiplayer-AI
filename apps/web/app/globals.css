@@ -293,13 +293,13 @@ textarea {
   position: relative;
   isolation: isolate;
   background:
-    radial-gradient(900px 500px at 10% -8%, rgba(207, 220, 255, .72) 0%, rgba(238, 242, 255, 0) 67%),
-    radial-gradient(760px 480px at 100% 4%, rgba(232, 226, 255, .56) 0%, rgba(241, 238, 255, 0) 66%),
-    radial-gradient(680px 480px at 58% 92%, rgba(222, 239, 255, .32) 0%, rgba(255, 255, 255, 0) 70%),
-    #fbfcff;
+    radial-gradient(900px 620px at 4% -10%, rgba(175, 199, 255, .88) 0%, rgba(221, 231, 255, .5) 38%, transparent 70%),
+    radial-gradient(800px 620px at 102% 2%, rgba(210, 196, 255, .76) 0%, rgba(237, 232, 255, .42) 42%, transparent 72%),
+    radial-gradient(760px 500px at 50% 102%, rgba(177, 221, 255, .48) 0%, transparent 72%),
+    linear-gradient(145deg, #eef3ff 0%, #f8faff 47%, #f1f4fb 100%);
 }
 
-.home-shell::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; opacity: .52; background-image: linear-gradient(rgba(75, 101, 154, .055) 1px, transparent 1px), linear-gradient(90deg, rgba(75, 101, 154, .055) 1px, transparent 1px); background-size: 56px 56px; mask-image: linear-gradient(to bottom, black, rgba(0,0,0,.62) 48%, transparent 86%); }
+.home-shell::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; opacity: .72; background-image: linear-gradient(rgba(70, 91, 142, .09) 1px, transparent 1px), linear-gradient(90deg, rgba(70, 91, 142, .09) 1px, transparent 1px); background-size: 56px 56px; mask-image: linear-gradient(to bottom, black, rgba(0,0,0,.72) 54%, transparent 90%); }
 
 .home-nav {
   display: flex;
