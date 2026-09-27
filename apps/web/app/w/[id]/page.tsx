@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Conversation, GithubRepoSummary, IntegrationConfig, Workspace, WorkspaceAgent, WorkspaceMember, WorkspaceRole } from "@mai-chat/shared-types";
-import { createConversation, deleteConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, removeWorkspaceMember, listWorkspaceInvitations, revokeWorkspaceInvitation, disconnectIntegration, githubOAuthStartUrl, sendWorkspaceInvitation, updateConversation, listWorkspaceAgents, ApiError } from "../../../lib/api";
+import { createConversation, deleteConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, removeWorkspaceMember, leaveWorkspace, listWorkspaceInvitations, revokeWorkspaceInvitation, disconnectIntegration, githubOAuthStartUrl, sendWorkspaceInvitation, updateConversation, listWorkspaceAgents, ApiError } from "../../../lib/api";
 import { useWorkspaceChat } from "../../../lib/useWorkspaceChat";
 import { colorForName, initialsForName } from "../../../lib/avatar";
 import ConnectChannelModal from "../../_components/ConnectChannelModal";
@@ -252,6 +252,16 @@ export default function WorkspaceRoomPage() {
     }
   }
 
+  async function leaveCurrentWorkspace() {
+    if (!window.confirm("Leave this workspace? Your personal connected tools will be removed.")) return;
+    try {
+      await leaveWorkspace(workspaceId);
+      router.replace("/");
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Could not leave the workspace.");
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     getWorkspace(workspaceId)
@@ -282,7 +292,7 @@ export default function WorkspaceRoomPage() {
 
   // Polls rather than pushing over the WebSocket -- a teammate connecting
   // GitHub or Slack doesn't (yet) broadcast a room event the way a chat
-  // message does, so this is how everyone else's sidebar picks it up. 20s
+  // message does, so this is how everyone else's sidebar picks it up. 5s
   // keeps it feeling reasonably live without hammering the chat server;
   // the person who actually did the connecting still sees it instantly via
   // the direct refreshIntegrations() calls above.
@@ -291,7 +301,7 @@ export default function WorkspaceRoomPage() {
       listIntegrations(workspaceId)
         .then(setIntegrations)
         .catch(() => {});
-    }, 20_000);
+    }, 5_000);
     return () => clearInterval(interval);
   }, [workspaceId]);
 
@@ -606,6 +616,7 @@ export default function WorkspaceRoomPage() {
           <div className="workspace-header-actions">
             {workspaceRole === "admin" && <button className="workspace-invite" onClick={() => { setInviteState({ sending: false, message: null, error: null }); setShowInviteModal(true); }}><LinkGlyph /> Invite teammates</button>}
             {workspaceRole === "admin" && <button className="workspace-invite" onClick={() => setShowAccessManager(true)}>Manage access</button>}
+            <button className="workspace-invite workspace-leave" onClick={() => void leaveCurrentWorkspace()}>Leave workspace</button>
           </div>
         </header>
 

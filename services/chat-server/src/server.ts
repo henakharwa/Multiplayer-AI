@@ -444,6 +444,28 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.status(204).end();
   });
 
+  // Members may leave a workspace themselves. Personal integrations are
+  // removed with their membership so an explicit future rejoin begins with
+  // no retained provider credentials.
+  app.delete("/workspaces/:id/membership", async (req: Request, res: Response) => {
+    const workspaceId = paramString(req.params.id);
+    if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "invalid workspace id" });
+    const role = await db.getWorkspaceRole(workspaceId, req.user!.id);
+    if (!role) return res.status(404).json({ error: "member not found" });
+    if (!(await db.removeWorkspaceMemberAndPersonalIntegrations(workspaceId, req.user!.id))) {
+      return res.status(404).json({ error: "member not found" });
+    }
+    await db.recordAuditEvent({
+      workspaceId,
+      eventType: "member.left",
+      actorType: "user",
+      actorUserId: req.user!.id,
+      actorName: req.user!.displayName,
+      summary: `${req.user!.displayName} left the workspace and removed their personal tool connections`,
+    });
+    res.status(204).end();
+  });
+
   app.get("/workspaces/:id/messages", async (req: Request, res: Response) => {
     if (!UUID_RE.test(paramString(req.params.id))) return res.status(400).json({ error: "invalid workspace id" });
     const workspace = await db.getWorkspaceById(paramString(req.params.id));

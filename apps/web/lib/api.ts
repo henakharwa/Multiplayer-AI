@@ -66,6 +66,11 @@ export async function removeWorkspaceMember(workspaceId: string, userId: string)
   if (!res.ok) await parseJsonOrThrow(res);
 }
 
+export async function leaveWorkspace(workspaceId: string): Promise<void> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/membership`, { method: "DELETE" });
+  if (!res.ok) await parseJsonOrThrow(res);
+}
+
 export async function sendWorkspaceInvitation(workspaceId: string, input: { email: string; role: WorkspaceRole }): Promise<{ email: string; role: WorkspaceRole; expiresAt: string }> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/invitations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
   return (await parseJsonOrThrow(res)) as { email: string; role: WorkspaceRole; expiresAt: string };

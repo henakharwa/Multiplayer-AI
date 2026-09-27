@@ -442,6 +442,7 @@ export type AuditActorType = "user" | "agent" | "system";
 export type AuditEventType =
   | "workspace.created"
   | "member.joined"
+  | "member.left"
   | "member.invited"
   | "integration.connected"
   | "workspace.permissions_updated"
