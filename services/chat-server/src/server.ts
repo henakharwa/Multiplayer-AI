@@ -612,7 +612,10 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (typeof owner !== "string" || typeof repo !== "string" || !owner || !repo) {
       return res.status(400).json({ error: "owner and repo are both required" });
     }
-    const credential = await db.getIntegrationCredential(workspaceId, "github");
+    const integration = (await db.listIntegrations(workspaceId)).find(
+      (candidate) => candidate.type === "github" && candidate.ownerUserId === req.user!.id
+    );
+    const credential = integration ? await db.getIntegrationCredential(workspaceId, "github", integration.id) : null;
     if (!credential) return res.status(404).json({ error: "GitHub isn't connected for this workspace yet." });
     try {
       // Same "verify against the live API before saving" policy as the
@@ -623,7 +626,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     } catch (err) {
       return res.status(400).json({ error: `could not verify access to ${owner}/${repo}: ${errMessage(err)}` });
     }
-    const config = await db.setGithubRepo({ workspaceId, owner, repo });
+    const config = await db.setGithubRepo({ workspaceId, owner, repo, ownerUserId: req.user!.id });
     if (!config) return res.status(404).json({ error: "GitHub isn't connected for this workspace yet." });
     res.json(config);
   });

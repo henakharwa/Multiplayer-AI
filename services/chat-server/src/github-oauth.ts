@@ -174,7 +174,10 @@ export function registerGithubOAuthRoutes(app: Express, config: GithubOAuthConfi
     if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "invalid workspace id" });
     const workspace = await db.getWorkspaceById(workspaceId);
     if (!workspace) return res.status(404).json({ error: "not found" });
-    const credential = await db.getIntegrationCredential(workspaceId, "github");
+    const integration = (await db.listIntegrations(workspaceId)).find(
+      (candidate) => candidate.type === "github" && candidate.ownerUserId === req.user!.id
+    );
+    const credential = integration ? await db.getIntegrationCredential(workspaceId, "github", integration.id) : null;
     if (!credential) return res.status(404).json({ error: "GitHub isn't connected for this workspace yet." });
     try {
       const repos = await deps.listRepositoriesForToken(credential.token);

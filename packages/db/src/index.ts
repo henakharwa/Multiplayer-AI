@@ -580,12 +580,14 @@ export async function upsertGithubIntegration(input: {
 export async function saveGithubOAuthToken(input: { workspaceId: string; token: string; ownerUserId?: string }): Promise<void> {
   const pool = getPool();
   const encrypted = encryptToken(input.token);
+  const accountKey = input.ownerUserId ? `personal:${input.ownerUserId}:github` : "shared";
+  const connectionScope = input.ownerUserId ? "personal" : "shared";
   await pool.query(
-    `INSERT INTO integrations (workspace_id, type, encrypted_token, account_key, owner_user_id)
-     VALUES ($1, 'github', $2, 'shared', $3)
+    `INSERT INTO integrations (workspace_id, type, encrypted_token, connection_scope, owner_user_id, account_key)
+     VALUES ($1, 'github', $2, $3, $4, $5)
      ON CONFLICT (workspace_id, type, account_key)
-     DO UPDATE SET encrypted_token = $2, owner_user_id = $3, connected_at = now()`,
-    [input.workspaceId, encrypted, input.ownerUserId ?? null]
+     DO UPDATE SET encrypted_token = $2, connection_scope = $3, owner_user_id = $4, connected_at = now()`,
+    [input.workspaceId, encrypted, connectionScope, input.ownerUserId ?? null, accountKey]
   );
 }
 
@@ -594,13 +596,14 @@ export async function saveGithubOAuthToken(input: { workspaceId: string; token: 
 // "change repository" later). Returns null if there's no GitHub
 // integration row yet for this workspace -- the caller must have already
 // connected a token (OAuth or pasted) before a repo can be chosen.
-export async function setGithubRepo(input: { workspaceId: string; owner: string; repo: string }): Promise<GithubIntegrationConfig | null> {
+export async function setGithubRepo(input: { workspaceId: string; owner: string; repo: string; ownerUserId?: string }): Promise<GithubIntegrationConfig | null> {
   const pool = getPool();
+  const accountKey = input.ownerUserId ? `personal:${input.ownerUserId}:github` : "shared";
   const result = await pool.query(
     `UPDATE integrations SET owner = $2, repo = $3
-     WHERE workspace_id = $1 AND type = 'github' AND account_key = 'shared'
+     WHERE workspace_id = $1 AND type = 'github' AND account_key = $4
      RETURNING id, workspace_id, connection_name, connection_scope, owner_user_id, owner, repo, connected_at`,
-    [input.workspaceId, input.owner, input.repo]
+    [input.workspaceId, input.owner, input.repo, accountKey]
   );
   if (result.rows.length === 0) return null;
   const row = result.rows[0];
