@@ -521,7 +521,8 @@ textarea {
 .access-modal header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .access-modal header p { margin: 0 0 4px; color: #6f7b8c; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .access-modal h2 { margin: 0; font-size: 22px; }
-.access-modal header button { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: #f3f4f6; color: #4b5563; font-size: 24px; line-height: 1; cursor: pointer; }
+.access-modal header button { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: #f3f4f6; color: #4b5563; cursor: pointer; }
+.access-modal header button svg { display: block; width: 18px; height: 18px; }
 .access-modal-intro { margin: 16px 0; color: #5d6878; font-size: 14px; line-height: 1.5; }
 .workspace-invite-form { display: grid; gap: 9px; }
 .workspace-invite-form label { color: #3f4c5e; font-size: 13px; font-weight: 700; }
