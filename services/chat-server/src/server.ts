@@ -9,6 +9,7 @@ import type { AuditEventType, Participant } from "@mai-chat/shared-types";
 import { RoomRegistry } from "./rooms.js";
 import { toLlmHistory } from "./history.js";
 import { runAgentTurn as defaultRunAgentTurn, replyForResolvedActions, type AgentKind, type RunAgentTurnInput, type RunAgentTurnResult } from "./agent.js";
+import { resolveLlmConfig } from "./llm-client.js";
 import { buildToolsForWorkspace, wrapForProposal, registerActionRoutes } from "./actions.js";
 import { parseMentions } from "./mentions.js";
 import type { ToolExecutor } from "./tools.js";
@@ -374,6 +375,11 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     res.json(await db.listWorkspaceAgents(paramString(req.params.id)));
   });
+  app.get("/workspaces/:id/agent-models", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const configured = (process.env.AGENT_LLM_ALLOWED_MODELS ?? "").split(",").map((model) => model.trim()).filter(Boolean);
+    res.json(["workspace-default", ...configured]);
+  });
   app.post("/workspaces/:id/agents", async (req: Request, res: Response) => {
     if (!(await requirePermission(req, res, "createAgents"))) return;
     const body = req.body ?? {};
@@ -654,8 +660,8 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
   wss.on("close", () => clearInterval(heartbeat));
 
   async function runAgentReply(workspaceId: string, conversationId: string, requestedBy: { userId: string; name: string }, agentKind: AgentKind, configuredAgentId?: string): Promise<void> {
-    const configuredAgent = configuredAgentId ? await db.getWorkspaceAgent(workspaceId, configuredAgentId) : null;
-    if (configuredAgentId && (!configuredAgent || configuredAgent.status !== "published")) throw new Error("That workspace agent has not been published yet.");
+    const configuredAgent = configuredAgentId ? await db.getPublishedWorkspaceAgent(workspaceId, configuredAgentId) : null;
+    if (configuredAgentId && !configuredAgent) throw new Error("That workspace agent has not been published yet.");
     if (configuredAgent && configuredAgent.baseAgent !== agentKind) throw new Error("The selected agent configuration does not match this specialist.");
     if (configuredAgent && agentKind !== "project" && !configuredAgent.approvedProviders.includes(agentKind)) throw new Error(`The ${configuredAgent.name} configuration is not approved to use ${agentKind}.`);
     const messages = await db.listMessages(workspaceId, conversationId);
@@ -688,6 +694,8 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       .map((action) => `- ${action.description}: ${action.status}`)
       .join("\n");
     const turnStart = Date.now();
+    const allowedModels = (process.env.AGENT_LLM_ALLOWED_MODELS ?? "").split(",").map((model) => model.trim());
+    const selectedModel = configuredAgent?.model && configuredAgent.model !== "workspace-default" && allowedModels.includes(configuredAgent.model) ? configuredAgent.model : undefined;
     const result = await deps.runAgentTurn({
       history: toLlmHistory(messages),
       tools,
@@ -696,6 +704,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       agentKind,
       customInstructions: configuredAgent?.instructions,
       knowledge: configuredAgent?.knowledge,
+      llmConfig: selectedModel ? resolveLlmConfig({ model: selectedModel }) : undefined,
     });
     console.log(`[timing] workspace ${workspaceId}: runAgentTurn (all LLM calls + tool calls, see [timing] lines above) took ${Date.now() - turnStart}ms`);
     const proposedActions = await Promise.all(

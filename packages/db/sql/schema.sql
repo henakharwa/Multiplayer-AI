@@ -354,11 +354,23 @@ CREATE TABLE IF NOT EXISTS workspace_agents (
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
   owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   published_version INTEGER,
+  published_name TEXT,
+  published_base_agent TEXT,
+  published_instructions TEXT,
+  published_knowledge TEXT,
+  published_approved_providers TEXT[],
+  published_model TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (workspace_id, slug)
 );
 ALTER TABLE workspace_agents ADD COLUMN IF NOT EXISTS base_agent TEXT NOT NULL DEFAULT 'project';
+ALTER TABLE workspace_agents ADD COLUMN IF NOT EXISTS published_name TEXT;
+ALTER TABLE workspace_agents ADD COLUMN IF NOT EXISTS published_base_agent TEXT;
+ALTER TABLE workspace_agents ADD COLUMN IF NOT EXISTS published_instructions TEXT;
+ALTER TABLE workspace_agents ADD COLUMN IF NOT EXISTS published_knowledge TEXT;
+ALTER TABLE workspace_agents ADD COLUMN IF NOT EXISTS published_approved_providers TEXT[];
+ALTER TABLE workspace_agents ADD COLUMN IF NOT EXISTS published_model TEXT;
 CREATE TABLE IF NOT EXISTS workspace_agent_versions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   agent_id UUID NOT NULL REFERENCES workspace_agents(id) ON DELETE CASCADE,

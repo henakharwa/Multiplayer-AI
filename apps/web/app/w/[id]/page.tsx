@@ -160,6 +160,7 @@ export default function WorkspaceRoomPage() {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<AgentKind>("project");
   const [configuredAgent, setConfiguredAgent] = useState<WorkspaceAgent | null>(null);
+  const [workspaceAgents, setWorkspaceAgents] = useState<WorkspaceAgent[]>([]);
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
   const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMember[]>([]);
   const [showAccessManager, setShowAccessManager] = useState(false);
@@ -203,6 +204,8 @@ export default function WorkspaceRoomPage() {
   // Best-effort -- if this fails, the sidebar's "Connected" row just stays
   // empty or stale; the rest of the room (chat, presence) doesn't depend
   // on it, so a network hiccup here shouldn't be treated as fatal.
+  useEffect(() => { listWorkspaceAgents(workspaceId).then(setWorkspaceAgents).catch(() => {}); }, [workspaceId]);
+
   function refreshIntegrations() {
     listIntegrations(workspaceId)
       .then(setIntegrations)
@@ -630,7 +633,7 @@ export default function WorkspaceRoomPage() {
                   autoComplete="off"
                 />
                 <div className="workspace-hero-composer-footer">
-                  <AgentSelector selected={selectedAgent} selectedName={selectedAgentInfo.name} open={agentPickerOpen} onToggle={() => setAgentPickerOpen((open) => !open)} onSelect={(agent) => { setSelectedAgent(agent); setAgentPickerOpen(false); }} />
+                  {workspaceAgents.some((agent) => agent.status === "published") && <select className="workspace-agent-config-select" aria-label="Workspace agent configuration" value={configuredAgent?.id ?? ""} onChange={(event) => { const agent = workspaceAgents.find((item) => item.id === event.target.value) ?? null; setConfiguredAgent(agent); if (agent) setSelectedAgent(agent.baseAgent); }}><option value="">Built-in agent configuration</option>{workspaceAgents.filter((agent) => agent.status === "published").map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · v{agent.publishedVersion}</option>)}</select>}<AgentSelector selected={selectedAgent} selectedName={selectedAgentInfo.name} open={agentPickerOpen} onToggle={() => setAgentPickerOpen((open) => !open)} onSelect={(agent) => { setSelectedAgent(agent); setConfiguredAgent(null); setAgentPickerOpen(false); }} />
                   <button type="submit" data-testid="send-btn" disabled={chat.status !== "open" || !canEdit || !draft.trim()} aria-label="Start chat"><ArrowGlyph /></button>
                 </div>
               </form>
@@ -744,7 +747,7 @@ export default function WorkspaceRoomPage() {
             disabled={chat.status !== "open" || !canEdit || (chat.agentBusy && !draftIsHandoff)}
             autoComplete="off"
           />
-          <AgentSelector selected={selectedAgent} selectedName={selectedAgentInfo.name} open={agentPickerOpen} onToggle={() => setAgentPickerOpen((open) => !open)} onSelect={(agent) => { setSelectedAgent(agent); setAgentPickerOpen(false); }} compact />
+          {workspaceAgents.some((agent) => agent.status === "published") && <select className="workspace-agent-config-select" aria-label="Workspace agent configuration" value={configuredAgent?.id ?? ""} onChange={(event) => { const agent = workspaceAgents.find((item) => item.id === event.target.value) ?? null; setConfiguredAgent(agent); if (agent) setSelectedAgent(agent.baseAgent); }}><option value="">Built-in agent configuration</option>{workspaceAgents.filter((agent) => agent.status === "published").map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · v{agent.publishedVersion}</option>)}</select>}<AgentSelector selected={selectedAgent} selectedName={selectedAgentInfo.name} open={agentPickerOpen} onToggle={() => setAgentPickerOpen((open) => !open)} onSelect={(agent) => { setSelectedAgent(agent); setConfiguredAgent(null); setAgentPickerOpen(false); }} compact />
           <button className="composer-send"
             type="submit"
             data-testid="send-btn"

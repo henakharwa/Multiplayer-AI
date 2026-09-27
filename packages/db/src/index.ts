@@ -500,6 +500,11 @@ export async function getWorkspaceAgent(workspaceId: string, agentId: string): P
   return result.rows[0] ? toWorkspaceAgent(result.rows[0]) : null;
 }
 
+export async function getPublishedWorkspaceAgent(workspaceId: string, agentId: string): Promise<WorkspaceAgent | null> {
+  const result = await getPool().query(`SELECT *, published_name AS name, published_base_agent AS base_agent, published_instructions AS instructions, published_knowledge AS knowledge, published_approved_providers AS approved_providers, published_model AS model FROM workspace_agents WHERE workspace_id = $1 AND id = $2 AND published_version IS NOT NULL`, [workspaceId, agentId]);
+  return result.rows[0] ? toWorkspaceAgent(result.rows[0]) : null;
+}
+
 export async function createWorkspaceAgent(input: { workspaceId: string; name: string; baseAgent: WorkspaceAgent["baseAgent"]; instructions?: string; knowledge?: string; approvedProviders?: WorkspaceAgent["approvedProviders"]; model?: string; ownerUserId: string }): Promise<WorkspaceAgent> {
   const name = input.name.trim();
   if (!name) throw new Error("agent name is required");
@@ -515,7 +520,7 @@ export async function updateWorkspaceAgent(workspaceId: string, agentId: string,
 
 export async function publishWorkspaceAgent(workspaceId: string, agentId: string, userId: string): Promise<WorkspaceAgent | null> {
   const client = await getPool().connect();
-  try { await client.query("BEGIN"); const found = await client.query(`SELECT * FROM workspace_agents WHERE workspace_id = $1 AND id = $2 FOR UPDATE`, [workspaceId, agentId]); if (!found.rows[0]) { await client.query("ROLLBACK"); return null; } const row = found.rows[0]; const version = Number(row.published_version ?? 0) + 1; await client.query(`INSERT INTO workspace_agent_versions (agent_id, version, instructions, knowledge, approved_providers, model, published_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [agentId, version, row.instructions, row.knowledge, row.approved_providers, row.model, userId]); const updated = await client.query(`UPDATE workspace_agents SET status = 'published', published_version = $3, updated_at = now() WHERE workspace_id = $1 AND id = $2 RETURNING *`, [workspaceId, agentId, version]); await client.query("COMMIT"); return toWorkspaceAgent(updated.rows[0]); } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  try { await client.query("BEGIN"); const found = await client.query(`SELECT * FROM workspace_agents WHERE workspace_id = $1 AND id = $2 FOR UPDATE`, [workspaceId, agentId]); if (!found.rows[0]) { await client.query("ROLLBACK"); return null; } const row = found.rows[0]; const version = Number(row.published_version ?? 0) + 1; await client.query(`INSERT INTO workspace_agent_versions (agent_id, version, instructions, knowledge, approved_providers, model, published_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [agentId, version, row.instructions, row.knowledge, row.approved_providers, row.model, userId]); const updated = await client.query(`UPDATE workspace_agents SET status = 'published', published_version = $3, published_name = name, published_base_agent = base_agent, published_instructions = instructions, published_knowledge = knowledge, published_approved_providers = approved_providers, published_model = model, updated_at = now() WHERE workspace_id = $1 AND id = $2 RETURNING *`, [workspaceId, agentId, version]); await client.query("COMMIT"); return toWorkspaceAgent(updated.rows[0]); } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
 }
 
 export async function listWorkspaceAgentVersions(workspaceId: string, agentId: string): Promise<WorkspaceAgentVersion[]> {
