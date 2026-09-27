@@ -577,15 +577,15 @@ export async function upsertGithubIntegration(input: {
 // already were (NULL on a first-ever connect), never overwritten with a
 // guess. Distinct from upsertGithubIntegration, which is the pasted-token
 // flow and always sets owner+repo+token together in one step.
-export async function saveGithubOAuthToken(input: { workspaceId: string; token: string }): Promise<void> {
+export async function saveGithubOAuthToken(input: { workspaceId: string; token: string; ownerUserId?: string }): Promise<void> {
   const pool = getPool();
   const encrypted = encryptToken(input.token);
   await pool.query(
-    `INSERT INTO integrations (workspace_id, type, encrypted_token, account_key)
-     VALUES ($1, 'github', $2, 'shared')
+    `INSERT INTO integrations (workspace_id, type, encrypted_token, account_key, owner_user_id)
+     VALUES ($1, 'github', $2, 'shared', $3)
      ON CONFLICT (workspace_id, type, account_key)
-     DO UPDATE SET encrypted_token = $2, connected_at = now()`,
-    [input.workspaceId, encrypted]
+     DO UPDATE SET encrypted_token = $2, owner_user_id = $3, connected_at = now()`,
+    [input.workspaceId, encrypted, input.ownerUserId ?? null]
   );
 }
 

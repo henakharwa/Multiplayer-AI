@@ -82,7 +82,7 @@ export const defaultGithubOAuthDeps: GithubOAuthDeps = {
 // problem worth a database table for a link that's meant to be used
 // within minutes.
 const STATE_TTL_MS = 10 * 60 * 1000;
-const pendingStates = new Map<string, { workspaceId: string; expiresAt: number }>();
+const pendingStates = new Map<string, { workspaceId: string; userId: string; expiresAt: number }>();
 
 function cleanupExpiredStates(now = Date.now()): void {
   for (const [state, entry] of pendingStates) {
@@ -118,7 +118,7 @@ export function registerGithubOAuthRoutes(app: Express, config: GithubOAuthConfi
 
     cleanupExpiredStates();
     const state = randomUUID();
-    pendingStates.set(state, { workspaceId, expiresAt: Date.now() + STATE_TTL_MS });
+    pendingStates.set(state, { workspaceId, userId: req.user!.id, expiresAt: Date.now() + STATE_TTL_MS });
 
     const authorizeUrl = new URL("https://github.com/login/oauth/authorize");
     authorizeUrl.searchParams.set("client_id", config.clientId);
@@ -154,7 +154,7 @@ export function registerGithubOAuthRoutes(app: Express, config: GithubOAuthConfi
       return res.redirect(redirectTarget(config, pending.workspaceId, "error", result.error));
     }
 
-    await db.saveGithubOAuthToken({ workspaceId: pending.workspaceId, token: result.accessToken });
+    await db.saveGithubOAuthToken({ workspaceId: pending.workspaceId, token: result.accessToken, ownerUserId: pending.userId });
     if (req.user) {
       await db.recordAuditEvent({
         workspaceId: pending.workspaceId,
