@@ -7,9 +7,12 @@
 // page, but that stopped being an option once Slack tools moved to
 // Slack's own official MCP server, which only accepts a token minted by
 // this exact OAuth flow (see slack-oauth.ts's own comment).
-import { githubOAuthStartUrl, providerOAuthStartUrl, slackOAuthStartUrl } from "../../lib/api";
+import { useState } from "react";
+import { ApiError, checkToolConnectionPermission, githubOAuthStartUrl, providerOAuthStartUrl, slackOAuthStartUrl } from "../../lib/api";
 
 export default function ConnectChannelModal({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState<string | null>(null);
   const providers = [
     { id: "github", name: "GitHub" },
     { id: "slack", name: "Slack" },
@@ -18,7 +21,11 @@ export default function ConnectChannelModal({ workspaceId, onClose }: { workspac
     { id: "figma", name: "Figma" },
   ] as const;
 
-  function connect(provider: (typeof providers)[number]["id"]) {
+  async function connect(provider: (typeof providers)[number]["id"]) {
+    setError(null);
+    setConnecting(provider);
+    try {
+      await checkToolConnectionPermission(workspaceId);
     // A full top-level navigation is required for each provider's OAuth
     // consent screen and callback; fetch would leave the browser behind.
     window.location.href = provider === "github"
@@ -26,6 +33,10 @@ export default function ConnectChannelModal({ workspaceId, onClose }: { workspac
       : provider === "slack"
         ? slackOAuthStartUrl(workspaceId)
         : providerOAuthStartUrl(workspaceId, provider);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "You do not have permission to connect this tool.");
+      setConnecting(null);
+    }
   }
 
   return (
@@ -36,11 +47,13 @@ export default function ConnectChannelModal({ workspaceId, onClose }: { workspac
           Connect a collaboration tool
         </h1>
 
-        {providers.map((provider) => <button className="channel-option" key={provider.id} data-testid={provider.id === "github" || provider.id === "slack" ? `connect-${provider.id}-option` : undefined} onClick={() => connect(provider.id)}>
+        {providers.map((provider) => <button className="channel-option" key={provider.id} disabled={connecting !== null} data-testid={provider.id === "github" || provider.id === "slack" ? `connect-${provider.id}-option` : undefined} onClick={() => void connect(provider.id)}>
           <span className="channel-icon" aria-hidden><ProviderIcon provider={provider.id} /></span>
           <span className="channel-option-text"><span className="channel-option-title">{provider.name}</span><span className="channel-option-hint">Sign in with your {provider.name} account</span></span>
-          <span className="channel-option-arrow" aria-hidden>→</span>
+          <span className="channel-option-arrow" aria-hidden>{connecting === provider.id ? "…" : "→"}</span>
         </button>)}
+
+        {error && <p className="error-text" role="alert">{error}</p>}
 
         <button className="btn secondary" style={{ marginTop: 18 }} onClick={onClose} data-testid="connect-channel-cancel">
           Cancel

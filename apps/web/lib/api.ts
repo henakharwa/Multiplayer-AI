@@ -138,6 +138,11 @@ export async function updateWorkspacePermissionPolicy(workspaceId: string, polic
   return (await parseJsonOrThrow(res)) as import("@mai-chat/shared-types").WorkspacePermissionPolicy;
 }
 
+export async function checkToolConnectionPermission(workspaceId: string): Promise<void> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/capabilities/connect-tools`);
+  if (!res.ok) await parseJsonOrThrow(res);
+}
+
 export async function disconnectIntegration(workspaceId: string, provider: IntegrationConfig["type"]): Promise<void> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/integrations/${provider}`, { method: "DELETE" });
   if (!res.ok) await parseJsonOrThrow(res);

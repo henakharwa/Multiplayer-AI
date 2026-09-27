@@ -485,6 +485,11 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.json(await db.listIntegrations(paramString(req.params.id)));
   });
 
+  app.get("/workspaces/:id/capabilities/connect-tools", async (req: Request, res: Response) => {
+    if (!(await requirePermission(req, res, "connectTools"))) return;
+    res.status(204).end();
+  });
+
   app.delete("/workspaces/:id/integrations/:provider", async (req: Request, res: Response) => {
     if (!(await requirePermission(req, res, "connectTools"))) return;
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
