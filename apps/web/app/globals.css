@@ -1810,3 +1810,15 @@ textarea {
 /* Keep a custom agent's selected logo identical to its picker logo. */
 .agent-picker button > span .custom-agent-logo,
 .agent-selector .workspace-agent-chip > .custom-agent-logo { width: 24px !important; height: 24px !important; border-radius: 7px !important; font-size: 9px !important; }
+/* Accessible switches replace binary permission and tool-approval checkboxes. */
+.toggle-switch { position: relative; display: inline-flex !important; width: 36px; height: 20px; flex: 0 0 auto; cursor: pointer; }
+.toggle-switch input { position: absolute !important; width: 1px !important; height: 1px !important; margin: -1px !important; opacity: 0; }
+.toggle-track { display: block; width: 36px; height: 20px; border-radius: 999px; background: #c8d0dc; transition: background .18s ease; }
+.toggle-track::after { content: ""; display: block; width: 16px; height: 16px; margin: 2px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(20,32,55,.24); transform: translateX(0); transition: transform .18s ease; }
+.toggle-switch input:checked + .toggle-track { background: #315cec; }
+.toggle-switch input:checked + .toggle-track::after { transform: translateX(16px); }
+.toggle-switch input:focus-visible + .toggle-track { outline: 3px solid rgba(49,92,236,.3); outline-offset: 2px; }
+.permission-row > .toggle-switch { display: grid !important; place-items: center; width: auto; height: 100%; border-left: 1px solid var(--border); }
+.permission-row > .toggle-switch .toggle-track { pointer-events: none; }
+.agent-builder-form .check-row { justify-content: space-between; min-width: 138px; padding: 7px 9px; border: 1px solid #e0e6ef; border-radius: 9px; background: #fafbfe; }
+.agent-builder-form .check-row .toggle-switch { margin-left: 8px; }

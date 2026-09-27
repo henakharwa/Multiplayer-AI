@@ -99,7 +99,7 @@ export default function IntegrationsPage() {
           {([
             ["connectTools", "Connect and manage tools"], ["createAgents", "Create agents"], ["publishAgents", "Publish agents"], ["approveActions", "Approve actions"],
             ["github", "Use GitHub"], ["slack", "Use Slack"], ["linear", "Use Linear"], ["notion", "Use Notion"], ["figma", "Use Figma"],
-          ] as Array<[keyof WorkspacePermissions, string]>).map(([permission, label]) => <div className="permission-row" role="row" key={permission}><span>{label}</span>{(["admin", "editor"] as const).map((role) => <label key={role}><input type="checkbox" checked={policy[role][permission]} onChange={(event) => setPermission(role, permission, event.target.checked)} /><span className="sr-only">Allow {role} to {label.toLowerCase()}</span></label>)}</div>)}
+          ] as Array<[keyof WorkspacePermissions, string]>).map(([permission, label]) => <div className="permission-row" role="row" key={permission}><span>{label}</span>{(["admin", "editor"] as const).map((role) => <label className="toggle-switch" key={role}><input type="checkbox" checked={policy[role][permission]} onChange={(event) => setPermission(role, permission, event.target.checked)} /><span className="toggle-track" aria-hidden="true" /><span className="sr-only">Allow {role} to {label.toLowerCase()}</span></label>)}</div>)}
         </div>
         <div className="integration-actions"><button type="button" className="btn" onClick={() => void savePolicy()} disabled={policyBusy}>{policyBusy ? "Saving…" : "Save permissions"}</button></div>
         {policyError && <p className="error-text">{policyError}</p>}
