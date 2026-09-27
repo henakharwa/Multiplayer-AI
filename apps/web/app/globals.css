@@ -301,6 +301,31 @@ textarea {
 
 .home-shell::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; opacity: .72; background-image: linear-gradient(rgba(70, 91, 142, .09) 1px, transparent 1px), linear-gradient(90deg, rgba(70, 91, 142, .09) 1px, transparent 1px); background-size: 56px 56px; mask-image: linear-gradient(to bottom, black, rgba(0,0,0,.72) 54%, transparent 90%); }
 
+.home-background-slate { background: radial-gradient(900px 620px at 4% -10%, rgba(175, 199, 255, .88) 0%, rgba(221, 231, 255, .5) 38%, transparent 70%), radial-gradient(800px 620px at 102% 2%, rgba(210, 196, 255, .76) 0%, rgba(237, 232, 255, .42) 42%, transparent 72%), radial-gradient(760px 500px at 50% 102%, rgba(177, 221, 255, .48) 0%, transparent 72%), linear-gradient(145deg, #eef3ff 0%, #f8faff 47%, #f1f4fb 100%); }
+.home-background-aurora { background: radial-gradient(760px 620px at 4% 0%, rgba(139, 211, 255, .7) 0%, transparent 68%), radial-gradient(760px 600px at 96% 0%, rgba(190, 155, 255, .65) 0%, transparent 66%), radial-gradient(800px 500px at 54% 90%, rgba(142, 238, 201, .43) 0%, transparent 70%), linear-gradient(145deg, #edfaff 0%, #fbf9ff 50%, #f2fffb 100%); }
+.home-background-aurora::before { opacity: .42; background-size: 72px 72px; }
+.home-background-paper { background: radial-gradient(820px 500px at 50% -15%, rgba(242, 226, 190, .5) 0%, transparent 68%), linear-gradient(90deg, rgba(111, 92, 62, .035) 1px, transparent 1px), linear-gradient(rgba(111, 92, 62, .035) 1px, transparent 1px), #faf8f2; background-size: auto, 26px 26px, 26px 26px; }
+.home-background-paper::before { display: none; }
+.home-background-midnight { --bg: #101827; --bg-subtle: #172133; --bg-sunken: #243148; --surface: #19253a; --border: #2c3a52; --border-strong: #41516c; --text: #f5f7fb; --text-dim: #bbc5d5; --text-faint: #8d9ab0; --accent-soft: #203a78; --accent-soft-border: #3658a4; --success-soft: #163d32; background: radial-gradient(900px 620px at 10% -6%, rgba(53, 100, 211, .56) 0%, transparent 68%), radial-gradient(800px 600px at 98% 0%, rgba(116, 72, 186, .44) 0%, transparent 70%), linear-gradient(145deg, #0d1421, #111b2c 52%, #16213a); }
+.home-background-midnight::before { opacity: .38; background-image: linear-gradient(rgba(170, 193, 255, .16) 1px, transparent 1px), linear-gradient(90deg, rgba(170, 193, 255, .16) 1px, transparent 1px); }
+.home-background-midnight .auth-nav-button, .home-background-midnight .marketing-secondary-cta { background: rgba(18, 29, 47, .78); color: var(--text); }
+.home-background-midnight .auth-nav-button.primary { background: var(--accent); color: white; }
+.home-background-midnight .marketing-demo, .home-background-midnight .marketing-final-cta { background: linear-gradient(135deg, #17264a, #1b203d); }
+.home-background-midnight .marketing-proof > div, .home-background-midnight .marketing-outcomes article, .home-background-midnight .marketing-activity article, .home-background-midnight .marketing-comparison td, .home-background-midnight .marketing-comparison th { background: var(--surface); }
+.home-background-midnight .marketing-demo article { background: #242637; border-color: #4a4054; }
+.home-background-midnight .marketing-demo article h3 { color: white; }
+.home-background-midnight .marketing-demo article p { color: #c7c9d6; }
+.home-background-warm { background: radial-gradient(820px 620px at 0% 0%, rgba(255, 207, 157, .62) 0%, transparent 66%), radial-gradient(760px 560px at 100% 2%, rgba(253, 180, 200, .52) 0%, transparent 67%), radial-gradient(720px 520px at 55% 100%, rgba(213, 207, 255, .46) 0%, transparent 72%), linear-gradient(145deg, #fff8ef, #fffafb 54%, #f6f5ff); }
+.home-background-warm::before { opacity: .42; background-image: linear-gradient(rgba(132, 96, 70, .08) 1px, transparent 1px), linear-gradient(90deg, rgba(132, 96, 70, .08) 1px, transparent 1px); }
+
+.background-switcher { display: flex; align-items: center; justify-content: center; gap: 10px; width: min(100% - 32px, 820px); margin: -6px auto 0; padding: 8px 10px; border: 1px solid rgba(207, 215, 231, .82); border-radius: var(--radius-pill); background: rgba(255, 255, 255, .66); box-shadow: 0 8px 24px rgba(54, 72, 110, .08); backdrop-filter: blur(14px); }
+.background-switcher > span { color: var(--text-dim); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.background-switcher > div { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; }
+.background-switcher button { min-height: 28px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius-pill); background: transparent; color: var(--text-dim); font: inherit; font-size: 11px; font-weight: 700; }
+.background-switcher button:hover { background: rgba(47, 95, 237, .08); color: var(--accent); }
+.background-switcher button.active { border-color: var(--accent-soft-border); background: var(--accent-soft); color: var(--accent); }
+.home-background-midnight .background-switcher { border-color: rgba(109, 134, 185, .45); background: rgba(18, 29, 47, .72); }
+
 .home-nav {
   display: flex;
   align-items: center;

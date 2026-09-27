@@ -10,6 +10,15 @@ import { logout } from "../lib/api";
 import AuthDialog from "./_components/AuthDialog";
 import EmailVerificationBanner from "./_components/EmailVerificationBanner";
 
+const BACKGROUND_OPTIONS = [
+  { id: "slate", label: "Slate grid" },
+  { id: "aurora", label: "Aurora" },
+  { id: "paper", label: "Paper" },
+  { id: "midnight", label: "Midnight" },
+  { id: "warm", label: "Warm" },
+] as const;
+type BackgroundOption = (typeof BACKGROUND_OPTIONS)[number]["id"];
+
 export default function HomePage() {
   const router = useRouter();
   const auth = useCurrentUser();
@@ -22,6 +31,7 @@ export default function HomePage() {
   const [existingWorkspace, setExistingWorkspace] = useState<Workspace | null>(null);
   const [myWorkspaces, setMyWorkspaces] = useState<Workspace[]>([]);
   const [inviteToken, setInviteToken] = useState("");
+  const [background, setBackground] = useState<BackgroundOption>("slate");
   const inviteHandled = useRef(false);
 
   useEffect(() => {
@@ -34,6 +44,16 @@ export default function HomePage() {
       setAuthMode("signin");
     }
   }, []);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("mai:landing-background") as BackgroundOption | null;
+    if (stored && BACKGROUND_OPTIONS.some((option) => option.id === stored)) setBackground(stored);
+  }, []);
+
+  function chooseBackground(option: BackgroundOption) {
+    setBackground(option);
+    window.localStorage.setItem("mai:landing-background", option);
+  }
 
   useEffect(() => {
     if (!auth.user || !inviteToken || inviteHandled.current) return;
@@ -89,7 +109,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="home-shell">
+    <div className={`home-shell home-background-${background}`}>
       <nav className="home-nav">
         <BrandMark />
         {!auth.user && <div className="marketing-nav"><a href="#how-it-works">How it works</a><a href="#product">Product</a><a href="#security">Security</a><a href="#faq">FAQ</a></div>}
@@ -109,6 +129,7 @@ export default function HomePage() {
           </>}
         </div>
       </nav>
+      {!auth.user && <section className="background-switcher" aria-label="Landing page background options"><span>Background preview</span><div>{BACKGROUND_OPTIONS.map((option) => <button key={option.id} type="button" className={background === option.id ? "active" : ""} onClick={() => chooseBackground(option.id)} aria-pressed={background === option.id}>{option.label}</button>)}</div></section>}
       {authMode && <AuthDialog mode={authMode} returnTo={returnTo} error={error} onClose={() => setAuthMode(null)} />}
       {auth.user && <EmailVerificationBanner user={auth.user} />}
 
