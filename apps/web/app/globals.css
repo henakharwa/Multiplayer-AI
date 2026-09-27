@@ -407,7 +407,7 @@ textarea {
 .home-panel form {
   margin-top: auto;
 }
-.home-workspaces { grid-column: 1 / -1; width: min(100%, 460px); justify-self: center; padding: 20px; }
+.home-workspaces { grid-column: 1; width: 100%; padding: 20px; }
 .home-workspace-list { display: grid; gap: 9px; }
 .home-workspace-list article { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-subtle); }
 .home-workspace-details { display: grid; gap: 3px; min-width: 0; }
