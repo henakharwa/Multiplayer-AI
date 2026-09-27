@@ -10,15 +10,6 @@ import { logout } from "../lib/api";
 import AuthDialog from "./_components/AuthDialog";
 import EmailVerificationBanner from "./_components/EmailVerificationBanner";
 
-const MOTION_OPTIONS = [
-  { id: "still", label: "Still" },
-  { id: "calm", label: "Calm" },
-  { id: "float", label: "Float" },
-  { id: "shimmer", label: "Shimmer" },
-  { id: "spotlight", label: "Spotlight" },
-] as const;
-type MotionOption = (typeof MOTION_OPTIONS)[number]["id"];
-
 export default function HomePage() {
   const router = useRouter();
   const auth = useCurrentUser();
@@ -31,7 +22,6 @@ export default function HomePage() {
   const [existingWorkspace, setExistingWorkspace] = useState<Workspace | null>(null);
   const [myWorkspaces, setMyWorkspaces] = useState<Workspace[]>([]);
   const [inviteToken, setInviteToken] = useState("");
-  const [motion, setMotion] = useState<MotionOption>("still");
   const inviteHandled = useRef(false);
 
   useEffect(() => {
@@ -44,34 +34,6 @@ export default function HomePage() {
       setAuthMode("signin");
     }
   }, []);
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem("mai:landing-motion") as MotionOption | null;
-    if (stored && MOTION_OPTIONS.some((option) => option.id === stored)) setMotion(stored);
-  }, []);
-
-  function chooseMotion(option: MotionOption) {
-    setMotion(option);
-    window.localStorage.setItem("mai:landing-motion", option);
-  }
-
-  useEffect(() => {
-    const sections = Array.from(document.querySelectorAll<HTMLElement>("[data-motion-reveal]"));
-    if (motion === "still") {
-      sections.forEach((section) => section.classList.remove("motion-revealed"));
-      return;
-    }
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add("motion-revealed");
-          observer.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.16 });
-    sections.forEach((section) => observer.observe(section));
-    return () => observer.disconnect();
-  }, [motion]);
 
   useEffect(() => {
     if (!auth.user || !inviteToken || inviteHandled.current) return;
@@ -127,7 +89,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className={`home-shell home-background-slate home-motion-${motion}`}>
+    <div className="home-shell home-background-slate home-motion-calm">
       <nav className="home-nav">
         <BrandMark />
         {!auth.user && <div className="marketing-nav"><a href="#how-it-works">How it works</a><a href="#product">Product</a><a href="#security">Security</a><a href="#faq">FAQ</a></div>}
@@ -147,7 +109,6 @@ export default function HomePage() {
           </>}
         </div>
       </nav>
-      {!auth.user && <section className="motion-switcher" aria-label="Landing page motion options"><span>Motion preview</span><div>{MOTION_OPTIONS.map((option) => <button key={option.id} type="button" className={motion === option.id ? "active" : ""} onClick={() => chooseMotion(option.id)} aria-pressed={motion === option.id}>{option.label}</button>)}</div></section>}
       {authMode && <AuthDialog mode={authMode} returnTo={returnTo} error={error} onClose={() => setAuthMode(null)} />}
       {auth.user && <EmailVerificationBanner user={auth.user} />}
 
@@ -235,15 +196,15 @@ export default function HomePage() {
         )}
       </div>
       {!auth.user && <main className="marketing-content">
-        <section data-motion-reveal className="marketing-proof" aria-label="Product benefits"><div><strong>Shared context</strong><span>One conversation for your team and tools</span></div><div><strong>Human approval</strong><span>Agents propose; your team decides</span></div><div><strong>Persistent history</strong><span>Every decision stays visible</span></div><div><strong>Connected work</strong><span>GitHub, Slack, Linear, Notion, and Figma</span></div></section>
-        <section data-motion-reveal id="how-it-works" className="marketing-section marketing-steps"><p className="marketing-kicker">How it works</p><h2>Three steps. One shared workspace.</h2><div>{[["01", "Create or join a workspace", "Give your team one home for conversations, decisions, and connected work."], ["02", "Connect your tools", "Link GitHub, Slack, Linear, Notion, or Figma when you are ready."], ["03", "Ask, review, approve", "Agents bring context together and wait for human approval before write actions."]].map(([number, title, copy]) => <article key={number}><span>{number}</span><h3>{title}</h3><p>{copy}</p></article>)}</div></section>
-        <section data-motion-reveal id="demo" className="marketing-demo"><div><p className="marketing-kicker">Interactive product preview</p><h2>See the decision before it changes anything.</h2><p>Agents gather context from connected tools, present a clear proposal, and keep the final decision with your team.</p><button className="btn marketing-demo-cta" onClick={() => { setError(null); setAuthMode("signup"); }}>Try it in your workspace</button></div><article aria-label="Example approval card"><header><span>GitHub agent</span><small>Approval required</small></header><h3>Create issue: Improve empty-state guidance</h3><p>Target: <b>acme/web-app</b> · Nothing has changed yet.</p><footer><button>Review proposal</button><button>Approve</button></footer></article></section>
-        <section data-motion-reveal id="product" className="marketing-section"><p className="marketing-kicker">Designed around outcomes</p><h2>Keep work moving without losing control.</h2><div className="marketing-outcomes"><article><span>⌘</span><h3>Keep engineering moving</h3><p>Turn repository context into issues, pull-request summaries, and reviewed changes.</p></article><article><span>↗</span><h3>Turn discussion into decisions</h3><p>Bring team updates into one place and make the next step visible to everyone.</p></article><article><span>⌕</span><h3>Find project context</h3><p>Ask across your connected knowledge, task, design, and communication tools.</p></article><article><span>✓</span><h3>Review every external change</h3><p>Agents prepare the work; admins retain control over approvals and access.</p></article></div></section>
-        <section data-motion-reveal className="marketing-comparison"><div><p className="marketing-kicker">More than a chat window</p><h2>AI collaboration built for a real team.</h2></div><table><thead><tr><th></th><th>Typical AI chat</th><th>Multiplayer AI</th></tr></thead><tbody><tr><th>Context</th><td>One person&apos;s prompt</td><td>Shared conversations and connected tools</td></tr><tr><th>Decisions</th><td>Live outside the chat</td><td>Visible approvals and activity history</td></tr><tr><th>Actions</th><td>Manual follow-up</td><td>Proposed work with human confirmation</td></tr><tr><th>Collaboration</th><td>Copy and paste updates</td><td>Teammate mentions and handoffs</td></tr></tbody></table></section>
-        <section data-motion-reveal id="security" className="marketing-section marketing-safety"><p className="marketing-kicker">Control by design</p><h2>Agents propose. Your team approves.</h2><div><article><h3>Approval before writes</h3><p>External changes remain pending until an authorized teammate approves them.</p></article><article><h3>Workspace roles</h3><p>Admins manage people and permissions; editors collaborate with agents and tools.</p></article><article><h3>Visible activity trail</h3><p>See what was requested, what happened, and who approved each completed action.</p></article></div></section>
-        <section data-motion-reveal className="marketing-section marketing-activity"><div><p className="marketing-kicker">A workspace that explains itself</p><h2>Progress your whole team can see.</h2><p>Connected tools, active teammates, recent conversations, pending approvals, and completed actions are visible from the workspace instead of being hidden in private chats.</p></div><article><span>Workspace overview</span><strong>3 connected tools</strong><strong>2 pending approvals</strong><strong>12 conversations</strong><small>Everything important is one click away.</small></article></section>
-        <section data-motion-reveal id="faq" className="marketing-section marketing-faq"><p className="marketing-kicker">Questions, answered</p><h2>Start with the work your team already has.</h2><details open><summary>What can agents do in a workspace?</summary><p>They can summarize connected context, answer questions, prepare work, and propose supported write actions for human approval.</p></details><details><summary>Can teammates collaborate in the same conversation?</summary><p>Yes. Workspace conversations are shared, teammates can be mentioned, and actions include a visible audit trail.</p></details><details><summary>How are external changes controlled?</summary><p>Write actions are displayed as pending proposals. An authorized workspace admin must approve them before they run.</p></details><details><summary>Which tools can I connect?</summary><p>GitHub, Slack, Linear, Notion, and Figma are available from the workspace integration flow.</p></details></section>
-        <section data-motion-reveal className="marketing-final-cta"><p className="marketing-kicker">Ready when your team is</p><h2>Bring your tools, teammates, and decisions into one shared workspace.</h2><button className="btn" onClick={() => { setError(null); setAuthMode("signup"); }}>Create your workspace</button></section>
+        <section className="marketing-proof" aria-label="Product benefits"><div><strong>Shared context</strong><span>One conversation for your team and tools</span></div><div><strong>Human approval</strong><span>Agents propose; your team decides</span></div><div><strong>Persistent history</strong><span>Every decision stays visible</span></div><div><strong>Connected work</strong><span>GitHub, Slack, Linear, Notion, and Figma</span></div></section>
+        <section id="how-it-works" className="marketing-section marketing-steps"><p className="marketing-kicker">How it works</p><h2>Three steps. One shared workspace.</h2><div>{[["01", "Create or join a workspace", "Give your team one home for conversations, decisions, and connected work."], ["02", "Connect your tools", "Link GitHub, Slack, Linear, Notion, or Figma when you are ready."], ["03", "Ask, review, approve", "Agents bring context together and wait for human approval before write actions."]].map(([number, title, copy]) => <article key={number}><span>{number}</span><h3>{title}</h3><p>{copy}</p></article>)}</div></section>
+        <section id="demo" className="marketing-demo"><div><p className="marketing-kicker">Interactive product preview</p><h2>See the decision before it changes anything.</h2><p>Agents gather context from connected tools, present a clear proposal, and keep the final decision with your team.</p><button className="btn marketing-demo-cta" onClick={() => { setError(null); setAuthMode("signup"); }}>Try it in your workspace</button></div><article aria-label="Example approval card"><header><span>GitHub agent</span><small>Approval required</small></header><h3>Create issue: Improve empty-state guidance</h3><p>Target: <b>acme/web-app</b> · Nothing has changed yet.</p><footer><button>Review proposal</button><button>Approve</button></footer></article></section>
+        <section id="product" className="marketing-section"><p className="marketing-kicker">Designed around outcomes</p><h2>Keep work moving without losing control.</h2><div className="marketing-outcomes"><article><span>⌘</span><h3>Keep engineering moving</h3><p>Turn repository context into issues, pull-request summaries, and reviewed changes.</p></article><article><span>↗</span><h3>Turn discussion into decisions</h3><p>Bring team updates into one place and make the next step visible to everyone.</p></article><article><span>⌕</span><h3>Find project context</h3><p>Ask across your connected knowledge, task, design, and communication tools.</p></article><article><span>✓</span><h3>Review every external change</h3><p>Agents prepare the work; admins retain control over approvals and access.</p></article></div></section>
+        <section className="marketing-comparison"><div><p className="marketing-kicker">More than a chat window</p><h2>AI collaboration built for a real team.</h2></div><table><thead><tr><th></th><th>Typical AI chat</th><th>Multiplayer AI</th></tr></thead><tbody><tr><th>Context</th><td>One person&apos;s prompt</td><td>Shared conversations and connected tools</td></tr><tr><th>Decisions</th><td>Live outside the chat</td><td>Visible approvals and activity history</td></tr><tr><th>Actions</th><td>Manual follow-up</td><td>Proposed work with human confirmation</td></tr><tr><th>Collaboration</th><td>Copy and paste updates</td><td>Teammate mentions and handoffs</td></tr></tbody></table></section>
+        <section id="security" className="marketing-section marketing-safety"><p className="marketing-kicker">Control by design</p><h2>Agents propose. Your team approves.</h2><div><article><h3>Approval before writes</h3><p>External changes remain pending until an authorized teammate approves them.</p></article><article><h3>Workspace roles</h3><p>Admins manage people and permissions; editors collaborate with agents and tools.</p></article><article><h3>Visible activity trail</h3><p>See what was requested, what happened, and who approved each completed action.</p></article></div></section>
+        <section className="marketing-section marketing-activity"><div><p className="marketing-kicker">A workspace that explains itself</p><h2>Progress your whole team can see.</h2><p>Connected tools, active teammates, recent conversations, pending approvals, and completed actions are visible from the workspace instead of being hidden in private chats.</p></div><article><span>Workspace overview</span><strong>3 connected tools</strong><strong>2 pending approvals</strong><strong>12 conversations</strong><small>Everything important is one click away.</small></article></section>
+        <section id="faq" className="marketing-section marketing-faq"><p className="marketing-kicker">Questions, answered</p><h2>Start with the work your team already has.</h2><details open><summary>What can agents do in a workspace?</summary><p>They can summarize connected context, answer questions, prepare work, and propose supported write actions for human approval.</p></details><details><summary>Can teammates collaborate in the same conversation?</summary><p>Yes. Workspace conversations are shared, teammates can be mentioned, and actions include a visible audit trail.</p></details><details><summary>How are external changes controlled?</summary><p>Write actions are displayed as pending proposals. An authorized workspace admin must approve them before they run.</p></details><details><summary>Which tools can I connect?</summary><p>GitHub, Slack, Linear, Notion, and Figma are available from the workspace integration flow.</p></details></section>
+        <section className="marketing-final-cta"><p className="marketing-kicker">Ready when your team is</p><h2>Bring your tools, teammates, and decisions into one shared workspace.</h2><button className="btn" onClick={() => { setError(null); setAuthMode("signup"); }}>Create your workspace</button></section>
       </main>}
     </div>
   );
