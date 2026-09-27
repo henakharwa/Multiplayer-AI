@@ -750,7 +750,15 @@ export default function WorkspaceRoomPage() {
   );
 }
 
-function BrandGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="12" height="12" rx="3" fill="none" stroke="currentColor" strokeWidth="2"/><rect x="9" y="9" width="12" height="12" rx="3" fill="none" stroke="currentColor" strokeWidth="2"/></svg>; }
+function BrandGlyph() {
+  return <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <ellipse cx="12" cy="12" rx="10" ry="4.4" stroke="#2F5FED" strokeWidth="1.7" transform="rotate(-30 12 12)" />
+    <ellipse cx="12" cy="12" rx="10" ry="4.4" stroke="#8D70FF" strokeWidth="1.7" transform="rotate(30 12 12)" />
+    <circle cx="12" cy="12" r="3.35" fill="#17244A" />
+    <circle cx="19.35" cy="5.8" r="1.8" fill="#2F5FED" />
+    <circle cx="4.65" cy="18.2" r="1.8" fill="#8D70FF" />
+  </svg>;
+}
 function AgentSelector({ selected, selectedName, open, onToggle, onSelect, compact = false }: { selected: AgentKind; selectedName: string; open: boolean; onToggle: () => void; onSelect: (agent: AgentKind) => void; compact?: boolean }) {
   const [query, setQuery] = useState("");
   const [pickerPlacement, setPickerPlacement] = useState<"above" | "below">("above");
