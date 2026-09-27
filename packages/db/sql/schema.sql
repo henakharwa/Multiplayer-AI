@@ -131,6 +131,8 @@ CREATE TABLE IF NOT EXISTS conversations (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS conversations_workspace_updated_idx
   ON conversations (workspace_id, updated_at DESC);
 

@@ -5,6 +5,7 @@ import type {
   AuditEventType,
   ChatMessage,
   Conversation,
+  WorkspaceInvitation,
   WorkspaceNotification,
   GithubIntegrationConfig,
   IntegrationConfig,
@@ -133,6 +134,23 @@ export async function deleteWorkspaceInvitation(token: string): Promise<void> {
   await getPool().query("DELETE FROM workspace_invitations WHERE token_hash = $1", [hashSessionToken(token)]);
 }
 
+export async function listWorkspaceInvitations(workspaceId: string): Promise<WorkspaceInvitation[]> {
+  const result = await getPool().query(
+    `SELECT token_hash, email, role, created_at, expires_at FROM workspace_invitations
+     WHERE workspace_id = $1 AND accepted_at IS NULL AND expires_at > now() ORDER BY created_at DESC`,
+    [workspaceId]
+  );
+  return result.rows.map((row) => ({ id: row.token_hash, email: row.email, role: row.role as WorkspaceRole, createdAt: row.created_at.toISOString(), expiresAt: row.expires_at.toISOString() }));
+}
+
+export async function revokeWorkspaceInvitation(workspaceId: string, invitationId: string): Promise<boolean> {
+  const result = await getPool().query(
+    "DELETE FROM workspace_invitations WHERE workspace_id = $1 AND token_hash = $2 AND accepted_at IS NULL",
+    [workspaceId, invitationId]
+  );
+  return result.rowCount === 1;
+}
+
 export type AcceptWorkspaceInvitationResult =
   | { kind: "accepted"; workspaceId: string }
   | { kind: "invalid" }
@@ -218,7 +236,7 @@ function toWorkspace(row: {
 
 const MESSAGE_COLUMNS = "id, workspace_id, conversation_id, role, author_name, user_id, content, created_at, mentions_agent, mentioned_user_ids";
 
-const CONVERSATION_COLUMNS = "id, workspace_id, title, created_by_user_id, created_at, updated_at";
+const CONVERSATION_COLUMNS = "id, workspace_id, title, created_by_user_id, created_at, updated_at, pinned_at, archived_at";
 
 /** A deliberately small database readiness probe for the deployment health endpoint. */
 export async function checkDatabaseHealth(): Promise<void> {
@@ -236,10 +254,34 @@ export async function createConversation(input: { workspaceId: string; title?: s
 
 export async function listConversations(workspaceId: string): Promise<Conversation[]> {
   const result = await getPool().query(
-    `SELECT ${CONVERSATION_COLUMNS} FROM conversations WHERE workspace_id = $1 ORDER BY updated_at DESC, created_at DESC`,
+    `SELECT ${CONVERSATION_COLUMNS} FROM conversations WHERE workspace_id = $1 ORDER BY archived_at NULLS FIRST, pinned_at DESC NULLS LAST, updated_at DESC, created_at DESC`,
     [workspaceId]
   );
   return result.rows.map(toConversation);
+}
+
+export async function renameConversation(workspaceId: string, id: string, title: string): Promise<Conversation | null> {
+  const result = await getPool().query(
+    `UPDATE conversations SET title = $3, updated_at = now() WHERE workspace_id = $1 AND id = $2 RETURNING ${CONVERSATION_COLUMNS}`,
+    [workspaceId, id, title.trim().slice(0, 100)]
+  );
+  return result.rows[0] ? toConversation(result.rows[0]) : null;
+}
+
+export async function setConversationPinned(workspaceId: string, id: string, pinned: boolean): Promise<Conversation | null> {
+  const result = await getPool().query(
+    `UPDATE conversations SET pinned_at = CASE WHEN $3 THEN now() ELSE NULL END WHERE workspace_id = $1 AND id = $2 RETURNING ${CONVERSATION_COLUMNS}`,
+    [workspaceId, id, pinned]
+  );
+  return result.rows[0] ? toConversation(result.rows[0]) : null;
+}
+
+export async function setConversationArchived(workspaceId: string, id: string, archived: boolean): Promise<Conversation | null> {
+  const result = await getPool().query(
+    `UPDATE conversations SET archived_at = CASE WHEN $3 THEN now() ELSE NULL END WHERE workspace_id = $1 AND id = $2 RETURNING ${CONVERSATION_COLUMNS}`,
+    [workspaceId, id, archived]
+  );
+  return result.rows[0] ? toConversation(result.rows[0]) : null;
 }
 
 export async function getConversation(workspaceId: string, id: string): Promise<Conversation | null> {
@@ -257,8 +299,8 @@ export async function deleteConversation(workspaceId: string, id: string): Promi
   return result.rowCount === 1;
 }
 
-function toConversation(row: { id: string; workspace_id: string; title: string; created_by_user_id: string | null; created_at: Date; updated_at: Date }): Conversation {
-  return { id: row.id, workspaceId: row.workspace_id, title: row.title, createdByUserId: row.created_by_user_id, createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString() };
+function toConversation(row: { id: string; workspace_id: string; title: string; created_by_user_id: string | null; created_at: Date; updated_at: Date; pinned_at: Date | null; archived_at: Date | null }): Conversation {
+  return { id: row.id, workspaceId: row.workspace_id, title: row.title, createdByUserId: row.created_by_user_id, createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(), pinnedAt: row.pinned_at ? row.pinned_at.toISOString() : null, archivedAt: row.archived_at ? row.archived_at.toISOString() : null };
 }
 
 export async function insertMessage(input: {
@@ -381,6 +423,11 @@ export async function getWorkspaceRole(workspaceId: string, userId: string): Pro
 
 export async function setWorkspaceMemberRole(workspaceId: string, userId: string, role: WorkspaceRole): Promise<void> {
   await getPool().query(`UPDATE workspace_members SET role = $3 WHERE workspace_id = $1 AND user_id = $2`, [workspaceId, userId, role]);
+}
+
+export async function removeWorkspaceMember(workspaceId: string, userId: string): Promise<boolean> {
+  const result = await getPool().query("DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2", [workspaceId, userId]);
+  return result.rowCount === 1;
 }
 
 export async function notifyWorkspaceMembers(input: { workspaceId: string; conversationId?: string | null; kind: WorkspaceNotification["kind"]; text: string; excludeUserIds?: string[] }): Promise<void> {

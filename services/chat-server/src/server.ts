@@ -298,6 +298,21 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.status(201).json({ email: invite.email, role: invite.role, expiresAt: invite.expiresAt });
   });
 
+  app.get("/workspaces/:id/invitations", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin"]))) return;
+    const workspaceId = paramString(req.params.id);
+    if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "invalid workspace id" });
+    res.json(await db.listWorkspaceInvitations(workspaceId));
+  });
+
+  app.delete("/workspaces/:id/invitations/:invitationId", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin"]))) return;
+    const workspaceId = paramString(req.params.id);
+    if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "invalid workspace id" });
+    if (!(await db.revokeWorkspaceInvitation(workspaceId, paramString(req.params.invitationId)))) return res.status(404).json({ error: "invitation not found" });
+    res.status(204).end();
+  });
+
   app.post("/workspace-invitations/accept", requireAuth, async (req: Request, res: Response) => {
     const token = typeof req.body?.token === "string" ? req.body.token : "";
     if (!token || token.length > 256) return res.status(400).json({ error: "A valid invitation is required." });
@@ -345,6 +360,18 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.status(204).end();
   });
 
+  app.delete("/workspaces/:id/members/:userId", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin"]))) return;
+    const workspaceId = paramString(req.params.id);
+    const userId = paramString(req.params.userId);
+    const members = await db.listWorkspaceMembersWithRoles(workspaceId);
+    const target = members.find((member) => member.id === userId);
+    if (!target) return res.status(404).json({ error: "member not found" });
+    if (target.role === "admin" && members.filter((member) => member.role === "admin").length === 1) return res.status(409).json({ error: "A workspace must keep at least one admin." });
+    if (!(await db.removeWorkspaceMember(workspaceId, userId))) return res.status(404).json({ error: "member not found" });
+    res.status(204).end();
+  });
+
   app.get("/workspaces/:id/messages", async (req: Request, res: Response) => {
     if (!UUID_RE.test(paramString(req.params.id))) return res.status(400).json({ error: "invalid workspace id" });
     const workspace = await db.getWorkspaceById(paramString(req.params.id));
@@ -372,6 +399,23 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!(await db.getWorkspaceById(workspaceId))) return res.status(404).json({ error: "not found" });
     const title = typeof req.body?.title === "string" ? req.body.title : undefined;
     res.status(201).json(await db.createConversation({ workspaceId, title, createdByUserId: req.user!.id }));
+  });
+
+  app.patch("/workspaces/:id/conversations/:conversationId", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const workspaceId = paramString(req.params.id);
+    const conversationId = paramString(req.params.conversationId);
+    if (!UUID_RE.test(workspaceId) || !UUID_RE.test(conversationId)) return res.status(400).json({ error: "invalid conversation id" });
+    const title = typeof req.body?.title === "string" ? req.body.title.trim() : null;
+    const pinned = typeof req.body?.pinned === "boolean" ? req.body.pinned : null;
+    const archived = typeof req.body?.archived === "boolean" ? req.body.archived : null;
+    if (title !== null && (!title || title.length > 100)) return res.status(400).json({ error: "title must be between 1 and 100 characters" });
+    let conversation = await db.getConversation(workspaceId, conversationId);
+    if (!conversation) return res.status(404).json({ error: "conversation not found" });
+    if (title !== null) conversation = await db.renameConversation(workspaceId, conversationId, title);
+    if (pinned !== null) conversation = await db.setConversationPinned(workspaceId, conversationId, pinned);
+    if (archived !== null) conversation = await db.setConversationArchived(workspaceId, conversationId, archived);
+    res.json(conversation);
   });
 
   app.delete("/workspaces/:id/conversations/:conversationId", async (req: Request, res: Response) => {

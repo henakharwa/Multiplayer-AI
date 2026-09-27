@@ -479,8 +479,11 @@ textarea {
 .workspace-conversation-row { position: relative; display: flex; align-items: center; border-radius: 9px; }.workspace-conversation-row.active,.workspace-conversation-row:hover { background: #eef2f6; color: #111827; }
 .workspace-conversation-item { display: flex; align-items: center; gap: 7px; min-width: 0; width: 100%; overflow: hidden; border: 0; border-radius: 9px; background: transparent; color: #374151; cursor: pointer; font: inherit; font-size: 14px; line-height: 1.3; padding: 9px 34px 9px 10px; text-align: left; white-space: nowrap; }
 .workspace-conversation-item > span { overflow: hidden; text-overflow: ellipsis; }
+.workspace-conversation-row.archived { opacity: .62; }
+.workspace-pin { display: inline; margin-right: 4px; color: #6b67d8; font-size: 13px; }
+.workspace-archived-label { margin-left: auto; color: #7b8492; font-size: 10px; }
 .workspace-unread-dot { width: 7px; height: 7px; margin-left: auto; border-radius: 50%; background: #3395f4; flex: 0 0 auto; }
-.workspace-conversation-menu { position: absolute; right: 4px; top: 50%; z-index: 7; transform: translateY(-50%); }.workspace-conversation-more { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--text-dim); cursor: pointer; }.workspace-conversation-more:hover { background: rgba(255,255,255,.75); color: var(--text); }.workspace-conversation-more svg { width: 16px; height: 16px; }.workspace-conversation-popover { position: absolute; right: 0; top: 31px; width: 132px; padding: 5px; border: 1px solid var(--border); border-radius: 9px; background: white; box-shadow: 0 8px 22px rgba(18, 26, 40, .16); }.workspace-conversation-popover button { width: 100%; padding: 8px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--danger); cursor: pointer; font: inherit; font-size: 12px; text-align: left; }.workspace-conversation-popover button:hover { background: var(--danger-soft); }
+.workspace-conversation-menu { position: absolute; right: 4px; top: 50%; z-index: 7; transform: translateY(-50%); }.workspace-conversation-more { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--text-dim); cursor: pointer; }.workspace-conversation-more:hover { background: rgba(255,255,255,.75); color: var(--text); }.workspace-conversation-more svg { width: 16px; height: 16px; }.workspace-conversation-popover { position: absolute; right: 0; top: 31px; display: grid; width: 146px; padding: 5px; border: 1px solid var(--border); border-radius: 9px; background: white; box-shadow: 0 8px 22px rgba(18, 26, 40, .16); }.workspace-conversation-popover button { width: 100%; padding: 8px 9px; border: 0; border-radius: 6px; background: transparent; color: #374151; cursor: pointer; font: inherit; font-size: 12px; text-align: left; }.workspace-conversation-popover button.danger { color: var(--danger); }.workspace-conversation-popover button:hover { background: var(--bg-subtle); }.workspace-conversation-popover button.danger:hover { background: var(--danger-soft); }
 .workspace-notification-wrap { position: relative; z-index: 20; }
 .workspace-notification-wrap > button { position: relative; }
 .workspace-notification-badge { position: absolute; top: -3px; right: -4px; min-width: 16px; padding: 1px 4px; border-radius: 10px; background: #e5484d; color: white; font-size: 10px; font-weight: 700; line-height: 14px; }
@@ -509,10 +512,22 @@ textarea {
 .home-existing-workspace code { padding: 2px 6px; border-radius: 4px; background: #e4ecff; color: #244db5; font-weight: 700; }
 .home-existing-workspace .btn { justify-self: start; min-height: 34px; }
 .access-member-list { border-top: 1px solid #edf0f4; }
-.access-member { display: grid; grid-template-columns: 34px minmax(0,1fr) 104px; align-items: center; gap: 10px; padding: 12px 2px; border-bottom: 1px solid #edf0f4; }
+.access-member { display: grid; grid-template-columns: 34px minmax(0,1fr) 104px auto; align-items: center; gap: 10px; padding: 12px 2px; border-bottom: 1px solid #edf0f4; }
 .access-member strong { min-width: 0; font-size: 14px; }
 .access-member strong small { display: block; overflow: hidden; color: #7a8492; font-size: 12px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
 .access-member select { padding: 7px 8px; border: 1px solid #d5dae1; border-radius: 8px; background: white; color: #293345; font: inherit; font-size: 13px; }
+.access-remove, .access-invitations button { padding: 6px 8px; border: 0; border-radius: 7px; background: transparent; color: #b33b3b; cursor: pointer; font: inherit; font-size: 12px; font-weight: 650; }
+.access-remove:hover, .access-invitations button:hover { background: #fff0f0; }
+.access-invitations { margin-top: 18px; padding-top: 14px; border-top: 1px solid #edf0f4; }
+.access-invitations h3 { margin: 0 0 8px; color: #3f4c5e; font-size: 13px; }
+.access-invitations > p { margin: 0; color: #7a8492; font-size: 13px; }
+.access-invitations > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 2px; border-top: 1px solid #f0f2f5; }
+.access-invitations aside { display: flex; align-items: center; gap: 2px; }
+.access-invitations aside button:first-child { color: #306dc5; }
+.access-invitations aside button:first-child:hover { background: #edf3ff; }
+.access-invitations strong, .access-invitations small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.access-invitations strong { color: #334155; font-size: 13px; }
+.access-invitations small { margin-top: 2px; color: #7a8492; font-size: 11px; }
 .workspace-nav { display: grid; gap: 3px; margin: 26px 0 18px; }
 .workspace-nav a { display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 9px; color: var(--text-dim); font-size: 14px; font-weight: 550; text-decoration: none; }
 .workspace-nav a:hover, .workspace-nav a.active { background: #efefef; color: var(--text); }

@@ -1,4 +1,4 @@
-import type { AuditEvent, AuditEventType, ChatMessage, Conversation, GithubRepoSummary, IntegrationConfig, PendingAction, Workspace, WorkspaceMember, WorkspaceNotification, WorkspaceRole } from "@mai-chat/shared-types";
+import type { AuditEvent, AuditEventType, ChatMessage, Conversation, GithubRepoSummary, IntegrationConfig, PendingAction, Workspace, WorkspaceInvitation, WorkspaceMember, WorkspaceNotification, WorkspaceRole } from "@mai-chat/shared-types";
 import { CHAT_SERVER_URL } from "./config";
 
 function authenticatedFetch(input: RequestInfo | URL, init?: RequestInit) {
@@ -61,6 +61,11 @@ export async function updateWorkspaceMemberRole(workspaceId: string, userId: str
   await parseJsonOrThrow(res);
 }
 
+export async function removeWorkspaceMember(workspaceId: string, userId: string): Promise<void> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`, { method: "DELETE" });
+  if (!res.ok) await parseJsonOrThrow(res);
+}
+
 export async function sendWorkspaceInvitation(workspaceId: string, input: { email: string; role: WorkspaceRole }): Promise<{ email: string; role: WorkspaceRole; expiresAt: string }> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/invitations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
   return (await parseJsonOrThrow(res)) as { email: string; role: WorkspaceRole; expiresAt: string };
@@ -69,6 +74,16 @@ export async function sendWorkspaceInvitation(workspaceId: string, input: { emai
 export async function acceptWorkspaceInvitation(token: string): Promise<{ workspaceId: string }> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspace-invitations/accept`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token }) });
   return (await parseJsonOrThrow(res)) as { workspaceId: string };
+}
+
+export async function listWorkspaceInvitations(workspaceId: string): Promise<WorkspaceInvitation[]> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/invitations`);
+  return (await parseJsonOrThrow(res)) as WorkspaceInvitation[];
+}
+
+export async function revokeWorkspaceInvitation(workspaceId: string, invitationId: string): Promise<void> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}`, { method: "DELETE" });
+  if (!res.ok) await parseJsonOrThrow(res);
 }
 
 export async function listMessages(workspaceId: string, conversationId: string): Promise<ChatMessage[]> {
@@ -89,6 +104,11 @@ export async function createConversation(workspaceId: string): Promise<Conversat
 export async function deleteConversation(workspaceId: string, conversationId: string): Promise<Conversation[]> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" });
   return (await parseJsonOrThrow(res)) as Conversation[];
+}
+
+export async function updateConversation(workspaceId: string, conversationId: string, input: { title?: string; pinned?: boolean; archived?: boolean }): Promise<Conversation> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/conversations/${encodeURIComponent(conversationId)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
+  return (await parseJsonOrThrow(res)) as Conversation;
 }
 
 export async function listNotifications(workspaceId: string): Promise<WorkspaceNotification[]> {

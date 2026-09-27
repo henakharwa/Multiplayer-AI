@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Conversation, GithubRepoSummary, IntegrationConfig, Workspace, WorkspaceMember, WorkspaceRole } from "@mai-chat/shared-types";
-import { createConversation, deleteConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, disconnectIntegration, githubOAuthStartUrl, sendWorkspaceInvitation, ApiError } from "../../../lib/api";
+import { createConversation, deleteConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, removeWorkspaceMember, listWorkspaceInvitations, revokeWorkspaceInvitation, disconnectIntegration, githubOAuthStartUrl, sendWorkspaceInvitation, updateConversation, ApiError } from "../../../lib/api";
 import { useWorkspaceChat } from "../../../lib/useWorkspaceChat";
 import { colorForName, initialsForName } from "../../../lib/avatar";
 import ConnectChannelModal from "../../_components/ConnectChannelModal";
@@ -377,6 +377,21 @@ export default function WorkspaceRoomPage() {
     }
   }
 
+  async function changeConversation(conversation: Conversation, input: { title?: string; pinned?: boolean; archived?: boolean }): Promise<void> {
+    try {
+      const updated = await updateConversation(workspaceId, conversation.id, input);
+      setConversations((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setConversationMenu(null);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Could not update this conversation.");
+    }
+  }
+
+  function renameConversation(conversation: Conversation): void {
+    const title = window.prompt("Rename conversation", conversation.title)?.trim();
+    if (title && title !== conversation.title) void changeConversation(conversation, { title });
+  }
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat.messages.length]);
@@ -532,11 +547,11 @@ export default function WorkspaceRoomPage() {
             <span>Conversations</span><ChevronGlyph direction={conversationsOpen ? "up" : "down"} />
           </button>
           {conversationsOpen && conversations.map((conversation) => (
-            <div className={`workspace-conversation-row${conversation.id === selectedConversationId ? " active" : ""}`} key={conversation.id}>
+            <div className={`workspace-conversation-row${conversation.id === selectedConversationId ? " active" : ""}${conversation.archivedAt ? " archived" : ""}`} key={conversation.id}>
               <button type="button" className="workspace-conversation-item" onClick={() => selectConversation(conversation.id)} title={conversation.title}>
-                <span>{conversation.title}</span>{chat.unreadConversationIds.includes(conversation.id) && <i className="workspace-unread-dot" aria-label="Unread messages" />}
+                <span>{conversation.pinnedAt && <b className="workspace-pin" aria-label="Pinned">⌖</b>}{conversation.title}</span>{conversation.archivedAt && <small className="workspace-archived-label">Archived</small>}{chat.unreadConversationIds.includes(conversation.id) && <i className="workspace-unread-dot" aria-label="Unread messages" />}
               </button>
-              {canEdit && <div className="workspace-conversation-menu"><button type="button" className="workspace-conversation-more" aria-label={`More options for ${conversation.title}`} aria-expanded={conversationMenu === conversation.id} onClick={() => setConversationMenu((current) => current === conversation.id ? null : conversation.id)}><MoreGlyph /></button>{conversationMenu === conversation.id && <div className="workspace-conversation-popover"><button type="button" onClick={() => void removeConversation(conversation)}>Delete chat</button></div>}</div>}
+              {canEdit && <div className="workspace-conversation-menu"><button type="button" className="workspace-conversation-more" aria-label={`More options for ${conversation.title}`} aria-expanded={conversationMenu === conversation.id} onClick={() => setConversationMenu((current) => current === conversation.id ? null : conversation.id)}><MoreGlyph /></button>{conversationMenu === conversation.id && <div className="workspace-conversation-popover"><button type="button" onClick={() => renameConversation(conversation)}>Rename</button><button type="button" onClick={() => void changeConversation(conversation, { pinned: !conversation.pinnedAt })}>{conversation.pinnedAt ? "Unpin chat" : "Pin chat"}</button><button type="button" onClick={() => void changeConversation(conversation, { archived: !conversation.archivedAt })}>{conversation.archivedAt ? "Restore chat" : "Archive chat"}</button><button type="button" className="danger" onClick={() => void removeConversation(conversation)}>Delete chat</button></div>}</div>}
             </div>
           ))}
         </div>
@@ -791,13 +806,25 @@ function ToolIcon({ tool }: { tool: Exclude<IntegrationConfig["type"], "project"
 function AgentIcon({ agent }: { agent: AgentKind }) { return <span className={`agent-logo ${agent}`}>{agent === "project" ? <AgentGlyph /> : <ToolIcon tool={agent} />}</span>; }
 function AccessManager({ workspaceId, members, onClose, onChanged }: { workspaceId: string; members: WorkspaceMember[]; onClose: () => void; onChanged: (members: WorkspaceMember[]) => void }) {
   const [error, setError] = useState<string | null>(null);
+  const [invitations, setInvitations] = useState<Array<{ id: string; email: string; role: WorkspaceRole; expiresAt: string }>>([]);
+  useEffect(() => { listWorkspaceInvitations(workspaceId).then(setInvitations).catch(() => {}); }, [workspaceId]);
   async function changeRole(member: WorkspaceMember, role: WorkspaceRole) {
     try {
       await updateWorkspaceMemberRole(workspaceId, member.id, role);
       onChanged(members.map((item) => item.id === member.id ? { ...item, role } : item));
     } catch (err) { setError(err instanceof Error ? err.message : "Could not change role."); }
   }
-  return <div className="access-modal-backdrop" role="presentation"><section className="access-modal" role="dialog" aria-modal="true" aria-label="Manage workspace access"><header><div><p>Workspace access</p><h2>Members and roles</h2></div><button onClick={onClose} aria-label="Close">×</button></header><p className="access-modal-intro">Admins manage access and approve write actions. Editors can connect tools and work with agents.</p>{error && <p className="error-text">{error}</p>}<div className="access-member-list">{members.map((member) => <div className="access-member" key={member.id}><span className="avatar" style={{ background: colorForName(member.displayName) }}>{initialsForName(member.displayName)}</span><strong>{member.displayName}<small>{member.email ?? member.username}</small></strong><select value={member.role} onChange={(event) => void changeRole(member, event.target.value as WorkspaceRole)} aria-label={`Role for ${member.displayName}`}><option value="admin">Admin</option><option value="editor">Editor</option></select></div>)}</div></section></div>;
+  async function removeMember(member: WorkspaceMember) {
+    if (!window.confirm(`Remove ${member.displayName} from this workspace?`)) return;
+    try { await removeWorkspaceMember(workspaceId, member.id); onChanged(members.filter((item) => item.id !== member.id)); } catch (err) { setError(err instanceof Error ? err.message : "Could not remove member."); }
+  }
+  async function revokeInvitation(invitationId: string) {
+    try { await revokeWorkspaceInvitation(workspaceId, invitationId); setInvitations((current) => current.filter((item) => item.id !== invitationId)); } catch (err) { setError(err instanceof Error ? err.message : "Could not revoke invitation."); }
+  }
+  async function resendInvitation(invite: { id: string; email: string; role: WorkspaceRole }) {
+    try { await sendWorkspaceInvitation(workspaceId, { email: invite.email, role: invite.role }); await revokeWorkspaceInvitation(workspaceId, invite.id); setInvitations(await listWorkspaceInvitations(workspaceId)); } catch (err) { setError(err instanceof Error ? err.message : "Could not resend invitation."); }
+  }
+  return <div className="access-modal-backdrop" role="presentation"><section className="access-modal" role="dialog" aria-modal="true" aria-label="Manage workspace access"><header><div><p>Workspace access</p><h2>Members and roles</h2></div><button onClick={onClose} aria-label="Close">×</button></header><p className="access-modal-intro">Admins manage access and approve write actions. Editors can connect tools and work with agents.</p>{error && <p className="error-text">{error}</p>}<div className="access-member-list">{members.map((member) => <div className="access-member" key={member.id}><span className="avatar" style={{ background: colorForName(member.displayName) }}>{initialsForName(member.displayName)}</span><strong>{member.displayName}<small>{member.email ?? member.username}</small></strong><select value={member.role} onChange={(event) => void changeRole(member, event.target.value as WorkspaceRole)} aria-label={`Role for ${member.displayName}`}><option value="admin">Admin</option><option value="editor">Editor</option></select><button className="access-remove" type="button" onClick={() => void removeMember(member)}>Remove</button></div>)}</div><section className="access-invitations"><h3>Pending invitations</h3>{invitations.length ? invitations.map((invite) => <div key={invite.id}><span><strong>{invite.email}</strong><small>{invite.role} · expires {new Date(invite.expiresAt).toLocaleDateString()}</small></span><aside><button type="button" onClick={() => void resendInvitation(invite)}>Resend</button><button type="button" onClick={() => void revokeInvitation(invite.id)}>Revoke</button></aside></div>) : <p>No pending invitations.</p>}</section></section></div>;
 }
 function SearchGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" strokeWidth="2"/><path d="m16 16 4 4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>; }
 function PlusGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>; }

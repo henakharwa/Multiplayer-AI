@@ -24,6 +24,16 @@ export interface Conversation {
   createdByUserId: string | null;
   createdAt: string;
   updatedAt: string;
+  pinnedAt: string | null;
+  archivedAt: string | null;
+}
+
+export interface WorkspaceInvitation {
+  id: string;
+  email: string;
+  role: WorkspaceRole;
+  createdAt: string;
+  expiresAt: string;
 }
 
 export interface WorkspaceNotification {
