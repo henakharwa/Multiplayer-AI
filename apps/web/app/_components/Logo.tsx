@@ -9,7 +9,7 @@ export default function BrandMark({ size = 26, withWordmark = true }: { size?: n
         <rect x="2" y="2" width="17" height="17" rx="6" fill="#2F5FED" />
         <rect x="9" y="9" width="17" height="17" rx="6" fill="#7C5CFF" fillOpacity="0.88" />
       </svg>
-      {withWordmark && <span className="brand-mark-word">Multiplayer AI</span>}
+      {withWordmark && <span className="brand-mark-word">Nexus</span>}
     </span>
   );
 }

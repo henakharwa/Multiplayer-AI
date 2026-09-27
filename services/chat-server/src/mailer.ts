@@ -41,7 +41,7 @@ export interface Mailer {
 export function defaultMailerConfig(): MailerConfig {
   return {
     resendApiKey: process.env.RESEND_API_KEY || undefined,
-    fromAddress: process.env.EMAIL_FROM_ADDRESS || (process.env.GMAIL_SMTP_USER ? `Multiplayer AI <${process.env.GMAIL_SMTP_USER}>` : "Multiplayer AI <onboarding@resend.dev>"),
+    fromAddress: process.env.EMAIL_FROM_ADDRESS || (process.env.GMAIL_SMTP_USER ? `Nexus <${process.env.GMAIL_SMTP_USER}>` : "Nexus <onboarding@resend.dev>"),
     gmailUser: process.env.GMAIL_SMTP_USER || undefined,
     gmailAppPassword: process.env.GMAIL_SMTP_APP_PASSWORD || undefined,
     gmailApiClientId: process.env.GMAIL_API_CLIENT_ID || undefined,

@@ -515,7 +515,7 @@ export default function WorkspaceRoomPage() {
 
       <aside className="workspace-sidebar">
         <div className="workspace-sidebar-top">
-          <Link href="/" className="workspace-brand" aria-label="Multiplayer AI home"><BrandGlyph /><span>Work</span></Link>
+          <Link href="/" className="workspace-brand" aria-label="Nexus home"><BrandGlyph /><span>Nexus</span></Link>
           <div className="workspace-sidebar-icons">
             <div className="workspace-notification-wrap">
               <button type="button" title="Notifications" onClick={() => { setNotificationsOpen((open) => !open); setNotifications((current) => current.map((item) => ({ ...item, read: true }))); void markNotificationsRead(workspaceId); }} aria-label={`Notifications${unreadNotifications ? ` (${unreadNotifications} unread)` : ""}`}><BellGlyph />{unreadNotifications > 0 && <span className="workspace-notification-badge">{unreadNotifications > 9 ? "9+" : unreadNotifications}</span>}</button>

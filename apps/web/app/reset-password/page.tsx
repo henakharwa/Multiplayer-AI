@@ -36,7 +36,7 @@ function ResetPasswordPageInner() {
         <div className="auth-form" style={{ margin: 0 }}>
           <h1>Choose a new password</h1>
           {done ? (
-            <p className="lede">Password updated. Taking you back to Multiplayer AI…</p>
+            <p className="lede">Password updated. Taking you back to Nexus…</p>
           ) : (
             <form onSubmit={submit}>
               <div className="field">
@@ -62,7 +62,7 @@ function ResetPasswordPageInner() {
             </form>
           )}
           {!token && !done && <p className="panel-hint">This link is missing its token — request a new one from the sign-in screen&apos;s &quot;Forgot password?&quot; link.</p>}
-          <p className="auth-switch"><Link href="/">Back to Multiplayer AI</Link></p>
+          <p className="auth-switch"><Link href="/">Back to Nexus</Link></p>
         </div>
       </div>
     </div>

@@ -14,9 +14,9 @@ export async function sendVerificationEmail(user: { id: string }, email: string,
   link.searchParams.set("token", token);
   await mailer.send({
     to: email,
-    subject: "Verify your email for Multiplayer AI",
+    subject: "Verify your email for Nexus",
     text:
-      `Welcome to Multiplayer AI! Confirm this is your email address:\n\n${link.toString()}\n\n` +
+      `Welcome to Nexus! Confirm this is your email address:\n\n${link.toString()}\n\n` +
       `This link expires in 24 hours. If you didn't sign up, you can ignore this email.`,
   });
 }

@@ -38,7 +38,7 @@ export function registerPasswordResetRoutes(app: Express, config: UserAuthConfig
         link.searchParams.set("token", created.token);
         await mailer.send({
           to: email,
-          subject: "Reset your Multiplayer AI password",
+          subject: "Reset your Nexus password",
           text:
             `Someone (hopefully you) asked to reset the password on this account.\n\n${link.toString()}\n\n` +
             `This link expires in 1 hour and can only be used once. If you didn't request this, your password ` +

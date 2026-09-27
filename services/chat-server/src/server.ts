@@ -273,7 +273,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     try {
       await deps.mailer.send({
         to: invite.email,
-        subject: `You're invited to ${workspace.name} on Multiplayer AI`,
+        subject: `You're invited to ${workspace.name} on Nexus`,
         text: `${req.user!.displayName} invited you to join the ${workspace.name} workspace as an ${invite.role}.\n\nOpen this invitation: ${inviteUrl}\n\nSign in or create an account with ${invite.email}. This invitation expires in 7 days.`,
       });
     } catch (error) {

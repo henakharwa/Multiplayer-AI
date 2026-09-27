@@ -46,7 +46,7 @@ function VerifyEmailPageInner() {
             <h1>That link didn&apos;t work</h1>
             <p className="lede">{message}</p>
             <p className="panel-hint">Sign in and use &quot;Resend email&quot; from the banner at the top of the page to get a new link.</p>
-            <Link className="btn secondary" href="/">Back to Multiplayer AI</Link>
+            <Link className="btn secondary" href="/">Back to Nexus</Link>
           </>
         )}
       </div>
