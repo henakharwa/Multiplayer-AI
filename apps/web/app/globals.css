@@ -591,6 +591,10 @@ textarea {
 .workspace-conversation-menu { position: absolute; right: 4px; top: 50%; z-index: 7; transform: translateY(-50%); }.workspace-conversation-more { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--text-dim); cursor: pointer; }.workspace-conversation-more:hover { background: rgba(255,255,255,.75); color: var(--text); }.workspace-conversation-more svg { width: 16px; height: 16px; }.workspace-conversation-popover { position: absolute; right: 0; top: 31px; display: grid; width: 146px; padding: 5px; border: 1px solid var(--border); border-radius: 9px; background: white; box-shadow: 0 8px 22px rgba(18, 26, 40, .16); }.workspace-conversation-popover button { width: 100%; padding: 8px 9px; border: 0; border-radius: 6px; background: transparent; color: #374151; cursor: pointer; font: inherit; font-size: 12px; text-align: left; }.workspace-conversation-popover button.danger { color: var(--danger); }.workspace-conversation-popover button:hover { background: var(--bg-subtle); }.workspace-conversation-popover button.danger:hover { background: var(--danger-soft); }
 .workspace-notification-wrap { position: relative; z-index: 20; }
 .workspace-notification-wrap > button { position: relative; }
+.workspace-permission-request-wrap { position: relative; z-index: 20; }
+.workspace-permission-request-wrap > button { position: relative; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--text-dim); cursor: pointer; }
+.workspace-permission-request-wrap > button:hover { background: var(--bg-sunken); color: var(--text); }
+.workspace-permission-request-wrap svg { width: 19px; height: 19px; }
 .workspace-notification-badge { position: absolute; top: -3px; right: -4px; min-width: 16px; padding: 1px 4px; border-radius: 10px; background: #e5484d; color: white; font-size: 10px; font-weight: 700; line-height: 14px; }
 .workspace-notification-panel { position: absolute; z-index: 20; top: 42px; left: 0; width: min(330px, calc(100vw - 34px)); max-height: 390px; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; background: white; box-shadow: 0 12px 30px rgba(25, 32, 46, .18); padding: 8px; }
 .workspace-notification-panel > div { display: flex; align-items: center; justify-content: space-between; padding: 6px 7px 8px; }
@@ -599,6 +603,18 @@ textarea {
 .workspace-notification-panel article p { margin: 0; color: #273244; font-size: 13px; line-height: 1.35; }
 .workspace-notification-panel time { display: block; margin-top: 3px; color: #8490a3; font-size: 11px; }
 .workspace-notification-empty { margin: 0; padding: 16px 7px; color: #6d7786; font-size: 13px; }
+.workspace-permission-request-panel { position: absolute; z-index: 20; top: 42px; left: -42px; width: min(390px, calc(100vw - 34px)); max-height: 460px; overflow-y: auto; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: white; box-shadow: 0 12px 30px rgba(25, 32, 46, .18); }
+.workspace-permission-request-panel > header { display: flex; align-items: center; justify-content: space-between; padding: 3px 4px 11px; }
+.workspace-permission-request-panel header p { margin: 0 0 3px; color: var(--text-faint); font-size: 10px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
+.workspace-permission-request-panel header strong { font-size: 14px; }
+.workspace-permission-request-panel header > span { display: grid; place-items: center; min-width: 22px; height: 22px; border-radius: 999px; background: #e8efff; color: #315bd5; font-size: 11px; font-weight: 750; }
+.workspace-permission-request-panel article { padding: 12px 4px; border-top: 1px solid #edf0f4; }
+.workspace-permission-request-panel dl { display: grid; grid-template-columns: 92px minmax(0,1fr); gap: 7px 10px; margin: 0; }
+.workspace-permission-request-panel dt { color: var(--text-faint); font-size: 11px; font-weight: 700; }
+.workspace-permission-request-panel dd { margin: 0; color: #273244; font-size: 12px; line-height: 1.35; }
+.workspace-permission-request-panel dd small { color: var(--text-faint); }
+.workspace-permission-request-panel aside { display: flex; gap: 7px; margin-top: 11px; }
+.workspace-permission-request-panel aside .btn { width: auto; min-height: 31px; padding: 5px 11px; font-size: 12px; }
 .access-modal-backdrop { position: fixed; z-index: 60; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(18, 24, 37, .36); }
 .access-modal { width: min(590px, 100%); max-height: min(680px, 90vh); overflow: auto; border: 1px solid #e3e6eb; border-radius: 18px; background: white; box-shadow: 0 22px 60px rgba(0,0,0,.22); padding: 22px; }
 .access-modal header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }

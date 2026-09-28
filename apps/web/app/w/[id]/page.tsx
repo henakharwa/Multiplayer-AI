@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Conversation, GithubRepoSummary, IntegrationConfig, Workspace, WorkspaceAgent, WorkspaceMember, WorkspaceRole } from "@mai-chat/shared-types";
-import { createConversation, deleteConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, removeWorkspaceMember, leaveWorkspace, listWorkspaceInvitations, revokeWorkspaceInvitation, disconnectIntegration, githubOAuthStartUrl, sendWorkspaceInvitation, updateConversation, listWorkspaceAgents, ApiError } from "../../../lib/api";
+import { createConversation, deleteConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, removeWorkspaceMember, leaveWorkspace, listWorkspaceInvitations, revokeWorkspaceInvitation, disconnectIntegration, githubOAuthStartUrl, sendWorkspaceInvitation, updateConversation, listWorkspaceAgents, listPermissionRequests, resolvePermissionRequest, type PermissionRequest, ApiError } from "../../../lib/api";
 import { useWorkspaceChat } from "../../../lib/useWorkspaceChat";
 import { colorForName, initialsForName } from "../../../lib/avatar";
 import ConnectChannelModal from "../../_components/ConnectChannelModal";
@@ -29,6 +29,10 @@ function formatTime(iso: string): string {
   } catch {
     return "";
   }
+}
+
+function permissionLabel(permission: string): string {
+  return ({ connectTools: "Connect and manage tools", createAgents: "Create agents", publishAgents: "Publish agents", approveActions: "Approve actions", github: "Use GitHub", slack: "Use Slack", linear: "Use Linear", notion: "Use Notion", figma: "Use Figma" } as Record<string, string>)[permission] ?? permission;
 }
 
 // Small inline "spark" glyph for the agent's avatar -- distinguishes it at
@@ -166,6 +170,8 @@ export default function WorkspaceRoomPage() {
   const [showAccessManager, setShowAccessManager] = useState(false);
   const [notifications, setNotifications] = useState<StoredNotification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [permissionRequests, setPermissionRequests] = useState<PermissionRequest[]>([]);
+  const [permissionRequestsOpen, setPermissionRequestsOpen] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<WorkspaceRole>("editor");
@@ -192,6 +198,19 @@ export default function WorkspaceRoomPage() {
       if (agent) { setConfiguredAgent(agent); setSelectedAgent(agent.baseAgent); }
     }).catch(() => {});
   }, [workspaceId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => listPermissionRequests(workspaceId).then((requests) => { if (!cancelled) setPermissionRequests(requests); }).catch(() => {});
+    refresh();
+    const interval = window.setInterval(refresh, 15_000);
+    return () => { cancelled = true; window.clearInterval(interval); };
+  }, [workspaceId]);
+
+  async function decidePermissionRequest(request: PermissionRequest, decision: "approve" | "reject") {
+    try { await resolvePermissionRequest(workspaceId, request.id, decision); setPermissionRequests((items) => items.filter((item) => item.id !== request.id)); }
+    catch (error) { setLoadError(error instanceof Error ? error.message : "Could not update the permission request."); }
+  }
 
   // Lands here right after the GitHub or Slack OAuth redirect
   // (services/chat-server/src/github-oauth.ts / slack-oauth.ts always
@@ -547,6 +566,7 @@ export default function WorkspaceRoomPage() {
                 {notifications.length ? <>{notificationsToday.length > 0 && <NotificationGroup label="Today" notifications={notificationsToday} />}{notificationsEarlier.length > 0 && <NotificationGroup label="Earlier" notifications={notificationsEarlier} />}</> : <div className="workspace-notification-empty"><strong>You&apos;re all caught up</strong><span>Updates from teammates and approved actions will appear here.</span></div>}
               </section>}
             </div>
+            {workspaceRole === "admin" && <div className="workspace-permission-request-wrap"><button type="button" title="Permission requests" onClick={() => setPermissionRequestsOpen((open) => !open)} aria-label={`Permission requests${permissionRequests.length ? ` (${permissionRequests.length} pending)` : ""}`}><KeyGlyph />{permissionRequests.length > 0 && <span className="workspace-notification-badge">{permissionRequests.length > 9 ? "9+" : permissionRequests.length}</span>}</button>{permissionRequestsOpen && <section className="workspace-permission-request-panel" aria-label="Pending permission requests"><header><div><p>Requests</p><strong>Pending permissions</strong></div><span>{permissionRequests.length}</span></header>{permissionRequests.length ? permissionRequests.map((request) => <article key={request.id}><dl><div><dt>Requested by</dt><dd>{request.display_name} <small>@{request.username}</small></dd></div><div><dt>Capability</dt><dd>{permissionLabel(request.permission)}</dd></div><div><dt>Reason</dt><dd>{request.reason}</dd></div></dl><aside><button className="btn" onClick={() => void decidePermissionRequest(request, "approve")}>Approve</button><button className="btn secondary permission-reject" onClick={() => void decidePermissionRequest(request, "reject")}>Reject</button></aside></article>) : <p className="workspace-notification-empty">No pending permission requests.</p>}</section>}</div>}
             {canEdit && <button type="button" title="Workspace integrations" onClick={() => setShowConnectModal(true)} aria-label="Add integration"><PlugGlyph /></button>}
             <Link href={`/w/${workspaceId}/integrations`} title="Workspace settings" aria-label="Workspace settings"><GearGlyph /></Link>
           </div>
@@ -880,3 +900,4 @@ function ArrowGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path
 function SignOutGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H5v14h5m4-4 5-3-5-3m5 3H9" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
 function CloseGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>; }
 function BellGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 10a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 22h4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
+function KeyGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4" fill="none" stroke="currentColor" strokeWidth="2"/><path d="m11 12 8-8m-3 0h3v3m-6 3 2 2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
