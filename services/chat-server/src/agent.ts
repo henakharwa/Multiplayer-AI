@@ -164,8 +164,12 @@ function compactSchema(value: unknown): unknown {
 
 function scoreTool(tool: ToolExecutor, request: string): number {
   const haystack = `${tool.definition.function.name} ${tool.definition.function.description}`.toLowerCase();
-  const terms = request.toLowerCase().match(/[a-z0-9_]{3,}/g) ?? [];
-  return terms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
+  const terms: string[] = request.toLowerCase().match(/[a-z0-9_]{3,}/g) ?? [];
+  // GitHub calls CI resources "Actions" and "workflow runs". Add those
+  // server terms when a workflow says "CI", so the read-only Actions tools
+  // are not displaced by unrelated zero-score tools in a tight tool budget.
+  const expandedTerms = terms.includes("ci") ? [...terms, "actions", "workflow", "runs"] : terms;
+  return expandedTerms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
 }
 
 /**
@@ -245,9 +249,13 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   const chat = input.chat ?? chatCompletion;
   const config = input.llmConfig ?? resolveLlmConfig();
   const maxTurns = input.maxTurns ?? 6;
-  const newestUserRequest = [...input.history].reverse().find((message) => message.role === "user")?.content ?? "";
+  // Workflow runs place their task in customInstructions and add only a
+  // system message to the transcript. Use that task when there is no user
+  // message so a release-check workflow can still prioritize its PR/CI tools.
+  const toolSelectionRequest =
+    [...input.history].reverse().find((message) => message.role === "user")?.content ?? input.customInstructions ?? "";
   const toolBudget = Math.max(600, Math.floor(config.tpmLimit * MAX_TOOL_SCHEMA_SHARE));
-  const selectedTools = selectToolsForBudget(input.tools, newestUserRequest, toolBudget);
+  const selectedTools = selectToolsForBudget(input.tools, toolSelectionRequest, toolBudget);
   const toolDefs = selectedTools.map((t) => t.definition);
   const toolMap = new Map(selectedTools.map((t) => [t.definition.function.name, t.execute]));
 

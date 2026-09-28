@@ -93,7 +93,10 @@ export async function defaultGithubMcpToolsFactory(opts: { workspaceId: string; 
     // as configured, which made GITHUB_TOOLS= select GitHub MCP's large
     // default surface instead of this curated list and overflow Groq.
     toolsets: process.env.GITHUB_TOOLSETS || undefined,
-    tools: process.env.GITHUB_TOOLS || (process.env.GITHUB_TOOLSETS ? undefined : DEFAULT_GITHUB_TOOLS),
+    // GitHub MCP adds explicit tools to selected toolsets. Keep the curated
+    // base set when Actions (or another toolset) is enabled, unless an operator
+    // deliberately provides a complete GITHUB_TOOLS override.
+    tools: process.env.GITHUB_TOOLS || DEFAULT_GITHUB_TOOLS,
   });
   return listMcpToolExecutors(client);
 }

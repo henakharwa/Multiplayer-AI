@@ -47,6 +47,40 @@ describe("runAgentTurn", () => {
     expect(selected[0].definition.function.name).toBe("list_channels");
   });
 
+  it("uses workflow instructions to choose relevant tools when there is no user message", async () => {
+    const bigTool = (name: string, description: string): ToolExecutor => ({
+      definition: {
+        type: "function",
+        function: {
+          name,
+          description: `${description} ${"details ".repeat(500)}`,
+          parameters: { type: "object", properties: {} },
+        },
+      },
+      execute: async () => ({}),
+    });
+    let offeredTools: string[] = [];
+    const chat: LlmChatFn = async (_config, _messages, tools) => {
+      offeredTools = tools.map((tool) => tool.function.name);
+      return { role: "assistant", content: "Release report" };
+    };
+
+    await runAgentTurn({
+      history: [],
+      customInstructions: "Review open pull requests and CI checks.",
+      tools: [
+        bigTool("list_issues", "List repository issues"),
+        bigTool("list_pull_requests", "List open pull requests"),
+        bigTool("actions_list", "List GitHub Actions workflow runs"),
+      ],
+      chat,
+      llmConfig: { baseUrl: "http://example.invalid", apiKey: "k", model: "m", maxTokens: 10, tpmLimit: 800 },
+    });
+
+    expect(offeredTools).toContain("list_pull_requests");
+    expect(offeredTools).toContain("actions_list");
+  });
+
   it("returns the plain reply when the model doesn't call any tool", async () => {
     const chat: LlmChatFn = async () => ({ role: "assistant", content: "Hello there!" });
     const result = await runAgentTurn({ history: [{ role: "user", content: "hi" }], tools: [], chat });

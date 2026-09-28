@@ -53,6 +53,14 @@ describe("getGithubMcpClient", () => {
     expect(DEFAULT_GITHUB_TOOLS.split(",")).toContain("list_issues");
   });
 
+  it("includes read-only GitHub Actions tools needed for release checks", () => {
+    const tools = DEFAULT_GITHUB_TOOLS.split(",");
+    expect(tools).toContain("actions_list");
+    expect(tools).toContain("actions_get");
+    expect(tools).toContain("get_job_logs");
+    expect(tools).not.toContain("actions_run_trigger");
+  });
+
   // Regression test for a real incident found live 2026-09-21: .env's
   // GITHUB_MCP_DOCKER_IMAGE= (present but blank, not commented out) was
   // passed straight through as `image: ""`, and `"" ?? DEFAULT_...`

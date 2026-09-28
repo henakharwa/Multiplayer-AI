@@ -175,4 +175,7 @@ export async function closeAllGithubMcpClients(): Promise<void> {
 export const DEFAULT_GITHUB_TOOLS =
   "get_me,list_issues,issue_read,issue_write,add_issue_comment,pull_request_read,list_pull_requests," +
   "create_pull_request,merge_pull_request,get_file_contents,create_or_update_file," +
-  "create_branch,list_commits,list_branches,search_code";
+  "create_branch,list_commits,list_branches,search_code," +
+  // Read-only GitHub Actions coverage lets release-readiness workflows inspect
+  // workflow runs and failed job logs without gaining the ability to trigger CI.
+  "actions_get,actions_list,get_job_logs";
