@@ -157,7 +157,7 @@ const defaultDeps: CreateServerDeps = {
   slackOAuthDeps: defaultSlackOAuthDeps,
 };
 
-function workflowRequestsExternalChange(instructions: string): boolean {
+export function workflowRequestsExternalChange(instructions: string): boolean {
   const text = instructions.toLowerCase();
   // An explicit prohibition wins, even if the sentence names a write tool
   // (for example, "do not send a Slack message").
