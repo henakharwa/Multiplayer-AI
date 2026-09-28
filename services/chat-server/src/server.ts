@@ -843,7 +843,14 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
   }, HEARTBEAT_INTERVAL_MS);
   wss.on("close", () => clearInterval(heartbeat));
 
-  async function runAgentReply(workspaceId: string, conversationId: string, requestedBy: { userId: string; name: string }, agentKind: AgentKind, configuredAgentId?: string, workflowInstructions?: string): Promise<void> {
+  async function runAgentReply(
+    workspaceId: string,
+    conversationId: string,
+    requestedBy: { userId: string; name: string },
+    agentKind: AgentKind,
+    configuredAgentId?: string,
+    workflowInstructions?: string
+  ): Promise<void> {
     const configuredAgent = configuredAgentId ? await db.getPublishedWorkspaceAgent(workspaceId, configuredAgentId) : null;
     if (configuredAgentId && !configuredAgent) throw new Error("That workspace agent has not been published yet.");
     if (configuredAgent && configuredAgent.baseAgent !== agentKind) throw new Error("The selected agent configuration does not match this specialist.");
@@ -885,7 +892,10 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     // history.ts deliberately excludes system rows from LLM history. Pass
     // the workflow instructions explicitly so an automated turn always has
     // a concrete task, while retaining the configured agent's own rules.
-    const activeInstructions = [configuredAgent?.instructions, workflowInstructions ? `WORKFLOW INSTRUCTIONS — complete this task for the team:\n${workflowInstructions}` : ""].filter(Boolean).join("\n\n");
+    const workflowGuidance = workflowInstructions
+      ? `WORKFLOW INSTRUCTIONS — complete this task for the team:\n${workflowInstructions}\n\nFor this automated run, prefer collection-level read calls. Do not fetch every issue, pull request, or workflow run individually unless the list results require it. Once you have the requested categories, provide the concise report.`
+      : "";
+    const activeInstructions = [configuredAgent?.instructions, workflowGuidance].filter(Boolean).join("\n\n");
     const result = await deps.runAgentTurn({
       history: toLlmHistory(messages),
       tools,
@@ -896,6 +906,10 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       knowledge: configuredAgent?.knowledge,
       workspaceMemory,
       llmConfig: selectedModel ? resolveLlmConfig({ model: selectedModel }) : undefined,
+      // Workflows commonly need one read call per requested category (for
+      // example issues, pull requests, branches, and CI runs). Give them a
+      // larger but still finite tool-call loop than interactive chat.
+      maxTurns: workflowInstructions ? 10 : undefined,
     });
     console.log(`[timing] workspace ${workspaceId}: runAgentTurn (all LLM calls + tool calls, see [timing] lines above) took ${Date.now() - turnStart}ms`);
     const proposedActions = await Promise.all(
