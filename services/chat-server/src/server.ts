@@ -187,6 +187,20 @@ export function parseWorkspaceMemoryInput(body: Record<string, unknown>) {
   } as const;
 }
 
+/**
+ * Prevent a provider outage from turning a memory-backed workflow into a
+ * refusal. A workflow may still need live GitHub data for a complete report,
+ * but saved workspace policy is enough to produce a clearly-labelled draft.
+ */
+export function preferWorkspaceMemoryForRepositoryUnavailableWorkflow(reply: string, workspaceMemory: string, isWorkflow: boolean): string {
+  if (!isWorkflow || !workspaceMemory.trim()) return reply;
+  const refusesForMissingRepository = /\b(?:can't|cannot|unable|won't)\b[\s\S]{0,650}\b(?:github\s+repository|repository|repo)\b/i.test(reply)
+    && /\brelease\s+(?:update|policy)\b/i.test(reply);
+  if (!refusesForMissingRepository) return reply;
+
+  return `Live GitHub data is unavailable, so this is a policy-based release update rather than a live repository report.\n\n${workspaceMemory}\n\nUse the saved policy above for the release decision. Connect a repository later to add current pull-request, issue, and CI details.`;
+}
+
 export function createApp(deps: CreateServerDeps = defaultDeps) {
   const app = express();
   // Browser Origin never includes a trailing slash. Normalizing the
@@ -922,7 +936,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     // the workflow instructions explicitly so an automated turn always has
     // a concrete task, while retaining the configured agent's own rules.
     const workflowGuidance = workflowInstructions
-      ? `WORKFLOW INSTRUCTIONS — complete this task for the team:\n${workflowInstructions}\n\nFor this automated run, prefer collection-level read calls. Do not fetch every issue, pull request, or workflow run individually unless the list results require it. Once you have the requested categories, provide the concise report.${workflowReadOnly ? " This is a read-only workflow: do not propose external changes." : " This workflow explicitly requests a governed change: create only a pending approval proposal, never a direct external change. When creating a GitHub issue, use issue_write with method=\"create\"."}`
+      ? `WORKFLOW INSTRUCTIONS — complete this task for the team:\n${workflowInstructions}\n\nFor this automated run, prefer collection-level read calls. Do not fetch every issue, pull request, or workflow run individually unless the list results require it. Once you have the requested categories, provide the concise report.${workspaceMemory ? " Workspace memory is available for this run. Use it for any policy-based draft and cite the relevant [Memory: title] label. A missing repository only prevents live data; it must never prevent a draft based on saved workspace memory." : " No workspace memory is available for this run. If the task requires a saved policy, say that the policy has not been saved in this workspace."}${workflowReadOnly ? " This is a read-only workflow: do not propose external changes." : " This workflow explicitly requests a governed change: create only a pending approval proposal, never a direct external change. When creating a GitHub issue, use issue_write with method=\"create\"."}`
       : "";
     const activeInstructions = [configuredAgent?.instructions, workflowGuidance].filter(Boolean).join("\n\n");
     const result = await deps.runAgentTurn({
@@ -954,7 +968,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       conversationId,
       role: "agent",
       authorName: configuredAgent?.name ?? (agentKind === "github" ? "GitHub Agent" : agentKind === "slack" ? "Slack Agent" : agentKind === "linear" ? "Linear Agent" : agentKind === "notion" ? "Notion Agent" : agentKind === "figma" ? "Figma Agent" : "Project Agent"),
-      content: resolvedReply ?? result.reply,
+      content: resolvedReply ?? preferWorkspaceMemoryForRepositoryUnavailableWorkflow(result.reply, workspaceMemory, Boolean(workflowInstructions)),
     });
     rooms.broadcast(`${workspaceId}:${conversationId}`, { type: "message", message: agentMessage });
     rooms.broadcast(workspaceId, { type: "workspace_message", message: agentMessage });

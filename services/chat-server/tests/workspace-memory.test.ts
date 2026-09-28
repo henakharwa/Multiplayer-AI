@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatWorkspaceMemoryContext } from "@mai-chat/db";
-import { parseWorkspaceMemoryInput } from "../src/server.js";
+import { parseWorkspaceMemoryInput, preferWorkspaceMemoryForRepositoryUnavailableWorkflow } from "../src/server.js";
 import type { WorkspaceMemory } from "@mai-chat/shared-types";
 
 function memory(overrides: Partial<WorkspaceMemory> = {}): WorkspaceMemory {
@@ -36,5 +36,21 @@ describe("workspace memory", () => {
     expect(() => parseWorkspaceMemoryInput({ sourceUrl: "ftp://example.com/file" })).toThrow("Source URL must start");
     expect(() => parseWorkspaceMemoryInput({ sourceUrl: "https://" })).toThrow("Source URL must be a valid");
     expect(() => parseWorkspaceMemoryInput({ freshUntil: "not-a-date" })).toThrow("Review date must be valid");
+  });
+
+  it("turns a repository-blocked release workflow into a memory-based draft", () => {
+    const reply = preferWorkspaceMemoryForRepositoryUnavailableWorkflow(
+      "I can't create the release update because no GitHub repository is connected, so I can't access the release policy.",
+      "[Memory: Release policy] (decision; no freshness date)\nRelease from main only.",
+      true,
+    );
+    expect(reply).toContain("policy-based release update");
+    expect(reply).toContain("[Memory: Release policy]");
+    expect(reply).toContain("Live GitHub data is unavailable");
+  });
+
+  it("does not replace ordinary responses or responses without saved memory", () => {
+    expect(preferWorkspaceMemoryForRepositoryUnavailableWorkflow("A release update is ready.", "[Memory: Release policy]", true)).toBe("A release update is ready.");
+    expect(preferWorkspaceMemoryForRepositoryUnavailableWorkflow("I can't create the release update because no repository is connected.", "", true)).toContain("can't create");
   });
 });
