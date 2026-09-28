@@ -370,9 +370,37 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     await db.recordAuditEvent({ workspaceId: paramString(req.params.id), eventType: "workspace.permissions_updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} updated workspace permissions` });
     res.json(saved);
   });
-  app.get("/workspaces/:id/permission-requests", async (req: Request, res: Response) => { if (!(await requireRole(req,res,["admin"]))) return; res.json(await db.listPermissionRequests(paramString(req.params.id))); });
-  app.post("/workspaces/:id/permission-requests", async (req: Request,res: Response) => { if (!(await requireRole(req,res,["editor"]))) return; const permission=req.body?.permission; if (!Object.keys((await db.getWorkspacePermissionPolicy(paramString(req.params.id))).editor).includes(permission)) return res.status(400).json({error:"Invalid permission."}); res.status(201).json(await db.createPermissionRequest(paramString(req.params.id),req.user!.id,permission)); });
-  app.post("/workspaces/:id/permission-requests/:requestId/approve", async (req: Request,res: Response) => { if (!(await requireRole(req,res,["admin"]))) return; const workspaceId=paramString(req.params.id); const permission=await db.approvePermissionRequest(workspaceId,paramString(req.params.requestId)); if(!permission)return res.status(404).json({error:"Request not found."}); const policy=await db.getWorkspacePermissionPolicy(workspaceId); policy.editor[permission]=true; await db.setWorkspacePermissionPolicy(workspaceId,policy); res.status(204).end(); });
+  app.get("/workspaces/:id/permission-requests", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin"]))) return;
+    res.json(await db.listPermissionRequests(paramString(req.params.id)));
+  });
+  app.post("/workspaces/:id/permission-requests", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["editor"]))) return;
+    const permission = req.body?.permission;
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+    const policy = await db.getWorkspacePermissionPolicy(paramString(req.params.id));
+    if (!Object.keys(policy.editor).includes(permission)) return res.status(400).json({ error: "Invalid permission." });
+    if (policy.editor[permission as keyof import("@mai-chat/shared-types").WorkspacePermissions]) return res.status(409).json({ error: "You already have this permission." });
+    if (!reason || reason.length > 1000) return res.status(400).json({ error: "Give a reason between 1 and 1,000 characters." });
+    res.status(201).json(await db.createPermissionRequest(paramString(req.params.id), req.user!.id, permission, reason));
+  });
+  app.post("/workspaces/:id/permission-requests/:requestId/:decision", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin"]))) return;
+    const decision = paramString(req.params.decision);
+    if (decision !== "approve" && decision !== "reject") return res.status(404).json({ error: "Unknown decision." });
+    const workspaceId = paramString(req.params.id);
+    const request = await db.resolvePermissionRequest(workspaceId, paramString(req.params.requestId), decision === "approve" ? "approved" : "denied");
+    if (!request) return res.status(404).json({ error: "Request not found." });
+    if (decision === "approve") {
+      const policy = await db.getWorkspacePermissionPolicy(workspaceId);
+      policy.editor[request.permission] = true;
+      await db.setWorkspacePermissionPolicy(workspaceId, policy);
+      await db.notifyWorkspaceUser({ workspaceId, userId: request.user_id, kind: "permission_request", text: `${req.user!.displayName} approved your request for ${request.permission}. You can use it now.` });
+    } else {
+      await db.notifyWorkspaceUser({ workspaceId, userId: request.user_id, kind: "permission_request", text: `${req.user!.displayName} declined your request for ${request.permission}.` });
+    }
+    res.status(204).end();
+  });
 
   app.get("/workspaces/:id/agents", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;

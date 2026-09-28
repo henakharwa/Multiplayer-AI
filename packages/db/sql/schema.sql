@@ -387,6 +387,8 @@ CREATE TABLE IF NOT EXISTS workspace_agent_versions (
 CREATE TABLE IF NOT EXISTS workspace_permission_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, permission TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','denied')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(), resolved_at TIMESTAMPTZ
 );
+ALTER TABLE workspace_permission_requests ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT '';

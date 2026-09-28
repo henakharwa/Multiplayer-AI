@@ -4,16 +4,21 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import type { GithubRepoSummary, IntegrationConfig, WorkspacePermissionPolicy, WorkspacePermissions, WorkspaceRole } from "@mai-chat/shared-types";
-import { connectGithub, githubOAuthStartUrl, slackOAuthStartUrl, listIntegrations, getWorkspacePermissionPolicy, updateWorkspacePermissionPolicy, listWorkspaceMembers, requestWorkspacePermission, listPermissionRequests, approvePermissionRequest, ApiError } from "../../../../lib/api";
+import { connectGithub, githubOAuthStartUrl, slackOAuthStartUrl, listIntegrations, getWorkspacePermissionPolicy, updateWorkspacePermissionPolicy, listWorkspaceMembers, requestWorkspacePermission, listPermissionRequests, resolvePermissionRequest, type PermissionRequest, ApiError } from "../../../../lib/api";
 import { useWorkspaceUser } from "../../../_components/WorkspaceAuth";
 import GithubRepoPickerModal from "../../../_components/GithubRepoPickerModal";
+
+const PERMISSIONS: Array<[keyof WorkspacePermissions, string]> = [["connectTools", "Connect and manage tools"], ["createAgents", "Create agents"], ["publishAgents", "Publish agents"], ["approveActions", "Approve actions"], ["github", "Use GitHub"], ["slack", "Use Slack"], ["linear", "Use Linear"], ["notion", "Use Notion"], ["figma", "Use Figma"]];
 
 export default function IntegrationsPage() {
   const params = useParams<{ id: string }>();
   const workspaceId = params.id;
   const user = useWorkspaceUser();
   const [workspaceRole, setWorkspaceRole] = useState<WorkspaceRole>("editor");
-  const [requests, setRequests] = useState<Array<{id:string;permission:string;display_name:string}>>([]);
+  const [requests, setRequests] = useState<PermissionRequest[]>([]);
+  const [requestedPermission, setRequestedPermission] = useState<keyof WorkspacePermissions | null>(null);
+  const [requestReason, setRequestReason] = useState("");
+  const [requestBusy, setRequestBusy] = useState(false);
 
   const [integrations, setIntegrations] = useState<IntegrationConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +66,9 @@ export default function IntegrationsPage() {
     finally { setPolicyBusy(false); }
   }
 
+  async function submitPermissionRequest() { if (!requestedPermission || !requestReason.trim()) return; setRequestBusy(true); setPolicyError(null); try { await requestWorkspacePermission(workspaceId, requestedPermission, requestReason.trim()); setRequestedPermission(null); setRequestReason(""); } catch (error) { setPolicyError(error instanceof ApiError ? error.message : "Could not send your request."); } finally { setRequestBusy(false); } }
+  async function decidePermissionRequest(request: PermissionRequest, decision: "approve" | "reject") { try { await resolvePermissionRequest(workspaceId, request.id, decision); setRequests((items) => items.filter((item) => item.id !== request.id)); } catch (error) { setPolicyError(error instanceof ApiError ? error.message : "Could not update the request."); } }
+
   const githubConnections = integrations.filter((i): i is Extract<IntegrationConfig, { type: "github" }> => i.type === "github");
   const githubConnected = githubConnections.find((integration) => integration.ownerUserId === user.id);
   const teammateGithubConnections = githubConnections.filter((integration) => integration.ownerUserId !== user.id);
@@ -102,18 +110,16 @@ export default function IntegrationsPage() {
 
       {policy && <section className="integration-panel permission-panel">
         <h2>Tool and agent permissions</h2>
-        <p className="hint">{workspaceRole === "admin" ? "Admins can decide which workspace roles may connect tools, use each provider, create or publish agents, and approve external actions." : "Your current workspace permissions are shown below. Ask an admin to grant access you need."}</p>
-        <div className="permission-grid" role="table" aria-label="Workspace permissions">
-          <div className="permission-row permission-heading" role="row"><span>Capability</span><span>Admin</span><span>Editor</span></div>
-          {([
-            ["connectTools", "Connect and manage tools"], ["createAgents", "Create agents"], ["publishAgents", "Publish agents"], ["approveActions", "Approve actions"],
-            ["github", "Use GitHub"], ["slack", "Use Slack"], ["linear", "Use Linear"], ["notion", "Use Notion"], ["figma", "Use Figma"],
-          ] as Array<[keyof WorkspacePermissions, string]>).map(([permission, label]) => <div className="permission-row" role="row" key={permission}><span>{label}</span>{(["admin", "editor"] as const).map((role) => <label className="toggle-switch" key={role}><input type="checkbox" disabled={workspaceRole !== "admin"} checked={policy[role][permission]} onChange={(event) => setPermission(role, permission, event.target.checked)} /><span className="toggle-track" aria-hidden="true" /><span className="sr-only">Allow {role} to {label.toLowerCase()}</span></label>)}</div>)}
-        </div>
-        {workspaceRole === "admin" && <div className="integration-actions"><button type="button" className="btn" onClick={() => void savePolicy()} disabled={policyBusy}>{policyBusy ? "Saving…" : "Save permissions"}</button></div>}
-        {workspaceRole === "editor" && <div className="integration-actions"><select aria-label="Request permission" onChange={(event) => { if (event.target.value) void requestWorkspacePermission(workspaceId,event.target.value).then(()=>alert("Request sent to admins.")).catch((error)=>setPolicyError(error.message)); event.currentTarget.value=""; }}><option value="">Request access from an admin…</option>{Object.entries(policy.editor).filter(([,allowed])=>!allowed).map(([permission])=><option key={permission} value={permission}>{permission}</option>)}</select></div>}
-        {workspaceRole === "admin" && requests.length > 0 && <section className="permission-request-list"><h3>Permission requests</h3>{requests.map((request)=><p key={request.id}>{request.display_name} requested {request.permission} <button onClick={() => void approvePermissionRequest(workspaceId,request.id).then(()=>setRequests((items)=>items.filter((item)=>item.id!==request.id)))}>Approve</button></p>)}</section>}
-        {policyError && <p className="error-text">{policyError}</p>}
+        {workspaceRole === "admin" ? <>
+          <p className="hint">Admins have access to every capability. Choose the permissions available to Editors.</p>
+          <div className="permission-grid" role="table" aria-label="Editor permissions"><div className="permission-row permission-heading" role="row"><span>Capability</span><span>Editors</span></div>{PERMISSIONS.map(([permission, label]) => <div className="permission-row" role="row" key={permission}><span>{label}</span><label className="toggle-switch"><input type="checkbox" checked={policy.editor[permission]} onChange={(event) => setPermission("editor", permission, event.target.checked)} /><span className="toggle-track" aria-hidden="true" /></label></div>)}</div>
+          <div className="integration-actions"><button type="button" className="btn" onClick={() => void savePolicy()} disabled={policyBusy}>{policyBusy ? "Saving…" : "Save permissions"}</button></div>
+          <section className="permission-request-list"><h3>Permission requests</h3>{requests.length ? requests.map((request) => <article key={request.id}><strong>{request.display_name}</strong><span> requested <b>{PERMISSIONS.find(([key]) => key === request.permission)?.[1] ?? request.permission}</b></span><p>{request.reason}</p><small>{new Date(request.created_at).toLocaleString()}</small><aside><button className="btn" onClick={() => void decidePermissionRequest(request, "approve")}>Approve</button><button className="btn secondary" onClick={() => void decidePermissionRequest(request, "reject")}>Reject</button></aside></article>) : <p>No pending permission requests.</p>}</section>
+        </> : <>
+          <p className="hint">Your available permissions are listed below. Request any capability you need from an Admin.</p>
+          <div className="editor-permission-list">{PERMISSIONS.map(([permission, label]) => policy.editor[permission] ? <div key={permission}><span>{label}</span><strong>Allowed</strong></div> : <div key={permission}><span>{label}</span><button className="btn secondary" onClick={() => { setRequestedPermission(permission); setRequestReason(""); }}>Request access</button></div>)}</div>
+          {requestedPermission && <section className="permission-request-compose"><h3>Request {PERMISSIONS.find(([key]) => key === requestedPermission)?.[1]}</h3><label>Why do you need this access?<textarea value={requestReason} onChange={(event) => setRequestReason(event.target.value)} maxLength={1000} placeholder="Describe the work you need to do." /></label><aside><button className="btn" disabled={requestBusy || !requestReason.trim()} onClick={() => void submitPermissionRequest()}>{requestBusy ? "Sending…" : "Send request"}</button><button className="btn secondary" onClick={() => setRequestedPermission(null)}>Cancel</button></aside></section>}
+        </>}        {policyError && <p className="error-text">{policyError}</p>}
       </section>}
 
       <div className="integration-panel integration-panel-featured">
