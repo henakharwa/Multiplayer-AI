@@ -241,10 +241,10 @@ export default function WorkspaceRoomPage() {
     window.location.href = githubOAuthStartUrl(workspaceId);
   }
 
-  async function removeIntegration(provider: IntegrationConfig["type"]) {
+  async function removeIntegration(integration: IntegrationConfig) {
     try {
-      await disconnectIntegration(workspaceId, provider);
-      setIntegrations((current) => current.filter((item) => item.type !== provider));
+      await disconnectIntegration(workspaceId, integration);
+      setIntegrations((current) => current.filter((item) => item.id !== integration.id));
     } catch (err) {
       setGithubNotice({ kind: "error", text: err instanceof Error ? err.message : "Could not disconnect this tool." });
     } finally {
@@ -587,9 +587,10 @@ export default function WorkspaceRoomPage() {
             if (!label) return null;
             return <div className="workspace-tool-row" key={integration.id ?? integration.type} data-testid={`connected-${integration.type}`}>
               <Link className="workspace-tool" href={`/w/${workspaceId}/integrations`}><span className="channel-glyph"><ToolIcon tool={integration.type} /></span><span>{label}<small className="tool-connector">Connected by {integration.ownerUserId === user.id ? "You" : integration.connectedByName ?? "workspace member"}</small></span><small className="tool-health connected">Connected</small></Link>
-              {canEdit && integration.ownerUserId === user.id && <div className="workspace-tool-menu"><button type="button" className="workspace-tool-more" aria-label={`Manage ${integration.type}`} aria-expanded={toolMenu === integration.type} onClick={() => setToolMenu((current) => current === integration.type ? null : integration.type)}><MoreGlyph /></button>{toolMenu === integration.type && <div className="workspace-tool-popover">{integration.type === "github" && <button type="button" onClick={changeGithubConnection}>Change</button>}<button type="button" className="danger" onClick={() => void removeIntegration(integration.type)}>Disconnect</button></div>}</div>}
+              {canEdit && integration.ownerUserId === user.id && <div className="workspace-tool-menu"><button type="button" className="workspace-tool-more" aria-label={`Manage ${integration.type}`} aria-expanded={toolMenu === integration.type} onClick={() => setToolMenu((current) => current === integration.type ? null : integration.type)}><MoreGlyph /></button>{toolMenu === integration.type && <div className="workspace-tool-popover">{integration.type === "github" && <button type="button" onClick={changeGithubConnection}>Change</button>}<button type="button" className="danger" onClick={() => void removeIntegration(integration)}>Disconnect</button></div>}</div>}
             </div>;
-          }) : <button className="workspace-empty-tool" onClick={() => setShowConnectModal(true)}>Connect your tools</button>}
+          }) : null}
+          <button className="workspace-empty-tool" onClick={() => setShowConnectModal(true)}>Connect your tools +</button>
         </div>
 
         <div className="workspace-side-section workspace-members">

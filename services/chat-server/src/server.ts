@@ -565,10 +565,12 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const workspaceId = paramString(req.params.id);
     const provider = paramString(req.params.provider);
+    const integrationId = typeof req.query.integrationId === "string" ? req.query.integrationId : "";
     if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "invalid workspace id" });
     if (!["github", "slack", "linear", "notion", "figma"].includes(provider)) return res.status(404).json({ error: "unknown integration" });
-    const removed = await db.deleteIntegration(workspaceId, provider as "github" | "slack" | "linear" | "notion" | "figma");
-    if (!removed) return res.status(404).json({ error: "integration not found" });
+    if (!UUID_RE.test(integrationId)) return res.status(400).json({ error: "valid integrationId is required" });
+    const removed = await db.deleteIntegrationForOwner(workspaceId, provider as "github" | "slack" | "linear" | "notion" | "figma", integrationId, req.user!.id);
+    if (!removed) return res.status(404).json({ error: "integration not found or is not owned by you" });
     await db.recordAuditEvent({ workspaceId, eventType: "integration.disconnected" as AuditEventType, actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} disconnected ${provider}`, metadata: { integration: provider } });
     res.status(204).end();
   });

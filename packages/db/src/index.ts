@@ -770,8 +770,16 @@ export async function getIntegrationCredential(
   };
 }
 
-export async function deleteIntegration(workspaceId: string, type: "github" | "slack" | "linear" | "notion" | "figma"): Promise<boolean> {
-  const result = await getPool().query(`DELETE FROM integrations WHERE workspace_id = $1 AND type = $2`, [workspaceId, type]);
+export async function deleteIntegrationForOwner(
+  workspaceId: string,
+  type: "github" | "slack" | "linear" | "notion" | "figma",
+  integrationId: string,
+  ownerUserId: string
+): Promise<boolean> {
+  const result = await getPool().query(
+    `DELETE FROM integrations WHERE workspace_id = $1 AND type = $2 AND id = $3 AND owner_user_id = $4`,
+    [workspaceId, type, integrationId, ownerUserId]
+  );
   return (result.rowCount ?? 0) > 0;
 }
 
