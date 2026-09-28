@@ -258,6 +258,9 @@ CREATE TABLE IF NOT EXISTS workspace_notifications (
 );
 CREATE INDEX IF NOT EXISTS workspace_notifications_user_idx
   ON workspace_notifications (user_id, read_at, created_at DESC);
+ALTER TABLE workspace_notifications DROP CONSTRAINT IF EXISTS workspace_notifications_kind_check;
+ALTER TABLE workspace_notifications ADD CONSTRAINT workspace_notifications_kind_check
+  CHECK (kind IN ('agent_completed', 'decision_needed', 'action_completed', 'permission_request'));
 
 -- Added after the first version of this table shipped -- IF NOT EXISTS
 -- keeps re-running this idempotent schema safe for anyone who already has
