@@ -953,17 +953,22 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
   // Interval scheduling is intentionally modest: database claiming makes it
   // safe for more than one server process, while each execution still goes
   // through the governed workflow runner above.
-  const workflowScheduler = setInterval(() => {
-    void (async () => {
-      const due = await db.claimDueWorkflows();
-      for (const workflow of due) {
-        const owner = workflow.ownerUserId ? await db.getUserById(workflow.ownerUserId) : null;
-        if (!owner) continue;
-        void app.locals.runWorkflow(workflow, "schedule", { id: owner.id, displayName: owner.displayName });
-      }
-    })().catch((error) => console.error("workflow scheduler failed", error));
-  }, 30_000);
-  server.on("close", () => clearInterval(workflowScheduler));
+  let workflowScheduler: NodeJS.Timeout | undefined;
+  const startWorkflowScheduler = () => {
+    if (workflowScheduler) return;
+    workflowScheduler = setInterval(() => {
+      void (async () => {
+        const due = await db.claimDueWorkflows();
+        for (const workflow of due) {
+          const owner = workflow.ownerUserId ? await db.getUserById(workflow.ownerUserId) : null;
+          if (!owner) continue;
+          void app.locals.runWorkflow(workflow, "schedule", { id: owner.id, displayName: owner.displayName });
+        }
+      })().catch((error) => console.error("workflow scheduler failed", error));
+    }, 30_000);
+  };
+  server.on("listening", startWorkflowScheduler);
+  server.on("close", () => { if (workflowScheduler) clearInterval(workflowScheduler); workflowScheduler = undefined; });
 
   wss.on("connection", (ws: WebSocket, req) => {
     if (req.headers.origin && req.headers.origin !== (process.env.WEB_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "")) {

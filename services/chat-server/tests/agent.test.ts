@@ -215,6 +215,24 @@ describe("runAgentTurn", () => {
     expect(seenSystemPrompt).toContain("A confirmed action has completed");
   });
 
+  it("passes workflow instructions and durable workspace memory into the agent prompt", async () => {
+    let seenSystemPrompt = "";
+    const chat: LlmChatFn = async (_config, messages) => {
+      seenSystemPrompt = String(messages[0].content);
+      return { role: "assistant", content: "Release readiness report" };
+    };
+    await runAgentTurn({
+      history: [],
+      tools: [],
+      customInstructions: "WORKFLOW INSTRUCTIONS — complete this task for the team:\nReview CI and release blockers.",
+      workspaceMemory: "[Memory: Release policy] (decision; current through 2026-12-31)\nRelease from main only.",
+      chat,
+    });
+    expect(seenSystemPrompt).toContain("Review CI and release blockers.");
+    expect(seenSystemPrompt).toContain("[Memory: Release policy]");
+    expect(seenSystemPrompt).toContain("Cite a memory by its exact [Memory: title] label");
+  });
+
   it("trims older history to fit the configured token budget, keeping the most recent messages and their order", async () => {
     let seenMessages: ChatMessage[] = [];
     const chat: LlmChatFn = async (_config, messages) => {
