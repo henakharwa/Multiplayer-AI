@@ -157,6 +157,16 @@ const defaultDeps: CreateServerDeps = {
   slackOAuthDeps: defaultSlackOAuthDeps,
 };
 
+function workflowRequestsExternalChange(instructions: string): boolean {
+  const text = instructions.toLowerCase();
+  // An explicit prohibition wins, even if the sentence names a write tool
+  // (for example, "do not send a Slack message").
+  if (/\b(?:do not|don't|never)\s+(?:make|create|open|update|edit|delete|merge|close|comment|post|send|publish)\b/.test(text)) return false;
+  // Workflows normally review and report. Expose proposal tools only when
+  // the saved workflow explicitly requests an external mutation.
+  return /\b(?:create|open|update|edit|delete|merge|close|comment|post|send|publish)\b[\s\S]{0,80}\b(?:issue|pull request|pr\b|file|readme|branch|comment|message|slack|release)\b/.test(text);
+}
+
 export function createApp(deps: CreateServerDeps = defaultDeps) {
   const app = express();
   // Browser Origin never includes a trailing slash. Normalizing the
@@ -850,7 +860,8 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     requestedBy: { userId: string; name: string },
     agentKind: AgentKind,
     configuredAgentId?: string,
-    workflowInstructions?: string
+    workflowInstructions?: string,
+    workflowReadOnly = false
   ): Promise<void> {
     const configuredAgent = configuredAgentId ? await db.getPublishedWorkspaceAgent(workspaceId, configuredAgentId) : null;
     if (configuredAgentId && !configuredAgent) throw new Error("That workspace agent has not been published yet.");
@@ -869,10 +880,10 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     // Read tools run for real from the agent loop; write tools are
     // swapped for proposal-only stand-ins here -- see actions.ts.
     const specialistTools = agentKind === "github" ? built.githubTools : agentKind === "slack" ? built.slackTools : agentKind === "linear" ? built.linearTools : agentKind === "notion" ? built.notionTools : agentKind === "figma" ? built.figmaTools : [];
-    // Workflow runs are reports and checks. Keep them runtime read-only so
-    // a mistaken model call cannot create a pending external change.
+    // Reviews and checks are runtime read-only. Workflows that explicitly
+    // request a write retain proposal tools, never direct write execution.
     const tools = wrapForProposal(specialistTools, workspaceId, conversationId, rooms, requestedBy, agentKind, {
-      readOnly: Boolean(workflowInstructions),
+      readOnly: workflowReadOnly,
     });
     // Cheap, always-on diagnostic -- when someone reports "the agent says
     // it can't see GitHub" the first thing to know is whether the tool
@@ -964,7 +975,15 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       const systemMessage = await db.insertMessage({ workspaceId: workflow.workspaceId, conversationId: conversation.id, role: "system", authorName: "Workflow", content: `${prefix}: ${workflow.name}\n${task}` });
       rooms.broadcast(`${workflow.workspaceId}:${conversation.id}`, { type: "message", message: systemMessage });
       rooms.broadcast(workflow.workspaceId, { type: "workspace_message", message: systemMessage });
-      await runAgentReply(workflow.workspaceId, conversation.id, { userId: user.id, name: user.displayName }, workflow.agentKind, workflow.workspaceAgentId ?? undefined, task);
+      await runAgentReply(
+        workflow.workspaceId,
+        conversation.id,
+        { userId: user.id, name: user.displayName },
+        workflow.agentKind,
+        workflow.workspaceAgentId ?? undefined,
+        task,
+        !workflowRequestsExternalChange(workflow.instructions)
+      );
       await db.finishWorkflowRun(workflow.id, run.id, "succeeded", "Agent response completed.");
       await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.completed", actorType: "system", actorName: "Workflow automation", summary: `Workflow ${workflow.name} completed`, metadata: { workflowId: workflow.id, runId: run.id, trigger } });
     } catch (error) {

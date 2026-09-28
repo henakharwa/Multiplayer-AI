@@ -24,4 +24,16 @@ describe("workflow read-only tool surface", () => {
     );
     expect(tools.map((item) => item.definition.function.name)).toEqual(["list_workflow_runs"]);
   });
+
+  it("keeps a mutating tool available for a workflow that will propose an approved change", () => {
+    const tools = wrapForProposal(
+      [tool("list_issues", false), tool("issue_write", true)],
+      "workspace-id",
+      "conversation-id",
+      new RoomRegistry(),
+      undefined,
+      "github"
+    );
+    expect(tools.map((item) => item.definition.function.name)).toEqual(["list_issues", "issue_write"]);
+  });
 });
