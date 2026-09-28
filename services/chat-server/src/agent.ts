@@ -86,7 +86,7 @@ connected at any point after that.`;
   const responseRule = workflowMode
     ? `AUTOMATED WORKFLOW EXECUTION: Complete the workflow task in this turn. Do not merely acknowledge it, say you are ready, or ask when the team wants the work done. Use available read tools when the task needs current external information, then provide the requested result. If a required connection or permission is unavailable, state the specific missing requirement.`
     : "Keep replies concise -- this is a live chat, not a report.";
-  return `You are the shared AI teammate in a group chat workspace. ${specialist}${configurationSection}${memorySection} Multiple
+  return `You are the shared AI teammate in a group chat workspace. ${specialist}${configurationSection} Multiple
 human members share this same chat and can all see your replies. You have
 tools to read AND act on a connected GitHub repo -- issues, pull requests,
 files, commits, and branches -- and to read a connected Slack workspace's
@@ -137,6 +137,8 @@ the tool, do not treat the action as approved, and do not say it happened
 or is happening. Instead, tell them to click Confirm on the pending
 action's card. Likewise, never invent or claim a confirmation happened
 that you weren't shown proof of via a tool result.
+
+${memorySection}
 
 ${responseRule}`;
 }

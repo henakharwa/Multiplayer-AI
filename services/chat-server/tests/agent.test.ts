@@ -295,6 +295,9 @@ describe("runAgentTurn", () => {
     expect(seenSystemPrompt).toContain("[Memory: Release policy]");
     expect(seenSystemPrompt).toContain("Cite a memory by its exact [Memory: title] label");
     expect(seenSystemPrompt).toContain("Never say that a missing repository prevents access to workspace memory");
+    expect(seenSystemPrompt.lastIndexOf("DURABLE WORKSPACE MEMORY")).toBeGreaterThan(
+      seenSystemPrompt.lastIndexOf("No GitHub repository is connected"),
+    );
   });
 
   it("trims older history to fit the configured token budget, keeping the most recent messages and their order", async () => {
