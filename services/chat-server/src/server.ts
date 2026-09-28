@@ -905,6 +905,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       customInstructions: activeInstructions || undefined,
       knowledge: configuredAgent?.knowledge,
       workspaceMemory,
+      workflowMode: Boolean(workflowInstructions),
       llmConfig: selectedModel ? resolveLlmConfig({ model: selectedModel }) : undefined,
       // Workflows commonly need one read call per requested category (for
       // example issues, pull requests, branches, and CI runs). Give them a

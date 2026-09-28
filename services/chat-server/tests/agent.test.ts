@@ -88,6 +88,23 @@ describe("runAgentTurn", () => {
     expect(result.toolCallsMade).toBe(0);
   });
 
+  it("tells automated workflows to complete the task instead of acknowledging it", async () => {
+    let systemPrompt = "";
+    const chat: LlmChatFn = async (_config, messages) => {
+      systemPrompt = String(messages[0]?.content);
+      return { role: "assistant", content: "Completed." };
+    };
+    await runAgentTurn({
+      history: [],
+      tools: [],
+      customInstructions: "Prepare a release-readiness update.",
+      workflowMode: true,
+      chat,
+    });
+    expect(systemPrompt).toContain("AUTOMATED WORKFLOW EXECUTION");
+    expect(systemPrompt).toContain("Do not merely acknowledge it");
+  });
+
   it("executes a real tool call, feeds the result back, and returns the model's follow-up reply", async () => {
     let call = 0;
     const chat: LlmChatFn = async (_config, messages) => {
