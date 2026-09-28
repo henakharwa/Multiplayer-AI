@@ -81,7 +81,7 @@ connected at any point after that.`;
     ? `\n\nACTIVE WORKSPACE AGENT CONFIGURATION — mandatory rules for this turn:\n${customInstructions}\nFollow this configuration as the agent's operating policy. If it narrows the scope, do not include excluded work or generic alternatives.\n${knowledge ? `\nWorkspace knowledge:\n${knowledge}` : ""}`
     : "";
   const memorySection = workspaceMemory
-    ? `\n\nDURABLE WORKSPACE MEMORY — curated team context for this turn:\n${workspaceMemory}\nUse this context when relevant. Cite a memory by its exact [Memory: title] label in your response. Treat entries marked STALE as leads to verify, not as current fact.`
+    ? `\n\nDURABLE WORKSPACE MEMORY — curated team context for this turn:\n${workspaceMemory}\nUse this context when relevant. Cite a memory by its exact [Memory: title] label in your response. Treat entries marked STALE as leads to verify, not as current fact. Workspace memory is available independently of connected tools: when a repository or provider is unavailable, still use relevant memory for a policy-based answer or draft and clearly distinguish unavailable live data from saved context. Never say that a missing repository prevents access to workspace memory.`
     : "";
   const responseRule = workflowMode
     ? `AUTOMATED WORKFLOW EXECUTION: Complete the workflow task in this turn. Do not merely acknowledge it, say you are ready, or ask when the team wants the work done. Use available read tools when the task needs current external information, then provide the requested result. If a required connection or permission is unavailable, state the specific missing requirement.`
