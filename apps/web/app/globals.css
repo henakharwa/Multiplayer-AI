@@ -687,10 +687,18 @@ textarea {
 .permission-request-compose textarea { min-height: 88px; padding: 10px; border: 1px solid var(--border-strong); border-radius: 8px; resize: vertical; font: inherit; }
 .permission-request-compose aside, .permission-request-list article aside { display: flex; gap: 8px; margin-top: 12px; }
 .permission-request-list { display: grid; gap: 10px; }
-.permission-request-list article { padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
-.permission-request-list article > span { margin-left: 5px; color: var(--text-dim); font-size: 13px; }
-.permission-request-list article p { margin: 9px 0 5px; color: var(--text-dim); }
-.permission-request-list article small { color: var(--text-faint); }
+.permission-request-list > header { display: flex; align-items: center; justify-content: space-between; }
+.permission-request-list > header p { margin: 0 0 3px; color: var(--text-faint); font-size: 11px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.permission-request-list > header > span { display: grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 999px; background: #e8efff; color: #315bd5; font-size: 12px; font-weight: 750; }
+.permission-request-list article { padding: 14px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
+.permission-request-card dl { display: grid; grid-template-columns: 130px minmax(0,1fr); gap: 9px 14px; margin: 0; }
+.permission-request-card dt { color: var(--text-faint); font-size: 12px; font-weight: 650; }
+.permission-request-card dd { margin: 0; color: var(--text); font-size: 13px; line-height: 1.4; }
+.permission-request-card dd small { margin-left: 4px; color: var(--text-faint); font-weight: 400; }
+.permission-request-card aside .btn { width: auto; min-height: 34px; padding: 6px 13px; font-size: 12px; }
+.permission-reject { color: #b42318; }
+.permission-reject:hover:not(:disabled) { border-color: #f1b7b3; background: #fff5f4; color: #8f1d14; }
+.permission-request-empty { margin: 0; color: var(--text-dim); font-size: 13px; }
 .workspace-kicker { margin: 0 0 2px; color: var(--text-faint); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .workspace-main-header h1 { margin: 0; color: var(--text); font-size: 18px; letter-spacing: -.02em; }
 .workspace-header-actions { display: flex; gap: 8px; }
