@@ -177,6 +177,23 @@ export interface WorkflowRun {
   completedAt: string | null;
 }
 
+export type WorkspaceMemoryKind = "knowledge" | "decision";
+
+export interface WorkspaceMemory {
+  id: string;
+  workspaceId: string;
+  kind: WorkspaceMemoryKind;
+  title: string;
+  content: string;
+  sourceTitle: string | null;
+  sourceUrl: string | null;
+  freshUntil: string | null;
+  createdByUserId: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface GithubIntegrationConfig {
   id?: string;
   type: "github";
@@ -491,6 +508,9 @@ export type AuditEventType =
   | "workflow.started"
   | "workflow.completed"
   | "workflow.failed"
+  | "memory.created"
+  | "memory.updated"
+  | "memory.deleted"
   | "action.proposed"
   | "action.confirmed"
   | "action.cancelled"

@@ -511,6 +511,57 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.status(202).json({ accepted: true });
   });
 
+  function memoryInput(body: Record<string, unknown>) {
+    const kind = body.kind === "decision" ? "decision" : "knowledge";
+    const freshUntil = typeof body.freshUntil === "string" && !Number.isNaN(Date.parse(body.freshUntil)) ? body.freshUntil : null;
+    const sourceUrl = typeof body.sourceUrl === "string" ? body.sourceUrl.trim() : "";
+    if (sourceUrl && !/^https?:\/\//i.test(sourceUrl)) throw new Error("Source URL must start with http:// or https://.");
+    return { kind, title: typeof body.title === "string" ? body.title : "", content: typeof body.content === "string" ? body.content : "", sourceTitle: typeof body.sourceTitle === "string" ? body.sourceTitle : null, sourceUrl: sourceUrl || null, freshUntil } as const;
+  }
+  async function canManageMemory(req: Request, memoryId: string) {
+    const workspaceId = paramString(req.params.id);
+    const memory = await db.getWorkspaceMemory(workspaceId, memoryId);
+    if (!memory) return { memory: null, allowed: false };
+    const role = await db.getWorkspaceRole(workspaceId, req.user!.id);
+    return { memory, allowed: role === "admin" || memory.createdByUserId === req.user!.id };
+  }
+  app.get("/workspaces/:id/memory", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    res.json(await db.listWorkspaceMemory(paramString(req.params.id)));
+  });
+  app.post("/workspaces/:id/memory", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    let input;
+    try { input = memoryInput(req.body ?? {}); } catch (error) { return res.status(400).json({ error: errMessage(error) }); }
+    if (!input.title.trim() || !input.content.trim()) return res.status(400).json({ error: "A memory title and content are required." });
+    const memory = await db.createWorkspaceMemory({ workspaceId: paramString(req.params.id), ...input, createdByUserId: req.user!.id });
+    await db.recordAuditEvent({ workspaceId: memory.workspaceId, eventType: "memory.created", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} saved ${memory.kind} memory ${memory.title}` });
+    res.status(201).json(memory);
+  });
+  app.patch("/workspaces/:id/memory/:memoryId", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const access = await canManageMemory(req, paramString(req.params.memoryId));
+    if (!access.memory) return res.status(404).json({ error: "Memory not found." });
+    if (!access.allowed) return res.status(403).json({ error: "Only the memory author or an Admin can edit this entry." });
+    let input;
+    try { input = memoryInput(req.body ?? {}); } catch (error) { return res.status(400).json({ error: errMessage(error) }); }
+    if (!input.title.trim() || !input.content.trim()) return res.status(400).json({ error: "A memory title and content are required." });
+    const memory = await db.updateWorkspaceMemory(paramString(req.params.id), paramString(req.params.memoryId), input);
+    if (!memory) return res.status(404).json({ error: "Memory not found." });
+    await db.recordAuditEvent({ workspaceId: memory.workspaceId, eventType: "memory.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} updated memory ${memory.title}` });
+    res.json(memory);
+  });
+  app.delete("/workspaces/:id/memory/:memoryId", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const access = await canManageMemory(req, paramString(req.params.memoryId));
+    if (!access.memory) return res.status(404).json({ error: "Memory not found." });
+    if (!access.allowed) return res.status(403).json({ error: "Only the memory author or an Admin can delete this entry." });
+    const memory = await db.deleteWorkspaceMemory(paramString(req.params.id), paramString(req.params.memoryId));
+    if (!memory) return res.status(404).json({ error: "Memory not found." });
+    await db.recordAuditEvent({ workspaceId: memory.workspaceId, eventType: "memory.deleted", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} deleted memory ${memory.title}` });
+    res.status(204).end();
+  });
+
   app.patch("/workspaces/:id/members/:userId", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin"]))) return;
     const role = req.body?.role;
@@ -823,6 +874,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       .slice(-5)
       .map((action) => `- ${action.description}: ${action.status}`)
       .join("\n");
+    const workspaceMemory = await db.workspaceMemoryContext(workspaceId);
     const turnStart = Date.now();
     const allowedModels = (process.env.AGENT_LLM_ALLOWED_MODELS ?? "").split(",").map((model) => model.trim());
     const selectedModel = configuredAgent?.model && configuredAgent.model !== "workspace-default" && allowedModels.includes(configuredAgent.model) ? configuredAgent.model : undefined;
@@ -834,6 +886,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       agentKind,
       customInstructions: configuredAgent?.instructions,
       knowledge: configuredAgent?.knowledge,
+      workspaceMemory,
       llmConfig: selectedModel ? resolveLlmConfig({ model: selectedModel }) : undefined,
     });
     console.log(`[timing] workspace ${workspaceId}: runAgentTurn (all LLM calls + tool calls, see [timing] lines above) took ${Date.now() - turnStart}ms`);

@@ -585,6 +585,7 @@ export default function WorkspaceRoomPage() {
           <Link href={`/w/${workspaceId}/integrations`}><GridGlyph /> Integrations</Link>
           <Link href={`/w/${workspaceId}/agents`}><GridGlyph /> Agents</Link>
           <Link href={`/w/${workspaceId}/workflows`}><ActivityGlyph /> Workflows</Link>
+          <Link href={`/w/${workspaceId}/memory`}><GridGlyph /> Memory</Link>
         </nav>
 
         <div className="workspace-conversations" aria-label="Conversations">

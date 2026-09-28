@@ -433,3 +433,21 @@ CREATE TABLE IF NOT EXISTS workspace_workflow_runs (
   completed_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS workspace_workflow_runs_workflow_idx ON workspace_workflow_runs (workflow_id, started_at DESC);
+
+-- Durable, workspace-wide context. Unlike transient chat history, these
+-- records are deliberately curated with a source and freshness date so an
+-- agent can cite current team knowledge and previously saved decisions.
+CREATE TABLE IF NOT EXISTS workspace_memory (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL DEFAULT 'knowledge' CHECK (kind IN ('knowledge', 'decision')),
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  source_title TEXT,
+  source_url TEXT,
+  fresh_until TIMESTAMPTZ,
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS workspace_memory_workspace_updated_idx ON workspace_memory (workspace_id, updated_at DESC);

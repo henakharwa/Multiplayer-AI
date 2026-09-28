@@ -25,6 +25,7 @@ export interface RunAgentTurnInput {
   agentKind?: AgentKind;
   customInstructions?: string;
   knowledge?: string;
+  workspaceMemory?: string;
   chat?: LlmChatFn;
   llmConfig?: LlmConfig;
   maxTurns?: number;
@@ -47,7 +48,8 @@ function buildSystemPrompt(
   agentKind: AgentKind = "project",
   actionContext?: string | null,
   customInstructions?: string,
-  knowledge?: string
+  knowledge?: string,
+  workspaceMemory?: string
 ): string {
   const specialist = agentKind === "github"
     ? "You are the GitHub specialist. Focus on repository code, issues, pull requests, branches, and CI. Only use the GitHub tools supplied for this turn."
@@ -75,7 +77,10 @@ connected at any point after that.`;
   const configurationSection = customInstructions
     ? `\n\nACTIVE WORKSPACE AGENT CONFIGURATION — mandatory rules for this turn:\n${customInstructions}\nFollow this configuration as the agent's operating policy. If it narrows the scope, do not include excluded work or generic alternatives.\n${knowledge ? `\nWorkspace knowledge:\n${knowledge}` : ""}`
     : "";
-  return `You are the shared AI teammate in a group chat workspace. ${specialist}${configurationSection} Multiple
+  const memorySection = workspaceMemory
+    ? `\n\nDURABLE WORKSPACE MEMORY — curated team context for this turn:\n${workspaceMemory}\nUse this context when relevant. Cite a memory by its exact [Memory: title] label in your response. Treat entries marked STALE as leads to verify, not as current fact.`
+    : "";
+  return `You are the shared AI teammate in a group chat workspace. ${specialist}${configurationSection}${memorySection} Multiple
 human members share this same chat and can all see your replies. You have
 tools to read AND act on a connected GitHub repo -- issues, pull requests,
 files, commits, and branches -- and to read a connected Slack workspace's
@@ -259,7 +264,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   // against an 8000 limit, almost entirely from tool schema + system
   // prompt + the (then 4096) completion reserve, with nothing left over
   // for history at all.
-  const systemPrompt = buildSystemPrompt(input.githubContext, input.agentKind, input.actionContext, input.customInstructions, input.knowledge);
+  const systemPrompt = buildSystemPrompt(input.githubContext, input.agentKind, input.actionContext, input.customInstructions, input.knowledge, input.workspaceMemory);
   const toolsTokens = estimateTokens(JSON.stringify(toolDefs));
   const systemTokens = estimateTokens(systemPrompt);
   const historyBudget = config.tpmLimit - toolsTokens - systemTokens - config.maxTokens - TOKEN_BUDGET_SAFETY_MARGIN;
