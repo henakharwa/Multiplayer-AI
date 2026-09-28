@@ -568,7 +568,6 @@ export default function WorkspaceRoomPage() {
             </div>
             {workspaceRole === "admin" && <div className="workspace-permission-request-wrap"><button type="button" title="Permission requests" onClick={() => setPermissionRequestsOpen((open) => !open)} aria-label={`Permission requests${permissionRequests.length ? ` (${permissionRequests.length} pending)` : ""}`}><KeyGlyph />{permissionRequests.length > 0 && <span className="workspace-notification-badge">{permissionRequests.length > 9 ? "9+" : permissionRequests.length}</span>}</button>{permissionRequestsOpen && <section className="workspace-permission-request-panel" aria-label="Pending permission requests"><header><div><p>Requests</p><strong>Pending permissions</strong></div><span>{permissionRequests.length}</span></header>{permissionRequests.length ? permissionRequests.map((request) => <article key={request.id}><dl><div><dt>Requested by</dt><dd>{request.display_name} <small>@{request.username}</small></dd></div><div><dt>Capability</dt><dd>{permissionLabel(request.permission)}</dd></div><div><dt>Reason</dt><dd>{request.reason}</dd></div></dl><aside><button className="btn" onClick={() => void decidePermissionRequest(request, "approve")}>Approve</button><button className="btn secondary permission-reject" onClick={() => void decidePermissionRequest(request, "reject")}>Reject</button></aside></article>) : <p className="workspace-notification-empty">No pending permission requests.</p>}</section>}</div>}
             {canEdit && <button type="button" title="Workspace integrations" onClick={() => setShowConnectModal(true)} aria-label="Add integration"><PlugGlyph /></button>}
-            <Link href={`/w/${workspaceId}/integrations`} title="Workspace settings" aria-label="Workspace settings"><GearGlyph /></Link>
           </div>
         </div>
         <div className="workspace-search"><SearchGlyph /><input value={conversationSearch} onChange={(event) => setConversationSearch(event.target.value)} placeholder="Search this conversation" aria-label="Search this conversation" /></div>
@@ -582,8 +581,8 @@ export default function WorkspaceRoomPage() {
         <nav className="workspace-nav" aria-label="Workspace navigation">
           <a className="active" href="#conversation"><ChatGlyph /> Conversation</a>
           <Link href={`/w/${workspaceId}/audit`}><ActivityGlyph /> Activity</Link>
-          <Link href={`/w/${workspaceId}/integrations`}><GridGlyph /> Integrations</Link>
-          <Link href={`/w/${workspaceId}/agents`}><GridGlyph /> Agents</Link>
+          <Link href={`/w/${workspaceId}/integrations`}><PlugGlyph /> Integrations</Link>
+          <Link href={`/w/${workspaceId}/agents`}><AgentGlyph /> Agents</Link>
           <Link href={`/w/${workspaceId}/workflows`}><ActivityGlyph /> Workflows</Link>
           <Link href={`/w/${workspaceId}/memory`}><GridGlyph /> Memory</Link>
         </nav>
