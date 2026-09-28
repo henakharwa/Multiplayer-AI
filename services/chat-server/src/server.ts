@@ -889,7 +889,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     // it can't see GitHub" the first thing to know is whether the tool
     // list was actually empty for this turn (an integration/credential
     // problem) or non-empty (the model just didn't use what it had).
-    console.log(`[agent] workspace ${workspaceId}: ${tools.length} tool(s) available for this turn`);
+    console.log(`[agent] workspace ${workspaceId}: ${tools.length} tool(s) available for this turn${workflowInstructions ? ` (workflow ${workflowReadOnly ? "read-only" : "approved-write proposal"})` : ""}`);
 
     // Confirmation notices are deliberately excluded from normal LLM
     // history (history.ts), so provide the recent authoritative outcomes as
@@ -909,7 +909,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     // the workflow instructions explicitly so an automated turn always has
     // a concrete task, while retaining the configured agent's own rules.
     const workflowGuidance = workflowInstructions
-      ? `WORKFLOW INSTRUCTIONS — complete this task for the team:\n${workflowInstructions}\n\nFor this automated run, prefer collection-level read calls. Do not fetch every issue, pull request, or workflow run individually unless the list results require it. Once you have the requested categories, provide the concise report.`
+      ? `WORKFLOW INSTRUCTIONS — complete this task for the team:\n${workflowInstructions}\n\nFor this automated run, prefer collection-level read calls. Do not fetch every issue, pull request, or workflow run individually unless the list results require it. Once you have the requested categories, provide the concise report.${workflowReadOnly ? " This is a read-only workflow: do not propose external changes." : " This workflow explicitly requests a governed change: create only a pending approval proposal, never a direct external change. When creating a GitHub issue, use issue_write with method=\"create\"."}`
       : "";
     const activeInstructions = [configuredAgent?.instructions, workflowGuidance].filter(Boolean).join("\n\n");
     const result = await deps.runAgentTurn({

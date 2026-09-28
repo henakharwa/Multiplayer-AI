@@ -81,6 +81,18 @@ describe("runAgentTurn", () => {
     expect(offeredTools).toContain("actions_list");
   });
 
+  it("prioritizes issue_write when a workflow explicitly requests a governed issue", () => {
+    const selected = selectToolsForBudget(
+      [
+        fakeTool("list_issues", async () => ({})),
+        fakeTool("issue_write", async () => ({})),
+      ],
+      "Create a GitHub issue. Use issue_write with method create to make a pending approval proposal.",
+      600
+    );
+    expect(selected[0]?.definition.function.name).toBe("issue_write");
+  });
+
   it("returns the plain reply when the model doesn't call any tool", async () => {
     const chat: LlmChatFn = async () => ({ role: "assistant", content: "Hello there!" });
     const result = await runAgentTurn({ history: [{ role: "user", content: "hi" }], tools: [], chat });
