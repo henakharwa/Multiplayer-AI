@@ -142,6 +142,41 @@ export interface WorkspaceAgentVersion {
   createdAt: string;
 }
 
+export type WorkflowTrigger = "manual" | "schedule" | "github_issue" | "github_status" | "slack_mention";
+export type WorkflowRunStatus = "running" | "succeeded" | "failed";
+
+export interface WorkspaceWorkflow {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description: string;
+  instructions: string;
+  agentKind: "project" | IntegrationType;
+  workspaceAgentId: string | null;
+  conversationId: string | null;
+  trigger: WorkflowTrigger;
+  scheduleMinutes: number | null;
+  enabled: boolean;
+  ownerUserId: string | null;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastRunStatus: WorkflowRunStatus | null;
+  lastRunError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowRun {
+  id: string;
+  workflowId: string;
+  workspaceId: string;
+  trigger: WorkflowTrigger;
+  status: WorkflowRunStatus;
+  detail: string | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
 export interface GithubIntegrationConfig {
   id?: string;
   type: "github";
@@ -450,6 +485,12 @@ export type AuditEventType =
   | "agent.updated"
   | "agent.deleted"
   | "agent.published"
+  | "workflow.created"
+  | "workflow.updated"
+  | "workflow.deleted"
+  | "workflow.started"
+  | "workflow.completed"
+  | "workflow.failed"
   | "action.proposed"
   | "action.confirmed"
   | "action.cancelled"

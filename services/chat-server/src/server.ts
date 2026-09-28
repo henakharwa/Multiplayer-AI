@@ -446,6 +446,71 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.json(await db.listWorkspaceAgentVersions(paramString(req.params.id), paramString(req.params.agentId)));
   });
 
+  const workflowTriggers = ["manual", "schedule", "github_issue", "github_status", "slack_mention"] as const;
+  const workflowAgents = ["project", "github", "slack", "linear", "notion", "figma"] as const;
+  function workflowInput(body: Record<string, unknown>) {
+    const trigger = workflowTriggers.includes(body.trigger as typeof workflowTriggers[number]) ? body.trigger as typeof workflowTriggers[number] : "manual";
+    const agentKind = workflowAgents.includes(body.agentKind as typeof workflowAgents[number]) ? body.agentKind as typeof workflowAgents[number] : "project";
+    const scheduleMinutes = Number(body.scheduleMinutes);
+    return {
+      name: typeof body.name === "string" ? body.name : "", description: typeof body.description === "string" ? body.description : "",
+      instructions: typeof body.instructions === "string" ? body.instructions : "", agentKind,
+      workspaceAgentId: typeof body.workspaceAgentId === "string" && UUID_RE.test(body.workspaceAgentId) ? body.workspaceAgentId : null,
+      conversationId: typeof body.conversationId === "string" && UUID_RE.test(body.conversationId) ? body.conversationId : null,
+      trigger, scheduleMinutes: trigger === "schedule" && Number.isInteger(scheduleMinutes) && scheduleMinutes >= 5 && scheduleMinutes <= 10080 ? scheduleMinutes : null,
+      enabled: typeof body.enabled === "boolean" ? body.enabled : true,
+    };
+  }
+
+  app.get("/workspaces/:id/workflows", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    res.json(await db.listWorkspaceWorkflows(paramString(req.params.id)));
+  });
+  app.post("/workspaces/:id/workflows", async (req: Request, res: Response) => {
+    if (!(await requirePermission(req, res, "createAgents"))) return;
+    const input = workflowInput(req.body ?? {});
+    if (!input.name.trim() || !input.instructions.trim()) return res.status(400).json({ error: "A workflow name and instructions are required." });
+    if (input.trigger === "schedule" && !input.scheduleMinutes) return res.status(400).json({ error: "Choose an interval between 5 minutes and 7 days." });
+    if (input.workspaceAgentId && !(await db.getPublishedWorkspaceAgent(paramString(req.params.id), input.workspaceAgentId))) return res.status(400).json({ error: "Choose a published workspace agent." });
+    const workflow = await db.createWorkspaceWorkflow(paramString(req.params.id), req.user!.id, input);
+    await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.created", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} created workflow ${workflow.name}` });
+    res.status(201).json(workflow);
+  });
+  app.patch("/workspaces/:id/workflows/:workflowId", async (req: Request, res: Response) => {
+    if (!(await requirePermission(req, res, "createAgents"))) return;
+    const input = workflowInput(req.body ?? {});
+    if (!input.name.trim() || !input.instructions.trim()) return res.status(400).json({ error: "A workflow name and instructions are required." });
+    if (input.trigger === "schedule" && !input.scheduleMinutes) return res.status(400).json({ error: "Choose an interval between 5 minutes and 7 days." });
+    if (input.workspaceAgentId && !(await db.getPublishedWorkspaceAgent(paramString(req.params.id), input.workspaceAgentId))) return res.status(400).json({ error: "Choose a published workspace agent." });
+    const workflow = await db.updateWorkspaceWorkflow(paramString(req.params.id), paramString(req.params.workflowId), input);
+    if (!workflow) return res.status(404).json({ error: "Workflow not found." });
+    await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} updated workflow ${workflow.name}` });
+    res.json(workflow);
+  });
+  app.delete("/workspaces/:id/workflows/:workflowId", async (req: Request, res: Response) => {
+    if (!(await requirePermission(req, res, "createAgents"))) return;
+    const workflow = await db.deleteWorkspaceWorkflow(paramString(req.params.id), paramString(req.params.workflowId));
+    if (!workflow) return res.status(404).json({ error: "Workflow not found." });
+    await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.deleted", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} deleted workflow ${workflow.name}` });
+    res.status(204).end();
+  });
+  app.get("/workspaces/:id/workflows/:workflowId/runs", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    res.json(await db.listWorkflowRuns(paramString(req.params.id), paramString(req.params.workflowId)));
+  });
+  app.post("/workspaces/:id/workflows/:workflowId/run", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const workflow = await db.getWorkspaceWorkflow(paramString(req.params.id), paramString(req.params.workflowId));
+    if (!workflow) return res.status(404).json({ error: "Workflow not found." });
+    const requestedTrigger = req.body?.trigger;
+    const trigger = workflowTriggers.includes(requestedTrigger) && requestedTrigger !== "schedule" ? requestedTrigger : "manual";
+    if (trigger !== "manual" && trigger !== workflow.trigger) return res.status(400).json({ error: "This event does not match the workflow trigger." });
+    const runner = app.locals.runWorkflow as undefined | ((workflow: Awaited<ReturnType<typeof db.getWorkspaceWorkflow>>, trigger: typeof workflowTriggers[number], user: { id: string; displayName: string }) => Promise<void>);
+    if (!runner) return res.status(503).json({ error: "Workflow runner is starting. Try again in a moment." });
+    void runner(workflow, trigger, { id: req.user!.id, displayName: req.user!.displayName });
+    res.status(202).json({ accepted: true });
+  });
+
   app.patch("/workspaces/:id/members/:userId", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin"]))) return;
     const role = req.body?.role;
@@ -796,6 +861,51 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       excludeUserIds: rooms.participants(`${workspaceId}:${conversationId}`).flatMap((participant) => participant.userId ? [participant.userId] : []),
     });
   }
+
+  // The HTTP routes created by createApp enqueue a workflow through this
+  // runner. Keeping the actual agent invocation here means scheduled and
+  // event-driven work takes the identical tool, provider-permission, action
+  // proposal, notification, and WebSocket paths as an ordinary chat turn.
+  app.locals.runWorkflow = async (workflow: NonNullable<Awaited<ReturnType<typeof db.getWorkspaceWorkflow>>>, trigger: "manual" | "schedule" | "github_issue" | "github_status" | "slack_mention", user: { id: string; displayName: string }) => {
+    const run = await db.createWorkflowRun(workflow, trigger);
+    await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.started", actorType: "user", actorUserId: user.id, actorName: user.displayName, summary: `${user.displayName} started workflow ${workflow.name}`, metadata: { workflowId: workflow.id, runId: run.id, trigger } });
+    try {
+      const role = await db.getWorkspaceRole(workflow.workspaceId, user.id);
+      if (!role) throw new Error("The workflow owner is no longer a workspace member.");
+      if (workflow.agentKind !== "project" && !(await db.hasWorkspacePermission(workflow.workspaceId, role, workflow.agentKind))) {
+        throw new Error(`The workflow owner cannot use the ${workflow.agentKind} provider.`);
+      }
+      const conversation = workflow.conversationId ? await db.getConversation(workflow.workspaceId, workflow.conversationId) : await db.createConversation({ workspaceId: workflow.workspaceId, title: workflow.name, createdByUserId: user.id });
+      if (!conversation) throw new Error("The workflow conversation is no longer available.");
+      if (!workflow.conversationId) await db.setWorkflowConversation(workflow.id, conversation.id);
+      const prefix = trigger === "manual" ? "Manual run" : `Triggered by ${trigger.replace(/_/g, " ")}`;
+      const systemMessage = await db.insertMessage({ workspaceId: workflow.workspaceId, conversationId: conversation.id, role: "system", authorName: "Workflow", content: `${prefix}: ${workflow.name}\n${workflow.instructions}` });
+      rooms.broadcast(`${workflow.workspaceId}:${conversation.id}`, { type: "message", message: systemMessage });
+      rooms.broadcast(workflow.workspaceId, { type: "workspace_message", message: systemMessage });
+      await runAgentReply(workflow.workspaceId, conversation.id, { userId: user.id, name: user.displayName }, workflow.agentKind, workflow.workspaceAgentId ?? undefined);
+      await db.finishWorkflowRun(workflow.id, run.id, "succeeded", "Agent response completed.");
+      await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.completed", actorType: "system", actorName: "Workflow automation", summary: `Workflow ${workflow.name} completed`, metadata: { workflowId: workflow.id, runId: run.id, trigger } });
+    } catch (error) {
+      const detail = errMessage(error);
+      await db.finishWorkflowRun(workflow.id, run.id, "failed", detail);
+      await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.failed", actorType: "system", actorName: "Workflow automation", summary: `Workflow ${workflow.name} failed: ${detail}`, metadata: { workflowId: workflow.id, runId: run.id, trigger } });
+    }
+  };
+
+  // Interval scheduling is intentionally modest: database claiming makes it
+  // safe for more than one server process, while each execution still goes
+  // through the governed workflow runner above.
+  const workflowScheduler = setInterval(() => {
+    void (async () => {
+      const due = await db.claimDueWorkflows();
+      for (const workflow of due) {
+        const owner = workflow.ownerUserId ? await db.getUserById(workflow.ownerUserId) : null;
+        if (!owner) continue;
+        void app.locals.runWorkflow(workflow, "schedule", { id: owner.id, displayName: owner.displayName });
+      }
+    })().catch((error) => console.error("workflow scheduler failed", error));
+  }, 30_000);
+  server.on("close", () => clearInterval(workflowScheduler));
 
   wss.on("connection", (ws: WebSocket, req) => {
     if (req.headers.origin && req.headers.origin !== (process.env.WEB_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "")) {

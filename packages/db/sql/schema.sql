@@ -395,3 +395,41 @@ CREATE TABLE IF NOT EXISTS workspace_permission_requests (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(), resolved_at TIMESTAMPTZ
 );
 ALTER TABLE workspace_permission_requests ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT '';
+
+-- Reusable agent workflows. A workflow can be started by a teammate, on an
+-- interval, or by a provider event. The run history is append-only so the
+-- activity feed can answer what ran, why, and whether it completed.
+CREATE TABLE IF NOT EXISTS workspace_workflows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  instructions TEXT NOT NULL DEFAULT '',
+  agent_kind TEXT NOT NULL DEFAULT 'project' CHECK (agent_kind IN ('project', 'github', 'slack', 'linear', 'notion', 'figma')),
+  workspace_agent_id UUID REFERENCES workspace_agents(id) ON DELETE SET NULL,
+  conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
+  trigger TEXT NOT NULL DEFAULT 'manual' CHECK (trigger IN ('manual', 'schedule', 'github_issue', 'github_status', 'slack_mention')),
+  schedule_minutes INTEGER CHECK (schedule_minutes IS NULL OR schedule_minutes BETWEEN 5 AND 10080),
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  next_run_at TIMESTAMPTZ,
+  last_run_at TIMESTAMPTZ,
+  last_run_status TEXT CHECK (last_run_status IS NULL OR last_run_status IN ('running', 'succeeded', 'failed')),
+  last_run_error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS workspace_workflows_due_idx ON workspace_workflows (enabled, trigger, next_run_at);
+CREATE INDEX IF NOT EXISTS workspace_workflows_workspace_idx ON workspace_workflows (workspace_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS workspace_workflow_runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workflow_id UUID NOT NULL REFERENCES workspace_workflows(id) ON DELETE CASCADE,
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  trigger TEXT NOT NULL CHECK (trigger IN ('manual', 'schedule', 'github_issue', 'github_status', 'slack_mention')),
+  status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'succeeded', 'failed')),
+  detail TEXT,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS workspace_workflow_runs_workflow_idx ON workspace_workflow_runs (workflow_id, started_at DESC);

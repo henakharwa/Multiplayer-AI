@@ -1,0 +1,82 @@
+"use client";
+
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import type { Conversation, WorkspaceAgent, WorkspaceWorkflow, WorkflowRun, WorkflowTrigger } from "@mai-chat/shared-types";
+import { ApiError, createWorkspaceWorkflow, deleteWorkspaceWorkflow, listConversations, listWorkflowRuns, listWorkspaceAgents, listWorkspaceWorkflows, runWorkspaceWorkflow, updateWorkspaceWorkflow, type WorkflowInput } from "../../../../lib/api";
+
+const triggers: Array<{ value: WorkflowTrigger; label: string; help: string }> = [
+  { value: "manual", label: "Manual", help: "Run when a teammate starts it." },
+  { value: "schedule", label: "Schedule", help: "Run on a repeating interval." },
+  { value: "github_issue", label: "New GitHub issue", help: "Run when a new issue event arrives." },
+  { value: "github_status", label: "GitHub status change", help: "Run when a status event arrives." },
+  { value: "slack_mention", label: "Slack mention", help: "Run when the workspace is mentioned in Slack." },
+];
+const agentKinds = ["project", "github", "slack", "linear", "notion", "figma"] as const;
+const empty: WorkflowInput = { name: "", description: "", instructions: "", agentKind: "project", workspaceAgentId: null, conversationId: null, trigger: "manual", scheduleMinutes: 60, enabled: true };
+
+function formatDate(value: string | null) { return value ? new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "Not run yet"; }
+function labelForTrigger(trigger: WorkflowTrigger) { return triggers.find((item) => item.value === trigger)?.label ?? trigger; }
+
+export default function WorkflowsPage() {
+  const { id: workspaceId } = useParams<{ id: string }>();
+  const [workflows, setWorkflows] = useState<WorkspaceWorkflow[]>([]);
+  const [agents, setAgents] = useState<WorkspaceAgent[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selected, setSelected] = useState<WorkspaceWorkflow | null>(null);
+  const [draft, setDraft] = useState<WorkflowInput>(empty);
+  const [runs, setRuns] = useState<WorkflowRun[]>([]);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const refresh = async () => setWorkflows(await listWorkspaceWorkflows(workspaceId));
+  useEffect(() => { void Promise.all([refresh(), listWorkspaceAgents(workspaceId).then(setAgents), listConversations(workspaceId).then(setConversations)]).catch((err: Error) => setError(err.message)); }, [workspaceId]);
+  async function select(workflow: WorkspaceWorkflow) {
+    setSelected(workflow); setError(""); setNotice("");
+    setDraft({ name: workflow.name, description: workflow.description, instructions: workflow.instructions, agentKind: workflow.agentKind, workspaceAgentId: workflow.workspaceAgentId, conversationId: workflow.conversationId, trigger: workflow.trigger, scheduleMinutes: workflow.scheduleMinutes ?? 60, enabled: workflow.enabled });
+    try { setRuns(await listWorkflowRuns(workspaceId, workflow.id)); } catch { setRuns([]); }
+  }
+  async function save() {
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const workflow = selected ? await updateWorkspaceWorkflow(workspaceId, selected.id, draft) : await createWorkspaceWorkflow(workspaceId, draft);
+      await refresh(); await select(workflow); setNotice(selected ? "Workflow updated." : "Workflow created.");
+    } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save workflow."); } finally { setSaving(false); }
+  }
+  async function run(trigger: "manual" | "github_issue" | "github_status" | "slack_mention" = "manual") {
+    if (!selected) return; setSaving(true); setError("");
+    try { await runWorkspaceWorkflow(workspaceId, selected.id, trigger); setNotice("Workflow started. Its response will appear in the selected conversation."); setTimeout(() => { void listWorkflowRuns(workspaceId, selected.id).then(setRuns); void refresh(); }, 800); }
+    catch (err) { setError(err instanceof Error ? err.message : "Could not run workflow."); } finally { setSaving(false); }
+  }
+  async function remove() {
+    if (!selected || !window.confirm(`Delete ${selected.name}? This cannot be undone.`)) return;
+    setSaving(true); try { await deleteWorkspaceWorkflow(workspaceId, selected.id); setSelected(null); setDraft(empty); setRuns([]); await refresh(); } catch (err) { setError(err instanceof Error ? err.message : "Could not delete workflow."); } finally { setSaving(false); }
+  }
+  const publishedAgents = agents.filter((agent) => agent.status === "published");
+  const triggerHelp = triggers.find((item) => item.value === draft.trigger)?.help;
+  return <main className="workspace-settings-page workflow-page">
+    <Link href={`/w/${workspaceId}`} className="settings-back">← Back to workspace</Link>
+    <header><p className="eyebrow">WORKFLOW AUTOMATION</p><h1>Build reusable workflows</h1><p>Turn recurring work into governed agent runs. Schedules and event triggers use the same connections, permissions, and approval steps as chat.</p></header>
+    <div className="workflow-layout">
+      <section className="workflow-list"><div className="section-heading"><h2>Workflows</h2><button onClick={() => { setSelected(null); setDraft(empty); setRuns([]); setError(""); setNotice(""); }}>New workflow</button></div>
+        {workflows.length ? workflows.map((workflow) => <button key={workflow.id} className={`workflow-card ${selected?.id === workflow.id ? "selected" : ""}`} onClick={() => void select(workflow)}><span className={`workflow-status ${workflow.enabled ? "enabled" : "paused"}`}>{workflow.enabled ? "Active" : "Paused"}</span><strong>{workflow.name}</strong><small>{labelForTrigger(workflow.trigger)} · {formatDate(workflow.lastRunAt)}</small></button>) : <p className="muted">No workflows yet. Create one for a recurring team task.</p>}
+      </section>
+      <section className="workflow-form"><div className="section-heading"><h2>{selected ? selected.name : "New workflow"}</h2>{selected && <button className="secondary-button workflow-run-button" disabled={saving} onClick={() => void run()}>Run now</button>}</div>
+        <label>Name<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Weekly release readiness" /></label>
+        <label>Description<input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="A short description for your team" /></label>
+        <label>Instructions<textarea rows={5} value={draft.instructions} onChange={(e) => setDraft({ ...draft, instructions: e.target.value })} placeholder="Review open pull requests, checks, and release blockers. Share a concise update." /></label>
+        <div className="workflow-two-columns"><label>Agent<select value={draft.workspaceAgentId ?? ""} onChange={(e) => { const custom = publishedAgents.find((agent) => agent.id === e.target.value); setDraft({ ...draft, workspaceAgentId: custom?.id ?? null, agentKind: custom?.baseAgent ?? draft.agentKind }); }}><option value="">Built-in specialist</option>{publishedAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · v{agent.publishedVersion}</option>)}</select></label><label>Specialist<select disabled={Boolean(draft.workspaceAgentId)} value={draft.agentKind} onChange={(e) => setDraft({ ...draft, agentKind: e.target.value as WorkflowInput["agentKind"] })}>{agentKinds.map((agent) => <option key={agent} value={agent}>{agent[0].toUpperCase() + agent.slice(1)}</option>)}</select></label></div>
+        <label>Post responses in<select value={draft.conversationId ?? ""} onChange={(e) => setDraft({ ...draft, conversationId: e.target.value || null })}><option value="">A dedicated workflow conversation</option>{conversations.map((conversation) => <option key={conversation.id} value={conversation.id}>{conversation.title}</option>)}</select></label>
+        <fieldset className="workflow-trigger-options"><legend>Start this workflow</legend>{triggers.map((item) => <label key={item.value} className={draft.trigger === item.value ? "chosen" : ""}><input type="radio" name="trigger" checked={draft.trigger === item.value} onChange={() => setDraft({ ...draft, trigger: item.value })} /><span><strong>{item.label}</strong><small>{item.help}</small></span></label>)}</fieldset>
+        {draft.trigger === "schedule" && <label>Repeat every <select value={draft.scheduleMinutes ?? 60} onChange={(e) => setDraft({ ...draft, scheduleMinutes: Number(e.target.value) })}>{[[15,"15 minutes"],[30,"30 minutes"],[60,"hour"],[240,"4 hours"],[1440,"day"],[10080,"week"]].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
+        {draft.trigger !== "manual" && draft.trigger !== "schedule" && selected && <button type="button" className="secondary-button workflow-test-button" disabled={saving} onClick={() => void run(draft.trigger as "github_issue" | "github_status" | "slack_mention")}>Test {labelForTrigger(draft.trigger)} trigger</button>}
+        <label className="workflow-enabled"><span><strong>Workflow active</strong><small>{draft.enabled ? "It can run when this trigger occurs." : "Saved but paused."}</small></span><span className="toggle-switch"><input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}/><span className="toggle-track" /></span></label>
+        {triggerHelp && <p className="workflow-help">{triggerHelp}</p>}{error && <p className="error-text">{error}</p>}{notice && <p className="success-text">{notice}</p>}
+        <div className="agent-builder-actions"><button className="primary-button" disabled={saving || !draft.name.trim() || !draft.instructions.trim()} onClick={() => void save()}>{saving ? "Saving…" : selected ? "Save changes" : "Create workflow"}</button>{selected && <button className="agent-delete-button" disabled={saving} onClick={() => void remove()}>Delete workflow</button>}</div>
+        {selected && <div className="workflow-runs"><h3>Recent runs</h3>{runs.length ? runs.map((run) => <div key={run.id}><span className={`run-status ${run.status}`}>{run.status}</span><strong>{labelForTrigger(run.trigger)}</strong><small>{formatDate(run.startedAt)}{run.detail ? ` · ${run.detail}` : ""}</small></div>) : <p className="muted">No runs yet.</p>}</div>}
+      </section>
+    </div>
+  </main>;
+}

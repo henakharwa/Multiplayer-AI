@@ -21,6 +21,10 @@ import type {
   WorkspacePermissions,
   WorkspaceAgent,
   WorkspaceAgentVersion,
+  WorkspaceWorkflow,
+  WorkflowRun,
+  WorkflowRunStatus,
+  WorkflowTrigger,
 } from "@mai-chat/shared-types";
 import { getPool } from "./pool.js";
 import { encryptToken, decryptToken, hashSessionToken } from "./crypto.js";
@@ -594,6 +598,100 @@ export async function listWorkspaceAgentVersions(workspaceId: string, agentId: s
 export async function deleteWorkspaceAgent(workspaceId: string, agentId: string): Promise<WorkspaceAgent | null> {
   const result = await getPool().query(`DELETE FROM workspace_agents WHERE workspace_id = $1 AND id = $2 RETURNING *`, [workspaceId, agentId]);
   return result.rows[0] ? toWorkspaceAgent(result.rows[0]) : null;
+}
+
+type WorkflowInput = Pick<WorkspaceWorkflow, "name" | "description" | "instructions" | "agentKind" | "workspaceAgentId" | "conversationId" | "trigger" | "scheduleMinutes" | "enabled">;
+
+function toWorkflow(row: Record<string, unknown>): WorkspaceWorkflow {
+  return {
+    id: String(row.id), workspaceId: String(row.workspace_id), name: String(row.name), description: String(row.description ?? ""), instructions: String(row.instructions ?? ""),
+    agentKind: row.agent_kind as WorkspaceWorkflow["agentKind"], workspaceAgentId: row.workspace_agent_id ? String(row.workspace_agent_id) : null,
+    conversationId: row.conversation_id ? String(row.conversation_id) : null, trigger: row.trigger as WorkflowTrigger,
+    scheduleMinutes: row.schedule_minutes === null ? null : Number(row.schedule_minutes), enabled: Boolean(row.enabled), ownerUserId: row.owner_user_id ? String(row.owner_user_id) : null,
+    nextRunAt: row.next_run_at ? (row.next_run_at as Date).toISOString() : null, lastRunAt: row.last_run_at ? (row.last_run_at as Date).toISOString() : null,
+    lastRunStatus: row.last_run_status as WorkflowRunStatus | null, lastRunError: row.last_run_error ? String(row.last_run_error) : null,
+    createdAt: (row.created_at as Date).toISOString(), updatedAt: (row.updated_at as Date).toISOString(),
+  };
+}
+
+function workflowScheduleDate(trigger: WorkflowTrigger, scheduleMinutes: number | null): Date | null {
+  return trigger === "schedule" && scheduleMinutes ? new Date(Date.now() + scheduleMinutes * 60_000) : null;
+}
+
+export async function listWorkspaceWorkflows(workspaceId: string): Promise<WorkspaceWorkflow[]> {
+  const result = await getPool().query("SELECT * FROM workspace_workflows WHERE workspace_id = $1 ORDER BY updated_at DESC", [workspaceId]);
+  return result.rows.map(toWorkflow);
+}
+
+export async function getWorkspaceWorkflow(workspaceId: string, workflowId: string): Promise<WorkspaceWorkflow | null> {
+  const result = await getPool().query("SELECT * FROM workspace_workflows WHERE workspace_id = $1 AND id = $2", [workspaceId, workflowId]);
+  return result.rows[0] ? toWorkflow(result.rows[0]) : null;
+}
+
+export async function createWorkspaceWorkflow(workspaceId: string, ownerUserId: string, input: WorkflowInput): Promise<WorkspaceWorkflow> {
+  const scheduleMinutes = input.trigger === "schedule" ? input.scheduleMinutes : null;
+  const result = await getPool().query(
+    `INSERT INTO workspace_workflows (workspace_id,name,description,instructions,agent_kind,workspace_agent_id,conversation_id,trigger,schedule_minutes,enabled,owner_user_id,next_run_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+    [workspaceId, input.name.trim(), input.description.trim(), input.instructions.trim(), input.agentKind, input.workspaceAgentId, input.conversationId, input.trigger, scheduleMinutes, input.enabled, ownerUserId, workflowScheduleDate(input.trigger, scheduleMinutes)]
+  );
+  return toWorkflow(result.rows[0]);
+}
+
+export async function updateWorkspaceWorkflow(workspaceId: string, workflowId: string, input: Partial<WorkflowInput>): Promise<WorkspaceWorkflow | null> {
+  const current = await getWorkspaceWorkflow(workspaceId, workflowId);
+  if (!current) return null;
+  const merged = { ...current, ...input, name: input.name?.trim() || current.name, description: input.description?.trim() ?? current.description, instructions: input.instructions?.trim() ?? current.instructions };
+  const scheduleMinutes = merged.trigger === "schedule" ? merged.scheduleMinutes : null;
+  const nextRun = !merged.enabled ? null : workflowScheduleDate(merged.trigger, scheduleMinutes);
+  const result = await getPool().query(
+    `UPDATE workspace_workflows SET name=$3,description=$4,instructions=$5,agent_kind=$6,workspace_agent_id=$7,conversation_id=$8,trigger=$9,schedule_minutes=$10,enabled=$11,next_run_at=$12,updated_at=now()
+     WHERE workspace_id=$1 AND id=$2 RETURNING *`,
+    [workspaceId, workflowId, merged.name, merged.description, merged.instructions, merged.agentKind, merged.workspaceAgentId, merged.conversationId, merged.trigger, scheduleMinutes, merged.enabled, nextRun]
+  );
+  return result.rows[0] ? toWorkflow(result.rows[0]) : null;
+}
+
+export async function deleteWorkspaceWorkflow(workspaceId: string, workflowId: string): Promise<WorkspaceWorkflow | null> {
+  const result = await getPool().query("DELETE FROM workspace_workflows WHERE workspace_id=$1 AND id=$2 RETURNING *", [workspaceId, workflowId]);
+  return result.rows[0] ? toWorkflow(result.rows[0]) : null;
+}
+
+export async function setWorkflowConversation(workflowId: string, conversationId: string): Promise<void> {
+  await getPool().query("UPDATE workspace_workflows SET conversation_id=$2, updated_at=now() WHERE id=$1", [workflowId, conversationId]);
+}
+
+export async function createWorkflowRun(workflow: WorkspaceWorkflow, trigger: WorkflowTrigger): Promise<WorkflowRun> {
+  const result = await getPool().query(
+    `INSERT INTO workspace_workflow_runs (workflow_id,workspace_id,trigger) VALUES ($1,$2,$3) RETURNING *`, [workflow.id, workflow.workspaceId, trigger]
+  );
+  await getPool().query("UPDATE workspace_workflows SET last_run_at=now(),last_run_status='running',last_run_error=NULL,updated_at=now() WHERE id=$1", [workflow.id]);
+  return toWorkflowRun(result.rows[0]);
+}
+
+function toWorkflowRun(row: Record<string, unknown>): WorkflowRun {
+  return { id: String(row.id), workflowId: String(row.workflow_id), workspaceId: String(row.workspace_id), trigger: row.trigger as WorkflowTrigger, status: row.status as WorkflowRunStatus, detail: row.detail ? String(row.detail) : null, startedAt: (row.started_at as Date).toISOString(), completedAt: row.completed_at ? (row.completed_at as Date).toISOString() : null };
+}
+
+export async function finishWorkflowRun(workflowId: string, runId: string, status: Exclude<WorkflowRunStatus, "running">, detail?: string): Promise<void> {
+  await getPool().query("UPDATE workspace_workflow_runs SET status=$3,detail=$4,completed_at=now() WHERE id=$1 AND workflow_id=$2", [runId, workflowId, status, detail ?? null]);
+  await getPool().query("UPDATE workspace_workflows SET last_run_status=$2,last_run_error=$3,updated_at=now() WHERE id=$1", [workflowId, status, status === "failed" ? detail ?? "Workflow failed." : null]);
+}
+
+export async function listWorkflowRuns(workspaceId: string, workflowId: string): Promise<WorkflowRun[]> {
+  const result = await getPool().query("SELECT r.* FROM workspace_workflow_runs r WHERE r.workspace_id=$1 AND r.workflow_id=$2 ORDER BY r.started_at DESC LIMIT 30", [workspaceId, workflowId]);
+  return result.rows.map(toWorkflowRun);
+}
+
+// Claim due schedules atomically before execution. Updating next_run_at here
+// prevents overlapping scheduler ticks from starting the same workflow twice.
+export async function claimDueWorkflows(): Promise<WorkspaceWorkflow[]> {
+  const result = await getPool().query(
+    `WITH due AS (SELECT id FROM workspace_workflows WHERE enabled AND trigger='schedule' AND next_run_at <= now() FOR UPDATE SKIP LOCKED)
+     UPDATE workspace_workflows w SET next_run_at=now() + (w.schedule_minutes * interval '1 minute'), updated_at=now()
+     FROM due WHERE w.id=due.id RETURNING w.*`
+  );
+  return result.rows.map(toWorkflow);
 }
 
 export async function upsertGithubIntegration(input: {
