@@ -21,8 +21,8 @@ export default function IntegrationsPage() {
   const [owner, setOwner] = useState("");
   const [repo, setRepo] = useState("");
   const [githubToken, setGithubToken] = useState("");
-  const [connectionName, setConnectionName] = useState("Shared connection");
-  const [connectionScope, setConnectionScope] = useState<"shared" | "personal">("shared");
+  const [connectionName, setConnectionName] = useState("My GitHub");
+  const [connectionScope, setConnectionScope] = useState<"shared" | "personal">("personal");
   const [githubBusy, setGithubBusy] = useState(false);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [githubSuccess, setGithubSuccess] = useState(false);
@@ -61,8 +61,11 @@ export default function IntegrationsPage() {
     finally { setPolicyBusy(false); }
   }
 
-  const githubConnected = integrations.find((i): i is Extract<IntegrationConfig, { type: "github" }> => i.type === "github");
-  const slackConnected = integrations.find((i): i is Extract<IntegrationConfig, { type: "slack" }> => i.type === "slack");
+  const githubConnections = integrations.filter((i): i is Extract<IntegrationConfig, { type: "github" }> => i.type === "github");
+  const githubConnected = githubConnections.find((integration) => integration.ownerUserId === user.id);
+  const teammateGithubConnections = githubConnections.filter((integration) => integration.ownerUserId !== user.id);
+  const slackConnections = integrations.filter((i): i is Extract<IntegrationConfig, { type: "slack" }> => i.type === "slack");
+  const slackConnected = slackConnections.find((integration) => integration.ownerUserId === user.id);
 
   async function handleGithubSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -123,7 +126,7 @@ export default function IntegrationsPage() {
           GitHub
           {githubConnected && (
             <span className="status-pill" data-testid="github-status">
-              ● {githubConnected.repo ? `connected to ${githubConnected.owner}/${githubConnected.repo}` : "connected, no repo chosen"}
+              ● You: {githubConnected.repo ? `connected to ${githubConnected.owner}/${githubConnected.repo}` : "connected, no repo chosen"}
             </span>
           )}
         </h2>
@@ -141,7 +144,7 @@ export default function IntegrationsPage() {
             window.location.href = githubOAuthStartUrl(workspaceId);
           }}
         >
-          {githubConnected ? "Log in with GitHub again" : "Log in with GitHub"}
+          {githubConnected ? "Reconnect your GitHub" : "Connect your GitHub"}
         </button>
 
         {githubConnected && (
@@ -157,8 +160,9 @@ export default function IntegrationsPage() {
         )}</div>
 
         <p className="hint" style={{ marginTop: 16 }}>
-          Add a named shared account for the team or a personal account attributed to you. Its token is encrypted at rest and never shown again.
+          Connect your own GitHub account and choose the repository you will work with. Your token is encrypted at rest and never shown again.
         </p>
+        {teammateGithubConnections.length > 0 && <p className="hint">Also connected by teammates: {teammateGithubConnections.map((integration) => `${integration.connectedByName ?? "Workspace member"} (${integration.owner && integration.repo ? `${integration.owner}/${integration.repo}` : "repository not selected"})`).join(", ")}.</p>}
         <form onSubmit={handleGithubSubmit}>
           <div className="field"><label htmlFor="gh-connection-name">Connection name</label><input id="gh-connection-name" value={connectionName} onChange={(e) => setConnectionName(e.target.value)} placeholder="Engineering GitHub" autoComplete="off" /></div>
           <div className="field"><label htmlFor="gh-connection-scope">Account access</label><select id="gh-connection-scope" value={connectionScope} onChange={(e) => setConnectionScope(e.target.value as "shared" | "personal")}><option value="shared">Shared with this workspace</option><option value="personal">Personal to me</option></select></div>
@@ -190,7 +194,7 @@ export default function IntegrationsPage() {
               {githubError}
             </p>
           )}
-          {githubSuccess && <p className="success-text">GitHub connected.</p>}
+          {githubSuccess && <p className="success-text">Your GitHub repository is connected.</p>}
         </form>
       </div>
 
@@ -223,7 +227,7 @@ export default function IntegrationsPage() {
             window.location.href = slackOAuthStartUrl(workspaceId);
           }}
         >
-          {slackConnected ? "Log in with Slack again" : "Log in with Slack"}
+          {slackConnected ? "Reconnect your Slack" : "Connect your Slack"}
         </button></div>
       </div>
 
