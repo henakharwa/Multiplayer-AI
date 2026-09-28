@@ -139,9 +139,14 @@ export function wrapForProposal(
   // just "what did the agent do". Optional: some call sites (tests that
   // build tools directly) don't have a requesting user to attribute.
   requestedBy?: { userId: string; name: string },
-  agentKind?: ActionAgentKind
+  agentKind?: ActionAgentKind,
+  options?: { readOnly?: boolean }
 ): ToolExecutor[] {
-  return tools.map((tool) => {
+  // An automation review must never be able to turn an unexpected model
+  // tool call into a pending external change. Remove mutating tools from its
+  // visible surface entirely; returning them unwrapped would execute a write.
+  const visibleTools = options?.readOnly ? tools.filter((tool) => !tool.mutates) : tools;
+  return visibleTools.map((tool) => {
     if (!tool.mutates) return tool;
     return {
       ...tool,
