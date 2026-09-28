@@ -840,7 +840,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
   }, HEARTBEAT_INTERVAL_MS);
   wss.on("close", () => clearInterval(heartbeat));
 
-  async function runAgentReply(workspaceId: string, conversationId: string, requestedBy: { userId: string; name: string }, agentKind: AgentKind, configuredAgentId?: string): Promise<void> {
+  async function runAgentReply(workspaceId: string, conversationId: string, requestedBy: { userId: string; name: string }, agentKind: AgentKind, configuredAgentId?: string, workflowInstructions?: string): Promise<void> {
     const configuredAgent = configuredAgentId ? await db.getPublishedWorkspaceAgent(workspaceId, configuredAgentId) : null;
     if (configuredAgentId && !configuredAgent) throw new Error("That workspace agent has not been published yet.");
     if (configuredAgent && configuredAgent.baseAgent !== agentKind) throw new Error("The selected agent configuration does not match this specialist.");
@@ -878,13 +878,18 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     const turnStart = Date.now();
     const allowedModels = (process.env.AGENT_LLM_ALLOWED_MODELS ?? "").split(",").map((model) => model.trim());
     const selectedModel = configuredAgent?.model && configuredAgent.model !== "workspace-default" && allowedModels.includes(configuredAgent.model) ? configuredAgent.model : undefined;
+    // Workflow start records are system messages for people to read, and
+    // history.ts deliberately excludes system rows from LLM history. Pass
+    // the workflow instructions explicitly so an automated turn always has
+    // a concrete task, while retaining the configured agent's own rules.
+    const activeInstructions = [configuredAgent?.instructions, workflowInstructions ? `WORKFLOW INSTRUCTIONS — complete this task for the team:\n${workflowInstructions}` : ""].filter(Boolean).join("\n\n");
     const result = await deps.runAgentTurn({
       history: toLlmHistory(messages),
       tools,
       githubContext: agentKind === "github" ? built.githubContext : null,
       actionContext: recentActions || null,
       agentKind,
-      customInstructions: configuredAgent?.instructions,
+      customInstructions: activeInstructions || undefined,
       knowledge: configuredAgent?.knowledge,
       workspaceMemory,
       llmConfig: selectedModel ? resolveLlmConfig({ model: selectedModel }) : undefined,
@@ -935,7 +940,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       const systemMessage = await db.insertMessage({ workspaceId: workflow.workspaceId, conversationId: conversation.id, role: "system", authorName: "Workflow", content: `${prefix}: ${workflow.name}\n${workflow.instructions}` });
       rooms.broadcast(`${workflow.workspaceId}:${conversation.id}`, { type: "message", message: systemMessage });
       rooms.broadcast(workflow.workspaceId, { type: "workspace_message", message: systemMessage });
-      await runAgentReply(workflow.workspaceId, conversation.id, { userId: user.id, name: user.displayName }, workflow.agentKind, workflow.workspaceAgentId ?? undefined);
+      await runAgentReply(workflow.workspaceId, conversation.id, { userId: user.id, name: user.displayName }, workflow.agentKind, workflow.workspaceAgentId ?? undefined, workflow.instructions);
       await db.finishWorkflowRun(workflow.id, run.id, "succeeded", "Agent response completed.");
       await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.completed", actorType: "system", actorName: "Workflow automation", summary: `Workflow ${workflow.name} completed`, metadata: { workflowId: workflow.id, runId: run.id, trigger } });
     } catch (error) {
