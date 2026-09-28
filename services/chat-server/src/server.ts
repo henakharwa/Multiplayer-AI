@@ -167,6 +167,26 @@ export function workflowRequestsExternalChange(instructions: string): boolean {
   return /\b(?:create|open|update|edit|delete|merge|close|comment|post|send|publish)\b[\s\S]{0,80}\b(?:issue|pull request|pr\b|file|readme|branch|comment|message|slack|release)\b/.test(text);
 }
 
+export function parseWorkspaceMemoryInput(body: Record<string, unknown>) {
+  const kind = body.kind === "decision" ? "decision" : "knowledge";
+  const rawFreshUntil = typeof body.freshUntil === "string" ? body.freshUntil.trim() : "";
+  if (rawFreshUntil && Number.isNaN(Date.parse(rawFreshUntil))) throw new Error("Review date must be valid.");
+  const sourceUrl = typeof body.sourceUrl === "string" ? body.sourceUrl.trim() : "";
+  if (sourceUrl) {
+    let parsed: URL;
+    try { parsed = new URL(sourceUrl); } catch { throw new Error("Source URL must be a valid http:// or https:// URL."); }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("Source URL must start with http:// or https://.");
+  }
+  return {
+    kind,
+    title: typeof body.title === "string" ? body.title : "",
+    content: typeof body.content === "string" ? body.content : "",
+    sourceTitle: typeof body.sourceTitle === "string" ? body.sourceTitle : null,
+    sourceUrl: sourceUrl || null,
+    freshUntil: rawFreshUntil || null,
+  } as const;
+}
+
 export function createApp(deps: CreateServerDeps = defaultDeps) {
   const app = express();
   // Browser Origin never includes a trailing slash. Normalizing the
@@ -525,13 +545,6 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.status(202).json({ accepted: true });
   });
 
-  function memoryInput(body: Record<string, unknown>) {
-    const kind = body.kind === "decision" ? "decision" : "knowledge";
-    const freshUntil = typeof body.freshUntil === "string" && !Number.isNaN(Date.parse(body.freshUntil)) ? body.freshUntil : null;
-    const sourceUrl = typeof body.sourceUrl === "string" ? body.sourceUrl.trim() : "";
-    if (sourceUrl && !/^https?:\/\//i.test(sourceUrl)) throw new Error("Source URL must start with http:// or https://.");
-    return { kind, title: typeof body.title === "string" ? body.title : "", content: typeof body.content === "string" ? body.content : "", sourceTitle: typeof body.sourceTitle === "string" ? body.sourceTitle : null, sourceUrl: sourceUrl || null, freshUntil } as const;
-  }
   async function canManageMemory(req: Request, memoryId: string) {
     const workspaceId = paramString(req.params.id);
     const memory = await db.getWorkspaceMemory(workspaceId, memoryId);
@@ -546,7 +559,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   app.post("/workspaces/:id/memory", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     let input;
-    try { input = memoryInput(req.body ?? {}); } catch (error) { return res.status(400).json({ error: errMessage(error) }); }
+    try { input = parseWorkspaceMemoryInput(req.body ?? {}); } catch (error) { return res.status(400).json({ error: errMessage(error) }); }
     if (!input.title.trim() || !input.content.trim()) return res.status(400).json({ error: "A memory title and content are required." });
     const memory = await db.createWorkspaceMemory({ workspaceId: paramString(req.params.id), ...input, createdByUserId: req.user!.id });
     await db.recordAuditEvent({ workspaceId: memory.workspaceId, eventType: "memory.created", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} saved ${memory.kind} memory ${memory.title}` });
@@ -558,7 +571,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!access.memory) return res.status(404).json({ error: "Memory not found." });
     if (!access.allowed) return res.status(403).json({ error: "Only the memory author or an Admin can edit this entry." });
     let input;
-    try { input = memoryInput(req.body ?? {}); } catch (error) { return res.status(400).json({ error: errMessage(error) }); }
+    try { input = parseWorkspaceMemoryInput(req.body ?? {}); } catch (error) { return res.status(400).json({ error: errMessage(error) }); }
     if (!input.title.trim() || !input.content.trim()) return res.status(400).json({ error: "A memory title and content are required." });
     const memory = await db.updateWorkspaceMemory(paramString(req.params.id), paramString(req.params.memoryId), input);
     if (!memory) return res.status(404).json({ error: "Memory not found." });

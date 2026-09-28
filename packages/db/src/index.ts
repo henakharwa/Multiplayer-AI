@@ -714,9 +714,14 @@ export async function deleteWorkspaceMemory(workspaceId: string, memoryId: strin
 }
 
 export async function workspaceMemoryContext(workspaceId: string, limit = 12): Promise<string> {
-  const memories = (await listWorkspaceMemory(workspaceId)).slice(0, limit);
-  if (!memories.length) return "";
-  return memories.map((memory) => {
+  return formatWorkspaceMemoryContext(await listWorkspaceMemory(workspaceId), limit);
+}
+
+/** Formats durable memories for an agent turn without reading another workspace. */
+export function formatWorkspaceMemoryContext(memories: WorkspaceMemory[], limit = 12): string {
+  const selected = memories.slice(0, limit);
+  if (!selected.length) return "";
+  return selected.map((memory) => {
     const stale = memory.freshUntil && new Date(memory.freshUntil).getTime() < Date.now() ? "STALE — verify before relying on it" : memory.freshUntil ? `current through ${memory.freshUntil.slice(0, 10)}` : "no freshness date";
     const source = memory.sourceTitle ? ` Source: ${memory.sourceTitle}${memory.sourceUrl ? ` (${memory.sourceUrl})` : ""}.` : "";
     return `[Memory: ${memory.title}] (${memory.kind}; ${stale})\n${memory.content}${source}`;
