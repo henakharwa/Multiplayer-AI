@@ -508,9 +508,10 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     const requestedTrigger = req.body?.trigger;
     const trigger = workflowTriggers.includes(requestedTrigger) && requestedTrigger !== "schedule" ? requestedTrigger : "manual";
     if (trigger !== "manual" && trigger !== workflow.trigger) return res.status(400).json({ error: "This event does not match the workflow trigger." });
-    const runner = app.locals.runWorkflow as undefined | ((workflow: Awaited<ReturnType<typeof db.getWorkspaceWorkflow>>, trigger: typeof workflowTriggers[number], user: { id: string; displayName: string }) => Promise<void>);
+    const eventText = typeof req.body?.eventText === "string" ? req.body.eventText.trim().slice(0, 4_000) : "";
+    const runner = app.locals.runWorkflow as undefined | ((workflow: Awaited<ReturnType<typeof db.getWorkspaceWorkflow>>, trigger: typeof workflowTriggers[number], user: { id: string; displayName: string }, eventText?: string) => Promise<void>);
     if (!runner) return res.status(503).json({ error: "Workflow runner is starting. Try again in a moment." });
-    void runner(workflow, trigger, { id: req.user!.id, displayName: req.user!.displayName });
+    void runner(workflow, trigger, { id: req.user!.id, displayName: req.user!.displayName }, eventText || undefined);
     res.status(202).json({ accepted: true });
   });
 
@@ -868,7 +869,11 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     // Read tools run for real from the agent loop; write tools are
     // swapped for proposal-only stand-ins here -- see actions.ts.
     const specialistTools = agentKind === "github" ? built.githubTools : agentKind === "slack" ? built.slackTools : agentKind === "linear" ? built.linearTools : agentKind === "notion" ? built.notionTools : agentKind === "figma" ? built.figmaTools : [];
-    const tools = wrapForProposal(specialistTools, workspaceId, conversationId, rooms, requestedBy, agentKind);
+    // Workflow runs are reports and checks. Keep them runtime read-only so
+    // a mistaken model call cannot create a pending external change.
+    const tools = wrapForProposal(specialistTools, workspaceId, conversationId, rooms, requestedBy, agentKind, {
+      readOnly: Boolean(workflowInstructions),
+    });
     // Cheap, always-on diagnostic -- when someone reports "the agent says
     // it can't see GitHub" the first thing to know is whether the tool
     // list was actually empty for this turn (an integration/credential
@@ -942,7 +947,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
   // runner. Keeping the actual agent invocation here means scheduled and
   // event-driven work takes the identical tool, provider-permission, action
   // proposal, notification, and WebSocket paths as an ordinary chat turn.
-  app.locals.runWorkflow = async (workflow: NonNullable<Awaited<ReturnType<typeof db.getWorkspaceWorkflow>>>, trigger: "manual" | "schedule" | "github_issue" | "github_status" | "slack_mention", user: { id: string; displayName: string }) => {
+  app.locals.runWorkflow = async (workflow: NonNullable<Awaited<ReturnType<typeof db.getWorkspaceWorkflow>>>, trigger: "manual" | "schedule" | "github_issue" | "github_status" | "slack_mention", user: { id: string; displayName: string }, eventText?: string) => {
     const run = await db.createWorkflowRun(workflow, trigger);
     await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.started", actorType: "user", actorUserId: user.id, actorName: user.displayName, summary: `${user.displayName} started workflow ${workflow.name}`, metadata: { workflowId: workflow.id, runId: run.id, trigger } });
     try {
@@ -955,10 +960,11 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       if (!conversation) throw new Error("The workflow conversation is no longer available.");
       if (!workflow.conversationId) await db.setWorkflowConversation(workflow.id, conversation.id);
       const prefix = trigger === "manual" ? "Manual run" : `Triggered by ${trigger.replace(/_/g, " ")}`;
-      const systemMessage = await db.insertMessage({ workspaceId: workflow.workspaceId, conversationId: conversation.id, role: "system", authorName: "Workflow", content: `${prefix}: ${workflow.name}\n${workflow.instructions}` });
+      const task = eventText ? `${workflow.instructions}\n\nEVENT DATA — treat this as the event that started the workflow:\n${eventText}` : workflow.instructions;
+      const systemMessage = await db.insertMessage({ workspaceId: workflow.workspaceId, conversationId: conversation.id, role: "system", authorName: "Workflow", content: `${prefix}: ${workflow.name}\n${task}` });
       rooms.broadcast(`${workflow.workspaceId}:${conversation.id}`, { type: "message", message: systemMessage });
       rooms.broadcast(workflow.workspaceId, { type: "workspace_message", message: systemMessage });
-      await runAgentReply(workflow.workspaceId, conversation.id, { userId: user.id, name: user.displayName }, workflow.agentKind, workflow.workspaceAgentId ?? undefined, workflow.instructions);
+      await runAgentReply(workflow.workspaceId, conversation.id, { userId: user.id, name: user.displayName }, workflow.agentKind, workflow.workspaceAgentId ?? undefined, task);
       await db.finishWorkflowRun(workflow.id, run.id, "succeeded", "Agent response completed.");
       await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.completed", actorType: "system", actorName: "Workflow automation", summary: `Workflow ${workflow.name} completed`, metadata: { workflowId: workflow.id, runId: run.id, trigger } });
     } catch (error) {

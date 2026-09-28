@@ -15,6 +15,11 @@ const triggers: Array<{ value: WorkflowTrigger; label: string; help: string }> =
 ];
 const agentKinds = ["project", "github", "slack", "linear", "notion", "figma"] as const;
 const empty: WorkflowInput = { name: "", description: "", instructions: "", agentKind: "project", workspaceAgentId: null, conversationId: null, trigger: "manual", scheduleMinutes: 60, enabled: true };
+const testEventDefaults: Record<Exclude<WorkflowTrigger, "manual" | "schedule">, string> = {
+  github_issue: "A new issue was opened: \"Release build fails on the verification step.\" Summarize the issue and identify the next owner.",
+  github_status: "The latest CI workflow completed with a failure in the test-and-build job. Explain whether the team is blocked and list the next action.",
+  slack_mention: "@Nexus Can you summarize the release risk from today's discussion and tell us the next step?",
+};
 
 function formatDate(value: string | null) { return value ? new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "Not run yet"; }
 function labelForTrigger(trigger: WorkflowTrigger) { return triggers.find((item) => item.value === trigger)?.label ?? trigger; }
@@ -30,6 +35,7 @@ export default function WorkflowsPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const [testEventText, setTestEventText] = useState("");
 
   const refresh = async () => setWorkflows(await listWorkspaceWorkflows(workspaceId));
   useEffect(() => { void Promise.all([refresh(), listWorkspaceAgents(workspaceId).then(setAgents), listConversations(workspaceId).then(setConversations)]).catch((err: Error) => setError(err.message)); }, [workspaceId]);
@@ -47,7 +53,7 @@ export default function WorkflowsPage() {
   }
   async function run(trigger: "manual" | "github_issue" | "github_status" | "slack_mention" = "manual") {
     if (!selected) return; setSaving(true); setError("");
-    try { await runWorkspaceWorkflow(workspaceId, selected.id, trigger); setNotice("Workflow started. Its response will appear in the selected conversation."); setTimeout(() => { void listWorkflowRuns(workspaceId, selected.id).then(setRuns); void refresh(); }, 800); }
+    try { await runWorkspaceWorkflow(workspaceId, selected.id, trigger, trigger === "manual" ? undefined : (testEventText.trim() || testEventDefaults[trigger])); setNotice("Workflow started. Its response will appear in the selected conversation."); setTimeout(() => { void listWorkflowRuns(workspaceId, selected.id).then(setRuns); void refresh(); }, 800); }
     catch (err) { setError(err instanceof Error ? err.message : "Could not run workflow."); } finally { setSaving(false); }
   }
   async function remove() {
@@ -71,7 +77,7 @@ export default function WorkflowsPage() {
         <label>Post responses in<select value={draft.conversationId ?? ""} onChange={(e) => setDraft({ ...draft, conversationId: e.target.value || null })}><option value="">A dedicated workflow conversation</option>{conversations.map((conversation) => <option key={conversation.id} value={conversation.id}>{conversation.title}</option>)}</select></label>
         <fieldset className="workflow-trigger-options"><legend>Start this workflow</legend>{triggers.map((item) => <label key={item.value} className={draft.trigger === item.value ? "chosen" : ""}><input type="radio" name="trigger" checked={draft.trigger === item.value} onChange={() => setDraft({ ...draft, trigger: item.value })} /><span><strong>{item.label}</strong><small>{item.help}</small></span></label>)}</fieldset>
         {draft.trigger === "schedule" && <label>Repeat every <select value={draft.scheduleMinutes ?? 60} onChange={(e) => setDraft({ ...draft, scheduleMinutes: Number(e.target.value) })}>{[[15,"15 minutes"],[30,"30 minutes"],[60,"hour"],[240,"4 hours"],[1440,"day"],[10080,"week"]].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
-        {draft.trigger !== "manual" && draft.trigger !== "schedule" && selected && <button type="button" className="secondary-button workflow-test-button" disabled={saving} onClick={() => void run(draft.trigger as "github_issue" | "github_status" | "slack_mention")}>Test {labelForTrigger(draft.trigger)} trigger</button>}
+        {draft.trigger !== "manual" && draft.trigger !== "schedule" && selected && <><label>Test event details<textarea rows={3} value={testEventText} onChange={(e) => setTestEventText(e.target.value)} placeholder={testEventDefaults[draft.trigger]} /></label><p className="workflow-help">This sample event is used only for the test run. It is not sent to GitHub or Slack.</p><button type="button" className="secondary-button workflow-test-button" disabled={saving} onClick={() => void run(draft.trigger as "github_issue" | "github_status" | "slack_mention")}>Test {labelForTrigger(draft.trigger)} trigger</button></>}
         <label className="workflow-enabled"><span><strong>Workflow active</strong><small>{draft.enabled ? "It can run when this trigger occurs." : "Saved but paused."}</small></span><span className="toggle-switch"><input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}/><span className="toggle-track" /></span></label>
         {triggerHelp && <p className="workflow-help">{triggerHelp}</p>}{error && <p className="error-text">{error}</p>}{notice && <p className="success-text">{notice}</p>}
         <div className="agent-builder-actions"><button className="primary-button" disabled={saving || !draft.name.trim() || !draft.instructions.trim()} onClick={() => void save()}>{saving ? "Saving…" : selected ? "Save changes" : "Create workflow"}</button>{selected && <button className="agent-delete-button" disabled={saving} onClick={() => void remove()}>Delete workflow</button>}</div>
