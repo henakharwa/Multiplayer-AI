@@ -696,7 +696,7 @@ textarea {
 .editor-permission-list { display: grid; gap: 8px; }
 .editor-permission-list > div { display: flex; align-items: center; justify-content: space-between; gap: 14px; box-sizing: border-box; min-height: 54px; padding: 9px 16px; border: 1px solid var(--border); border-radius: 9px; }
 .editor-permission-list > div > span { min-width: 0; white-space: nowrap; }
-.editor-permission-list > div > :last-child { flex: 0 0 126px; text-align: right; }
+.editor-permission-list > div > :last-child { display: flex; flex: 0 0 126px; align-items: center; justify-content: center; text-align: center; }
 .editor-permission-list strong { color: #18794e; font-size: 13px; line-height: 32px; }
 .editor-permission-list .btn { width: auto; min-height: 32px; padding: 5px 11px; font-size: 12px; }
 .permission-request-compose, .permission-request-list { margin-top: 18px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-subtle); }
