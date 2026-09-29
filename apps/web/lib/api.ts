@@ -1,4 +1,4 @@
-import type { AuditEvent, AuditEventType, ChatMessage, Conversation, GithubRepoSummary, IntegrationConfig, PendingAction, Workspace, WorkspaceInvitation, WorkspaceMember, WorkspaceNotification, WorkspaceRole } from "@mai-chat/shared-types";
+import type { AuditEvent, AuditEventType, ChatMessage, Conversation, GithubRepoSummary, IntegrationConfig, PendingAction, PublicDashboardView, Workspace, WorkspaceInvitation, WorkspaceMember, WorkspaceNotification, WorkspaceRole } from "@mai-chat/shared-types";
 import { CHAT_SERVER_URL } from "./config";
 
 function authenticatedFetch(input: RequestInfo | URL, init?: RequestInit) {
@@ -176,6 +176,24 @@ export async function createWorkspaceArtifactComment(workspaceId: string, artifa
 export async function listWorkspaceArtifactVersions(workspaceId: string, artifactId: string): Promise<import("@mai-chat/shared-types").WorkspaceArtifactVersion[]> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(artifactId)}/versions`); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceArtifactVersion[]; }
 export async function restoreWorkspaceArtifactVersion(workspaceId: string, artifactId: string, versionId: string): Promise<import("@mai-chat/shared-types").WorkspaceArtifact> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(artifactId)}/versions/${encodeURIComponent(versionId)}/restore`, { method: "POST" }); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceArtifact; }
 export async function refreshWorkspaceDashboard(workspaceId: string, artifactId: string): Promise<import("@mai-chat/shared-types").WorkspaceArtifact> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(artifactId)}/refresh-dashboard`, { method: "POST" }); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceArtifact; }
+
+export async function shareWorkspaceArtifact(workspaceId: string, artifactId: string): Promise<import("@mai-chat/shared-types").WorkspaceArtifact> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(artifactId)}/share`, { method: "POST" }); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceArtifact; }
+export async function revokeWorkspaceArtifactShare(workspaceId: string, artifactId: string): Promise<import("@mai-chat/shared-types").WorkspaceArtifact> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(artifactId)}/share`, { method: "DELETE" }); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceArtifact; }
+// Heartbeat: tells the server "I'm looking at this dashboard right now"
+// and gets back who else currently is. Call on an interval while the
+// dashboard is open -- see artifacts/page.tsx's presence effect.
+export async function pingDashboardPresence(workspaceId: string, artifactId: string): Promise<{ userId: string; name: string }[]> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(artifactId)}/presence`, { method: "POST" }); const body = await parseJsonOrThrow(res) as { viewers: { userId: string; name: string }[] }; return body.viewers; }
+// Fire-and-forget: lets the workspace's live chat clients know a
+// dashboard's health just changed (services/chat-server/src/server.ts's
+// registerDashboardBroadcastRoutes). Never blocks the refresh it follows
+// on failure.
+export async function notifyDashboardHealthChange(workspaceId: string, artifactId: string, fromHealth: string, toHealth: string): Promise<void> { await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(artifactId)}/notify-health-change`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ fromHealth, toHealth }) }).catch(() => {}); }
+// No auth -- this is the public share link (a dashboard's `shareToken`),
+// meant to be opened by someone outside the workspace. Deliberately a
+// plain fetch (no credentials) hitting the chat server directly, not
+// authenticatedFetch.
+export async function getPublicDashboard(token: string): Promise<PublicDashboardView> { const res = await fetch(`${CHAT_SERVER_URL}/public/dashboards/${encodeURIComponent(token)}`); return await parseJsonOrThrow(res) as PublicDashboardView; }
+
 
 export async function checkToolConnectionPermission(workspaceId: string): Promise<void> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/capabilities/connect-tools`);

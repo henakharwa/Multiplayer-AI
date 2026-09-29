@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type {
   AuditActorType,
   AuditEvent,
@@ -728,7 +728,7 @@ type ArtifactInput = { type: WorkspaceArtifactType; status: WorkspaceArtifactSta
 function toWorkspaceArtifact(row: Record<string, unknown>): WorkspaceArtifact {
   return {
     id: String(row.id), workspaceId: String(row.workspace_id), type: row.type as WorkspaceArtifactType, status: row.status as WorkspaceArtifactStatus,
-    title: String(row.title), summary: String(row.summary ?? ""), content: String(row.content), dashboardData: row.dashboard_data && typeof row.dashboard_data === "object" ? row.dashboard_data as WorkspaceArtifactDashboard : null, ownerUserId: row.owner_user_id ? String(row.owner_user_id) : null,
+    title: String(row.title), summary: String(row.summary ?? ""), content: String(row.content), dashboardData: row.dashboard_data && typeof row.dashboard_data === "object" ? row.dashboard_data as WorkspaceArtifactDashboard : null, shareToken: row.share_token ? String(row.share_token) : null, ownerUserId: row.owner_user_id ? String(row.owner_user_id) : null,
     ownerName: row.owner_name ? String(row.owner_name) : null, createdByUserId: row.created_by_user_id ? String(row.created_by_user_id) : null,
     createdByName: row.created_by_name ? String(row.created_by_name) : null, createdAt: (row.created_at as Date).toISOString(), updatedAt: (row.updated_at as Date).toISOString(),
   };
@@ -760,6 +760,32 @@ export async function updateWorkspaceArtifact(workspaceId: string, artifactId: s
 export async function deleteWorkspaceArtifact(workspaceId: string, artifactId: string): Promise<WorkspaceArtifact | null> {
   const current = await getWorkspaceArtifact(workspaceId, artifactId); if (!current) return null;
   await getPool().query("DELETE FROM workspace_artifacts WHERE workspace_id=$1 AND id=$2", [workspaceId, artifactId]); return current;
+}
+
+// Generates (token === undefined) or revokes (token === null) a public
+// read-only share link for a dashboard artifact. Generation happens here
+// rather than in server.ts so the random token is a single round trip.
+export async function setArtifactShareToken(workspaceId: string, artifactId: string, revoke: boolean): Promise<WorkspaceArtifact | null> {
+  const token = revoke ? null : randomUUID();
+  const result = await getPool().query("UPDATE workspace_artifacts SET share_token=$3 WHERE workspace_id=$1 AND id=$2 RETURNING id", [workspaceId, artifactId, token]);
+  return result.rows[0] ? getWorkspaceArtifact(workspaceId, artifactId) : null;
+}
+
+// Unauthenticated lookup for the public dashboard link -- deliberately
+// returns only the safe subset (see PublicDashboardView), never the full
+// WorkspaceArtifact, and only for a still-published dashboard (an
+// artifact reverted to draft, archived, or deleted stops resolving even
+// if someone still has the old link).
+export async function getPublicDashboardByShareToken(token: string): Promise<import("@mai-chat/shared-types").PublicDashboardView | null> {
+  const result = await getPool().query(
+    `SELECT a.title, a.summary, a.dashboard_data, a.updated_at, w.name AS workspace_name
+     FROM workspace_artifacts a JOIN workspaces w ON w.id = a.workspace_id
+     WHERE a.share_token = $1 AND a.type = 'dashboard' AND a.status = 'published'`,
+    [token]
+  );
+  const row = result.rows[0];
+  if (!row || !row.dashboard_data) return null;
+  return { title: String(row.title), summary: String(row.summary ?? ""), workspaceName: String(row.workspace_name), dashboardData: row.dashboard_data, updatedAt: (row.updated_at as Date).toISOString() };
 }
 export async function listWorkspaceArtifactComments(workspaceId: string, artifactId: string): Promise<WorkspaceArtifactComment[]> {
   const result = await getPool().query("SELECT c.*, u.display_name AS author_name FROM workspace_artifact_comments c LEFT JOIN users u ON u.id=c.author_user_id WHERE c.workspace_id=$1 AND c.artifact_id=$2 ORDER BY c.created_at ASC", [workspaceId,artifactId]); return result.rows.map(toWorkspaceArtifactComment);

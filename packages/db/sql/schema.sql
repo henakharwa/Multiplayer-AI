@@ -469,6 +469,10 @@ CREATE TABLE IF NOT EXISTS workspace_artifacts (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS workspace_artifacts_workspace_updated_idx ON workspace_artifacts (workspace_id, updated_at DESC);
+-- Set when a member generates a public read-only link for a published
+-- dashboard artifact (see POST .../share in server.ts); NULL means no
+-- active share link exists.
+ALTER TABLE workspace_artifacts ADD COLUMN IF NOT EXISTS share_token TEXT UNIQUE;
 CREATE TABLE IF NOT EXISTS workspace_artifact_comments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   artifact_id UUID NOT NULL REFERENCES workspace_artifacts(id) ON DELETE CASCADE,

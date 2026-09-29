@@ -214,11 +214,25 @@ export interface WorkspaceArtifact {
   summary: string;
   content: string;
   dashboardData: WorkspaceArtifactDashboard | null;
+  // Non-null while a public, read-only share link is active for this
+  // artifact (dashboards only) -- see server.ts's POST/DELETE .../share.
+  shareToken: string | null;
   ownerUserId: string | null;
   ownerName: string | null;
   createdByUserId: string | null;
   createdByName: string | null;
   createdAt: string;
+  updatedAt: string;
+}
+
+// The safe subset of a dashboard artifact served, without auth, at a
+// public share link (GET /public/dashboards/:token) -- no ids, owners,
+// or anything else workspace-internal.
+export interface PublicDashboardView {
+  title: string;
+  summary: string;
+  workspaceName: string;
+  dashboardData: WorkspaceArtifactDashboard;
   updatedAt: string;
 }
 

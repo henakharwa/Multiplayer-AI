@@ -1,4 +1,4 @@
-import express, { type Request, type Response } from "express";
+import express, { type Express, type Request, type Response } from "express";
 import cors from "cors";
 import { createServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -228,22 +228,58 @@ export function parseWorkspaceArtifactInput(body: Record<string, unknown>) {
   };
 }
 
-async function workspaceDashboardSnapshot(workspaceId: string) {
-  const [integrations, workflows, members, conversations] = await Promise.all([db.listIntegrations(workspaceId), db.listWorkspaceWorkflows(workspaceId), db.listWorkspaceMembers(workspaceId), db.listConversations(workspaceId)]);
+async function workspaceDashboardSnapshot(workspaceId: string, deps: CreateServerDeps) {
+  const [integrations, workflows, members, conversations, recentAudit] = await Promise.all([
+    db.listIntegrations(workspaceId), db.listWorkspaceWorkflows(workspaceId), db.listWorkspaceMembers(workspaceId), db.listConversations(workspaceId),
+    db.listAuditEvents(workspaceId, { eventType: "action.failed", limit: 10 }),
+  ]);
   const pendingActions = (await Promise.all(conversations.map((conversation) => db.listPendingActions(workspaceId, conversation.id, true)))).flat();
   const activeWorkflows = workflows.filter((workflow) => workflow.enabled);
   const failedWorkflows = workflows.filter((workflow) => workflow.lastRunStatus === "failed");
-  const health: "on_track" | "at_risk" | "off_track" = failedWorkflows.length ? "at_risk" : integrations.length ? "on_track" : "at_risk";
+  const failedActions = recentAudit;
+
+  // Real, live GitHub numbers when a repo is connected -- not just a
+  // count of *that* connection, but what it's actually reporting right
+  // now. Verification-only client (see integrations/github.ts), so a
+  // dead/revoked token degrades this one metric rather than the whole
+  // dashboard: caught and treated as "no data" instead of failing the
+  // refresh.
+  const githubIntegration = integrations.find((integration): integration is Extract<typeof integrations[number], { type: "github" }> => integration.type === "github" && Boolean(integration.owner) && Boolean(integration.repo));
+  let openGithubIssues: number | null = null;
+  if (githubIntegration?.id && githubIntegration.owner && githubIntegration.repo) {
+    try {
+      const credential = await db.getIntegrationCredential(workspaceId, "github", githubIntegration.id);
+      if (credential) {
+        const issues = await deps.githubClientFactory({ token: credential.token, owner: githubIntegration.owner, repo: githubIntegration.repo }).listIssues("open", 50);
+        openGithubIssues = issues.length;
+      }
+    } catch {
+      // Token revoked, repo renamed, rate-limited, etc. -- leave the
+      // metric out rather than failing the whole dashboard refresh.
+      openGithubIssues = null;
+    }
+  }
+
+  // off_track is for when something is actually broken right now (a
+  // repeatedly failing action, not just a stale workflow) -- at_risk
+  // covers the softer "nothing connected yet" / "one workflow failing"
+  // cases the health badge already handled.
+  const health: "on_track" | "at_risk" | "off_track" =
+    failedActions.length >= 3 ? "off_track" : failedWorkflows.length || failedActions.length ? "at_risk" : integrations.length ? "on_track" : "at_risk";
+
   const risks = [
-    ...failedWorkflows.slice(0, 3).map((workflow, index) => ({ id: `workflow-${workflow.id}`, title: `Workflow failed: ${workflow.name}${workflow.lastRunError ? ` — ${workflow.lastRunError.slice(0, 90)}` : ""}`, severity: "high" as const, owner: "Workflow owner" })),
+    ...failedActions.slice(0, 3).map((event) => ({ id: `audit-${event.id}`, title: event.summary, severity: "high" as const, owner: event.actorName })),
+    ...failedWorkflows.slice(0, 3).map((workflow) => ({ id: `workflow-${workflow.id}`, title: `Workflow failed: ${workflow.name}${workflow.lastRunError ? ` — ${workflow.lastRunError.slice(0, 90)}` : ""}`, severity: "high" as const, owner: "Workflow owner" })),
     ...(integrations.length ? [] : [{ id: "connections", title: "No connected tool is available for live workspace data", severity: "medium" as const, owner: "Workspace Admin" }]),
   ];
-  return { health, metrics: [
+  const metrics = [
     { id: "tools", label: "Connected tools", value: String(integrations.length), trend: "flat" as const, target: "At least 1" },
     { id: "workflows", label: "Active workflows", value: String(activeWorkflows.length), trend: "flat" as const, target: "Configured" },
     { id: "approvals", label: "Pending approvals", value: String(pendingActions.length), trend: pendingActions.length ? "up" as const : "flat" as const, target: "0" },
     { id: "members", label: "Team members", value: String(members.length), trend: "flat" as const, target: "Collaborating" },
-  ], milestones: [
+    ...(openGithubIssues === null ? [] : [{ id: "github-issues", label: "Open GitHub issues/PRs", value: String(openGithubIssues), trend: "flat" as const, target: "Triaged" }]),
+  ];
+  return { health, metrics, milestones: [
     { id: "workflow-health", label: "Workflow reliability", progress: activeWorkflows.length ? Math.round(((activeWorkflows.length - failedWorkflows.length) / activeWorkflows.length) * 100) : 0 },
     { id: "workspace-ready", label: "Workspace readiness", progress: Math.min(100, (integrations.length ? 50 : 0) + (activeWorkflows.length ? 30 : 0) + (members.length > 1 ? 20 : 0)) },
   ], risks, decisions: pendingActions.slice(0, 3).map((action) => ({ id: `approval-${action.id}`, title: action.description, owner: action.requestedByName ?? "Workspace Admin", dueDate: "" })), checklist: [
@@ -320,6 +356,18 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   // Liveness proves the process can answer HTTP; readiness also proves its
   // required datastore is reachable. Neither endpoint leaks configuration.
   app.get("/healthz", (_req: Request, res: Response) => res.json({ ok: true, service: "chat-server" }));
+
+  // Unauthenticated on purpose -- this is the public read-only link
+  // generated by POST .../share below. Returns only the safe subset
+  // (see PublicDashboardView); never the full artifact, and only while
+  // the dashboard is published and a share link is still active.
+  app.get("/public/dashboards/:token", async (req: Request, res: Response) => {
+    const token = paramString(req.params.token);
+    if (!token) return res.status(404).json({ error: "not found" });
+    const view = await db.getPublicDashboardByShareToken(token);
+    if (!view) return res.status(404).json({ error: "This dashboard link is no longer available." });
+    res.json(view);
+  });
   app.get("/readyz", async (_req: Request, res: Response) => {
     try {
       await db.checkDatabaseHealth();
@@ -715,7 +763,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
     if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can refresh it." });
     if (access.artifact.type !== "dashboard") return res.status(400).json({ error: "Only Dashboard artifacts can be refreshed." });
-    const dashboardData = await workspaceDashboardSnapshot(access.artifact.workspaceId);
+    const dashboardData = await workspaceDashboardSnapshot(access.artifact.workspaceId, deps);
     const artifact = await db.updateWorkspaceArtifact(access.artifact.workspaceId, access.artifact.id, { type: access.artifact.type, status: access.artifact.status, title: access.artifact.title, summary: access.artifact.summary, content: access.artifact.content, dashboardData, ownerUserId: access.artifact.ownerUserId }, req.user!.id);
     if (!artifact) return res.status(404).json({ error: "Artifact not found." });
     await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "system", actorName: "Dashboard refresh", summary: `${req.user!.displayName} refreshed live workspace data for ${artifact.title}` }); res.json(artifact);
@@ -733,6 +781,64 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!artifact) return res.status(404).json({ error: "Artifact not found." });
     const comment = await db.createWorkspaceArtifactComment(artifact.workspaceId, artifact.id, req.user!.id, content.slice(0, 8_000));
     await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.commented", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} commented on artifact ${artifact.title}` }); res.status(201).json(comment);
+  });
+
+  // In-memory only -- who's currently looking at a given dashboard.
+  // Scoped to this one server instance/process, same tradeoff as
+  // RoomRegistry's chat presence: ephemeral, not persisted, reset on
+  // restart. Keyed by "workspaceId:artifactId" -> userId -> last heartbeat.
+  const dashboardViewers = new Map<string, Map<string, { name: string; lastSeenAt: number }>>();
+  const PRESENCE_TTL_MS = 20_000;
+  function activeViewers(key: string, excludeUserId?: string): { userId: string; name: string }[] {
+    const viewers = dashboardViewers.get(key);
+    if (!viewers) return [];
+    const cutoff = Date.now() - PRESENCE_TTL_MS;
+    for (const [userId, entry] of viewers) {
+      if (entry.lastSeenAt < cutoff) viewers.delete(userId);
+    }
+    return Array.from(viewers.entries()).filter(([userId]) => userId !== excludeUserId).map(([userId, entry]) => ({ userId, name: entry.name }));
+  }
+
+  // A lightweight heartbeat, not a WebSocket -- the artifacts page isn't
+  // otherwise connected live, and a dashboard's data already only changes
+  // on an explicit refresh, so short polling is enough to show "who else
+  // is looking at this right now" without adding a second realtime
+  // transport just for this one page.
+  app.post("/workspaces/:id/artifacts/:artifactId/presence", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const workspaceId = paramString(req.params.id);
+    const artifactId = paramString(req.params.artifactId);
+    if (!(await db.getWorkspaceArtifact(workspaceId, artifactId))) return res.status(404).json({ error: "Artifact not found." });
+    const key = `${workspaceId}:${artifactId}`;
+    let viewers = dashboardViewers.get(key);
+    if (!viewers) { viewers = new Map(); dashboardViewers.set(key, viewers); }
+    viewers.set(req.user!.id, { name: req.user!.displayName, lastSeenAt: Date.now() });
+    res.json({ viewers: activeViewers(key, req.user!.id) });
+  });
+
+  // Generates (or, with DELETE, revokes) a public, unauthenticated
+  // read-only link for a dashboard -- see GET /public/dashboards/:token
+  // above. Anyone who can already manage the artifact can toggle this;
+  // there's nothing workspace-private in what the link exposes (see
+  // PublicDashboardView).
+  app.post("/workspaces/:id/artifacts/:artifactId/share", async (req: Request, res: Response) => {
+    const access = await canManageArtifact(req, paramString(req.params.artifactId));
+    if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
+    if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can share it." });
+    if (access.artifact.type !== "dashboard") return res.status(400).json({ error: "Only Dashboard artifacts can be shared." });
+    const artifact = await db.setArtifactShareToken(access.artifact.workspaceId, access.artifact.id, false);
+    if (!artifact) return res.status(404).json({ error: "Artifact not found." });
+    await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} created a public share link for ${artifact.title}` });
+    res.json(artifact);
+  });
+  app.delete("/workspaces/:id/artifacts/:artifactId/share", async (req: Request, res: Response) => {
+    const access = await canManageArtifact(req, paramString(req.params.artifactId));
+    if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
+    if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can revoke sharing." });
+    const artifact = await db.setArtifactShareToken(access.artifact.workspaceId, access.artifact.id, true);
+    if (!artifact) return res.status(404).json({ error: "Artifact not found." });
+    await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} revoked the public share link for ${artifact.title}` });
+    res.json(artifact);
   });
 
   app.patch("/workspaces/:id/members/:userId", async (req: Request, res: Response) => {
@@ -980,12 +1086,37 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   return app;
 }
 
+// A dashboard's health flipping is the one dashboard event worth pushing
+// live rather than leaving someone to notice next time they open the
+// Activity page -- the frontend calls this right after a refresh whose
+// result's health differs from what it had before. Needs `rooms`, which
+// only exists once createChatServer has stood up the WebSocket layer, so
+// (like registerActionRoutes) this is added to the app separately from
+// createApp's own routes rather than living inside it.
+export function registerDashboardBroadcastRoutes(app: Express, rooms: RoomRegistry): void {
+  app.post("/workspaces/:id/artifacts/:artifactId/notify-health-change", async (req: Request, res: Response) => {
+    const workspaceId = paramString(req.params.id);
+    const artifactId = paramString(req.params.artifactId);
+    const artifact = await db.getWorkspaceArtifact(workspaceId, artifactId);
+    if (!artifact) return res.status(404).json({ error: "Artifact not found." });
+    const role = await db.getWorkspaceRole(workspaceId, req.user!.id);
+    if (!role) return res.status(403).json({ error: "Not a member of this workspace." });
+    const fromHealth = typeof req.body?.fromHealth === "string" ? req.body.fromHealth : "unknown";
+    const toHealth = typeof req.body?.toHealth === "string" ? req.body.toHealth : artifact.dashboardData?.health ?? "unknown";
+    const summary = `${artifact.title} health changed: ${fromHealth.replace("_", " ")} → ${toHealth.replace("_", " ")}`;
+    await db.recordAuditEvent({ workspaceId, eventType: "artifact.updated", actorType: "system", actorName: "Dashboard health", summary });
+    rooms.broadcast(workspaceId, { type: "dashboard_health_changed", artifactId, artifactTitle: artifact.title, fromHealth, toHealth });
+    res.status(204).end();
+  });
+}
+
 export function createChatServer(deps: CreateServerDeps = defaultDeps) {
   const app = createApp(deps);
   const server = createServer(app);
   const wss = new WebSocketServer({ server, path: "/ws" });
   const rooms = new RoomRegistry();
   registerActionRoutes(app, deps, rooms);
+  registerDashboardBroadcastRoutes(app, rooms);
 
   // A WebSocket can go dark without ever firing a "close" event -- a
   // laptop sleeping, wifi dropping, a dev-server hot reload orphaning the
