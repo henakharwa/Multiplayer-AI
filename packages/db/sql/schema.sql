@@ -479,3 +479,20 @@ CREATE TABLE IF NOT EXISTS workspace_artifact_comments (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS workspace_artifact_comments_artifact_idx ON workspace_artifact_comments (artifact_id, created_at ASC);
+
+-- Immutable checkpoints make shared, agent-assisted edits reviewable and
+-- reversible without losing the current workspace artifact.
+CREATE TABLE IF NOT EXISTS workspace_artifact_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  artifact_id UUID NOT NULL REFERENCES workspace_artifacts(id) ON DELETE CASCADE,
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  content TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('draft','published','archived')),
+  saved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (artifact_id, version)
+);
+CREATE INDEX IF NOT EXISTS workspace_artifact_versions_artifact_idx ON workspace_artifact_versions (artifact_id, version DESC);

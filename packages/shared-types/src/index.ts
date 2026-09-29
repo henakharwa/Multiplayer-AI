@@ -225,6 +225,20 @@ export interface WorkspaceArtifactComment {
   updatedAt: string;
 }
 
+export interface WorkspaceArtifactVersion {
+  id: string;
+  artifactId: string;
+  workspaceId: string;
+  version: number;
+  title: string;
+  summary: string;
+  content: string;
+  status: WorkspaceArtifactStatus;
+  savedByUserId: string | null;
+  savedByName: string | null;
+  createdAt: string;
+}
+
 export interface GithubIntegrationConfig {
   id?: string;
   type: "github";

@@ -31,6 +31,7 @@ import type {
   WorkspaceArtifactComment,
   WorkspaceArtifactStatus,
   WorkspaceArtifactType,
+  WorkspaceArtifactVersion,
 } from "@mai-chat/shared-types";
 import { getPool } from "./pool.js";
 import { encryptToken, decryptToken, hashSessionToken } from "./crypto.js";
@@ -745,11 +746,15 @@ export async function getWorkspaceArtifact(workspaceId: string, artifactId: stri
 }
 export async function createWorkspaceArtifact(workspaceId: string, createdByUserId: string, input: ArtifactInput): Promise<WorkspaceArtifact> {
   const result = await getPool().query(`INSERT INTO workspace_artifacts (workspace_id,type,status,title,summary,content,owner_user_id,created_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [workspaceId,input.type,input.status,input.title.trim(),input.summary.trim(),input.content.trim(),input.ownerUserId,createdByUserId]);
-  return (await getWorkspaceArtifact(workspaceId, String(result.rows[0].id)))!;
+  const artifact = (await getWorkspaceArtifact(workspaceId, String(result.rows[0].id)))!;
+  await saveWorkspaceArtifactVersion(artifact, createdByUserId);
+  return artifact;
 }
-export async function updateWorkspaceArtifact(workspaceId: string, artifactId: string, input: ArtifactInput): Promise<WorkspaceArtifact | null> {
+export async function updateWorkspaceArtifact(workspaceId: string, artifactId: string, input: ArtifactInput, savedByUserId?: string): Promise<WorkspaceArtifact | null> {
   const result = await getPool().query(`UPDATE workspace_artifacts SET type=$3,status=$4,title=$5,summary=$6,content=$7,owner_user_id=$8,updated_at=now() WHERE workspace_id=$1 AND id=$2 RETURNING id`, [workspaceId,artifactId,input.type,input.status,input.title.trim(),input.summary.trim(),input.content.trim(),input.ownerUserId]);
-  return result.rows[0] ? getWorkspaceArtifact(workspaceId, artifactId) : null;
+  const artifact = result.rows[0] ? await getWorkspaceArtifact(workspaceId, artifactId) : null;
+  if (artifact) await saveWorkspaceArtifactVersion(artifact, savedByUserId ?? null);
+  return artifact;
 }
 export async function deleteWorkspaceArtifact(workspaceId: string, artifactId: string): Promise<WorkspaceArtifact | null> {
   const current = await getWorkspaceArtifact(workspaceId, artifactId); if (!current) return null;
@@ -761,6 +766,23 @@ export async function listWorkspaceArtifactComments(workspaceId: string, artifac
 export async function createWorkspaceArtifactComment(workspaceId: string, artifactId: string, authorUserId: string, content: string): Promise<WorkspaceArtifactComment> {
   const result = await getPool().query("INSERT INTO workspace_artifact_comments (workspace_id,artifact_id,author_user_id,content) VALUES ($1,$2,$3,$4) RETURNING *", [workspaceId,artifactId,authorUserId,content.trim()]);
   const comment = result.rows[0]; const user = await getUserById(authorUserId); return { ...toWorkspaceArtifactComment(comment), authorName: user?.displayName ?? null };
+}
+
+function toWorkspaceArtifactVersion(row: Record<string, unknown>): WorkspaceArtifactVersion {
+  return { id: String(row.id), artifactId: String(row.artifact_id), workspaceId: String(row.workspace_id), version: Number(row.version), title: String(row.title), summary: String(row.summary ?? ""), content: String(row.content), status: row.status as WorkspaceArtifactStatus, savedByUserId: row.saved_by_user_id ? String(row.saved_by_user_id) : null, savedByName: row.saved_by_name ? String(row.saved_by_name) : null, createdAt: (row.created_at as Date).toISOString() };
+}
+async function saveWorkspaceArtifactVersion(artifact: WorkspaceArtifact, savedByUserId: string | null): Promise<void> {
+  const result = await getPool().query("SELECT COALESCE(MAX(version), 0) + 1 AS version FROM workspace_artifact_versions WHERE artifact_id=$1", [artifact.id]);
+  await getPool().query("INSERT INTO workspace_artifact_versions (artifact_id,workspace_id,version,title,summary,content,status,saved_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)", [artifact.id,artifact.workspaceId,Number(result.rows[0].version),artifact.title,artifact.summary,artifact.content,artifact.status,savedByUserId]);
+}
+export async function listWorkspaceArtifactVersions(workspaceId: string, artifactId: string): Promise<WorkspaceArtifactVersion[]> {
+  const result = await getPool().query("SELECT v.*, u.display_name AS saved_by_name FROM workspace_artifact_versions v LEFT JOIN users u ON u.id=v.saved_by_user_id WHERE v.workspace_id=$1 AND v.artifact_id=$2 ORDER BY v.version DESC", [workspaceId,artifactId]); return result.rows.map(toWorkspaceArtifactVersion);
+}
+export async function restoreWorkspaceArtifactVersion(workspaceId: string, artifactId: string, versionId: string, savedByUserId: string): Promise<WorkspaceArtifact | null> {
+  const result = await getPool().query("SELECT * FROM workspace_artifact_versions WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3", [workspaceId,artifactId,versionId]);
+  if (!result.rows[0]) return null;
+  const version = toWorkspaceArtifactVersion(result.rows[0]); const current = await getWorkspaceArtifact(workspaceId, artifactId); if (!current) return null;
+  return updateWorkspaceArtifact(workspaceId, artifactId, { type: current.type, status: version.status, title: version.title, summary: version.summary, content: version.content, ownerUserId: current.ownerUserId }, savedByUserId);
 }
 
 /** Formats durable memories for an agent turn without reading another workspace. */

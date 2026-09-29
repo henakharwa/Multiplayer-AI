@@ -643,7 +643,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     const input = parseWorkspaceArtifactInput(req.body ?? {});
     if (!input.title || !input.content) return res.status(400).json({ error: "An artifact title and content are required." });
     if (input.ownerUserId && !(await db.getWorkspaceRole(paramString(req.params.id), input.ownerUserId))) return res.status(400).json({ error: "Artifact owner must be a workspace member." });
-    const artifact = await db.updateWorkspaceArtifact(paramString(req.params.id), paramString(req.params.artifactId), input);
+    const artifact = await db.updateWorkspaceArtifact(paramString(req.params.id), paramString(req.params.artifactId), input, req.user!.id);
     if (!artifact) return res.status(404).json({ error: "Artifact not found." });
     await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} updated artifact ${artifact.title}` }); res.json(artifact);
   });
@@ -655,6 +655,20 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     const artifact = await db.deleteWorkspaceArtifact(paramString(req.params.id), paramString(req.params.artifactId));
     if (!artifact) return res.status(404).json({ error: "Artifact not found." });
     await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.deleted", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} deleted artifact ${artifact.title}` }); res.status(204).end();
+  });
+  app.get("/workspaces/:id/artifacts/:artifactId/versions", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    if (!(await db.getWorkspaceArtifact(paramString(req.params.id), paramString(req.params.artifactId)))) return res.status(404).json({ error: "Artifact not found." });
+    res.json(await db.listWorkspaceArtifactVersions(paramString(req.params.id), paramString(req.params.artifactId)));
+  });
+  app.post("/workspaces/:id/artifacts/:artifactId/versions/:versionId/restore", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const access = await canManageArtifact(req, paramString(req.params.artifactId));
+    if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
+    if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can restore a version." });
+    const artifact = await db.restoreWorkspaceArtifactVersion(paramString(req.params.id), paramString(req.params.artifactId), paramString(req.params.versionId), req.user!.id);
+    if (!artifact) return res.status(404).json({ error: "Artifact version not found." });
+    await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} restored version of artifact ${artifact.title}` }); res.json(artifact);
   });
   app.get("/workspaces/:id/artifacts/:artifactId/comments", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
