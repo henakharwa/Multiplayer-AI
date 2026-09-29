@@ -463,7 +463,34 @@ async function workspaceAssistedArtifactDraft(workspaceId: string, artifact: Awa
   return artifact.content;
 }
 
-export function createApp(deps: CreateServerDeps = defaultDeps) {
+
+async function aiArtifactDraft(workspaceId: string, artifact: NonNullable<Awaited<ReturnType<typeof db.getWorkspaceArtifact>>>, prompt: string, deps: CreateServerDeps): Promise<string> {
+  const sourceDraft = artifact.type === "release_notes"
+    ? await workspaceReleaseNotesDraft(workspaceId, artifact.id, deps)
+    : await workspaceAssistedArtifactDraft(workspaceId, artifact, prompt);
+  const workspaceMemory = await db.workspaceMemoryContext(workspaceId);
+  const request = [
+    `Create a polished ${artifact.type.replace("_", " ")} for the shared workspace.`,
+    "Return only the artifact in Markdown. Do not mention being an AI, this prompt, unavailable tools, or any drafting process.",
+    "Use only facts in the grounded source draft and saved workspace memory. Preserve uncertainty instead of inventing facts, owners, dates, metrics, or completed work.",
+    prompt.trim() ? `The user wants this focus: ${prompt.trim().slice(0, 500)}` : "Use the artifact title and summary as the intended focus.",
+    `Artifact title: ${artifact.title}`,
+    artifact.summary ? `Artifact summary: ${artifact.summary}` : "",
+    "Grounded source draft:", sourceDraft,
+  ].filter(Boolean).join("\n\n");
+  const result = await deps.runAgentTurn({
+    history: [{ role: "user", content: request }],
+    tools: [],
+    agentKind: "project",
+    customInstructions: "You are writing a shared workspace artifact. Produce complete, useful Markdown with clear headings, concise bullets, and checklist items where appropriate. Do not propose or perform external actions.",
+    workspaceMemory,
+    maxTurns: 1,
+    llmConfig: resolveLlmConfig({ maxTokens: 1400 }),
+  });
+  const content = result.reply.trim();
+  if (!content) throw new Error("The AI model returned an empty draft.");
+  return content;
+}export function createApp(deps: CreateServerDeps = defaultDeps) {
   const app = express();
   // Browser Origin never includes a trailing slash. Normalizing the
   // configured URL avoids rejecting legitimate deployed requests when a
@@ -970,9 +997,9 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can generate it." });
     if (access.artifact.type === "dashboard") return res.status(400).json({ error: "Dashboards use Refresh live data instead." });
     const prompt = typeof req.body?.prompt === "string" ? req.body.prompt : "";
-    const content = access.artifact.type === "release_notes"
-      ? await workspaceReleaseNotesDraft(access.artifact.workspaceId, access.artifact.id, deps)
-      : await workspaceAssistedArtifactDraft(access.artifact.workspaceId, access.artifact, prompt);
+    let content: string;
+    try { content = await aiArtifactDraft(access.artifact.workspaceId, access.artifact, prompt, deps); }
+    catch (error) { return res.status(503).json({ error: `AI draft unavailable: ${errMessage(error)}` }); }
     const artifact = await db.updateWorkspaceArtifact(access.artifact.workspaceId, access.artifact.id, { type: access.artifact.type, status: access.artifact.status, title: access.artifact.title, summary: access.artifact.summary, content, dashboardData: null, ownerUserId: access.artifact.ownerUserId, releaseVersion: access.artifact.releaseVersion }, req.user!.id);
     if (!artifact) return res.status(404).json({ error: "Artifact not found." });
     await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "system", actorName: "Artifact assistant", summary: `${req.user!.displayName} generated a workspace-assisted draft for ${artifact.title}` });
