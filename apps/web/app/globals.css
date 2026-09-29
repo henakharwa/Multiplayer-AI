@@ -1902,3 +1902,4 @@ textarea {
 .dashboard-freshness{margin:8px 0 0;color:#7181ab;font-size:10px}.dashboard-trend{width:100%;height:92px;overflow:visible}.dashboard-trend polyline{fill:none;stroke:#76d9be;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}.dashboard-visual-card>small{display:block;color:#7181ab;font-size:10px}
 
 .dashboard-milestone input[type=text]{grid-column:1;width:100%;border:0;background:transparent;padding:0;font:700 14px inherit;color:#1f2937}.dashboard-milestone input[type=range]{grid-column:1/-1}
+.dashboard-metrics .metric-slider{margin:0 0 9px;accent-color:#315cec;cursor:pointer}
