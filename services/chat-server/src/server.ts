@@ -228,6 +228,31 @@ export function parseWorkspaceArtifactInput(body: Record<string, unknown>) {
   };
 }
 
+async function workspaceDashboardSnapshot(workspaceId: string) {
+  const [integrations, workflows, members, conversations] = await Promise.all([db.listIntegrations(workspaceId), db.listWorkspaceWorkflows(workspaceId), db.listWorkspaceMembers(workspaceId), db.listConversations(workspaceId)]);
+  const pendingActions = (await Promise.all(conversations.map((conversation) => db.listPendingActions(workspaceId, conversation.id, true)))).flat();
+  const activeWorkflows = workflows.filter((workflow) => workflow.enabled);
+  const failedWorkflows = workflows.filter((workflow) => workflow.lastRunStatus === "failed");
+  const health: "on_track" | "at_risk" | "off_track" = failedWorkflows.length ? "at_risk" : integrations.length ? "on_track" : "at_risk";
+  const risks = [
+    ...failedWorkflows.slice(0, 3).map((workflow, index) => ({ id: `workflow-${workflow.id}`, title: `Workflow failed: ${workflow.name}${workflow.lastRunError ? ` — ${workflow.lastRunError.slice(0, 90)}` : ""}`, severity: "high" as const, owner: "Workflow owner" })),
+    ...(integrations.length ? [] : [{ id: "connections", title: "No connected tool is available for live workspace data", severity: "medium" as const, owner: "Workspace Admin" }]),
+  ];
+  return { health, metrics: [
+    { id: "tools", label: "Connected tools", value: String(integrations.length), trend: "flat" as const, target: "At least 1" },
+    { id: "workflows", label: "Active workflows", value: String(activeWorkflows.length), trend: "flat" as const, target: "Configured" },
+    { id: "approvals", label: "Pending approvals", value: String(pendingActions.length), trend: pendingActions.length ? "up" as const : "flat" as const, target: "0" },
+    { id: "members", label: "Team members", value: String(members.length), trend: "flat" as const, target: "Collaborating" },
+  ], milestones: [
+    { id: "workflow-health", label: "Workflow reliability", progress: activeWorkflows.length ? Math.round(((activeWorkflows.length - failedWorkflows.length) / activeWorkflows.length) * 100) : 0 },
+    { id: "workspace-ready", label: "Workspace readiness", progress: Math.min(100, (integrations.length ? 50 : 0) + (activeWorkflows.length ? 30 : 0) + (members.length > 1 ? 20 : 0)) },
+  ], risks, decisions: pendingActions.slice(0, 3).map((action) => ({ id: `approval-${action.id}`, title: action.description, owner: action.requestedByName ?? "Workspace Admin", dueDate: "" })), checklist: [
+    { id: "integration", label: "Connect at least one workspace tool", done: integrations.length > 0 },
+    { id: "workflow", label: "Enable an automation workflow", done: activeWorkflows.length > 0 },
+    { id: "approvals", label: "Resolve pending approval requests", done: pendingActions.length === 0 },
+  ] };
+}
+
 export function createApp(deps: CreateServerDeps = defaultDeps) {
   const app = express();
   // Browser Origin never includes a trailing slash. Normalizing the
@@ -683,6 +708,17 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     const artifact = await db.restoreWorkspaceArtifactVersion(paramString(req.params.id), paramString(req.params.artifactId), paramString(req.params.versionId), req.user!.id);
     if (!artifact) return res.status(404).json({ error: "Artifact version not found." });
     await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} restored version of artifact ${artifact.title}` }); res.json(artifact);
+  });
+  app.post("/workspaces/:id/artifacts/:artifactId/refresh-dashboard", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const access = await canManageArtifact(req, paramString(req.params.artifactId));
+    if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
+    if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can refresh it." });
+    if (access.artifact.type !== "dashboard") return res.status(400).json({ error: "Only Dashboard artifacts can be refreshed." });
+    const dashboardData = await workspaceDashboardSnapshot(access.artifact.workspaceId);
+    const artifact = await db.updateWorkspaceArtifact(access.artifact.workspaceId, access.artifact.id, { type: access.artifact.type, status: access.artifact.status, title: access.artifact.title, summary: access.artifact.summary, content: access.artifact.content, dashboardData, ownerUserId: access.artifact.ownerUserId }, req.user!.id);
+    if (!artifact) return res.status(404).json({ error: "Artifact not found." });
+    await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "system", actorName: "Dashboard refresh", summary: `${req.user!.displayName} refreshed live workspace data for ${artifact.title}` }); res.json(artifact);
   });
   app.get("/workspaces/:id/artifacts/:artifactId/comments", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
