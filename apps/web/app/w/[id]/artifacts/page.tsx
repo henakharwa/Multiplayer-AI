@@ -13,13 +13,42 @@ const empty: WorkspaceArtifactInput = { type: "plan", status: "draft", title: ""
 // below), so this is never hand-edited, just a starting point.
 const newDashboard = (): WorkspaceArtifactDashboard => ({ health: "on_track", metrics: [], milestones: [], risks: [{ id: "risk", title: "No active risks", severity: "low", owner: "" }], decisions: [{ id: "decision", title: "No decisions needed", owner: "", dueDate: "" }], checklist: [] });
 const labels = { plan: "Plan", report: "Report", release_notes: "Release notes", dashboard: "Dashboard", task_list: "Task list" } as const;
-const templates: Array<{ type: WorkspaceArtifactInput["type"]; title: string; summary: string; content: string }> = [
+const templates: Array<{ type: WorkspaceArtifactInput["type"];
+ title: string; summary: string; content: string }> = [
   { type: "plan", title: "Project plan", summary: "Goals, milestones, and owners.", content: "## Goal\n\n## Milestones\n- [ ]\n\n## Risks\n\n## Next step" },
   { type: "report", title: "Weekly team update", summary: "Progress, risks, and the next step.", content: "## Progress\n\n## Risks\n\n## Next step" },
   { type: "release_notes", title: "Release notes", summary: "What shipped and what teams need to know.", content: "## Highlights\n\n## Fixes\n\n## Known issues" },
   { type: "dashboard", title: "Project health", summary: "A live view of connected-tool activity, workflow health, and the audit trail.", content: "Auto-generated from this workspace's connected tools, workflows, and audit trail. Hit \"Refresh live data\" any time to pull the latest." },
   { type: "task_list", title: "Launch checklist", summary: "The work required before launch.", content: "- [ ] Confirm owner\n- [ ] Complete review\n- [ ] Publish update" },
 ];
+
+const blockSuggestions: Partial<Record<WorkspaceArtifactInput["type"], Array<{ label: string; content: string }>>> = {
+  plan: [
+    { label: "+ Goal", content: "## Goal\nDescribe the outcome and why it matters." },
+    { label: "+ Workstream", content: "## Workstream\n**Owner:** \n**Outcome:** \n**Target date:** " },
+    { label: "+ Milestone", content: "## Milestone\n- [ ] Deliverable — Owner:  — Due: " },
+    { label: "+ Risk", content: "## Risk\n**Risk:** \n**Mitigation:** \n**Owner:** " },
+    { label: "+ Success metric", content: "## Success metric\n**Metric:** \n**Current:** \n**Target:** " },
+  ],
+  report: [
+    { label: "+ Highlight", content: "## Highlight\nWhat changed, and why it matters." },
+    { label: "+ Metric", content: "## Metric\n**Metric:** \n**Current:** \n**Target:** \n**Trend:** " },
+    { label: "+ Blocker", content: "## Blocker\n**Blocker:** \n**Owner:** \n**Next action:** " },
+    { label: "+ Decision", content: "## Decision needed\n**Decision:** \n**Owner:** \n**Due:** " },
+  ],
+  release_notes: [
+    { label: "+ Shipped", content: "## Shipped\n- " },
+    { label: "+ Fix", content: "## Fixed\n- " },
+    { label: "+ Breaking change", content: "## Breaking changes\n- " },
+    { label: "+ Rollout step", content: "## Rollout\n- [ ] " },
+  ],
+  task_list: [
+    { label: "+ Task", content: "- [ ] New task — Owner:  — Due: " },
+    { label: "+ Priority task", content: "- [ ] **High priority:** New task — Owner:  — Due: " },
+    { label: "+ Dependency", content: "## Dependency\n- [ ] Waiting for: \n  - Owner: \n  - Needed by: " },
+    { label: "+ Review step", content: "- [ ] Review and approve — Owner:  — Due: " },
+  ],
+};
 
 export default function ArtifactsPage() {
   const { id: workspaceId } = useParams<{ id: string }>();
@@ -115,7 +144,10 @@ export default function ArtifactsPage() {
     try { const generated = await generateReport(workspaceId, selected.id); await refresh(); await select(generated); setNotice("Drafted from this workspace's activity -- review before publishing."); }
     catch (err) { setError(err instanceof Error ? err.message : "Could not generate report."); } finally { setSaving(false); }
   }
-  async function addComment() { if (!selected || !comment.trim()) return; try { const created = await createWorkspaceArtifactComment(workspaceId, selected.id, comment); setComments((items) => [...items, created]); setComment(""); } catch (err) { setError(err instanceof Error ? err.message : "Could not add comment."); } }
+  async function addComment() { if (!selected || !comment.trim()) return; try { const created = await createWorkspaceArtifactComment(workspaceId, selected.id, comment); setComments((items) => [...items, created]); setComment(""); } catch (err) { setError(err instanceof Error ? err.message : "Could not add comment."); } }  function addSuggestedBlock(content: string) {
+    setDraft((current) => ({ ...current, content: current.content.trim() ? `${current.content.trim()}\n\n${content}` : content }));
+    setNotice("Added a structured block. Fill in its details below.");
+  }
   // Shared across every artifact type that can have a public link (see
   // publicUrlFor above -- that's all five now).
   const shareControls = selected ? (selected.shareToken ? <>
@@ -133,7 +165,7 @@ export default function ArtifactsPage() {
   return <main className="workspace-settings-page artifacts-page"><header><p className="eyebrow">COLLABORATION ARTIFACTS</p><h1>Turn team work into shared artifacts</h1><p>Create plans, reports, release notes, dashboards, and task lists that teammates can own, review, and discuss.</p></header><section className="artifact-overview"><div><strong>{artifacts.length}</strong><span>Shared artifacts</span></div><div><strong>{artifacts.filter((item) => item.status === "published").length}</strong><span>Published</span></div><div><strong>{artifacts.reduce((total, item) => total + (item.status === "draft" ? 1 : 0), 0)}</strong><span>In draft</span></div></section><section className="artifact-templates"><div><p className="eyebrow">START FROM A TEMPLATE</p><h2>Build a useful team artifact faster</h2></div><div className="template-grid">{templates.map((template) => <button key={template.type} className={`template-card ${template.type}`} onClick={() => useTemplate(template)}><span>{labels[template.type]}</span><strong>{template.title}</strong><small>{template.summary}</small></button>)}</div></section><div className="artifacts-layout">
     <section className="artifacts-list"><div className="section-heading"><h2>Artifacts</h2><button onClick={() => { setSelected(null); setDraft(empty); setComments([]); setError(""); setNotice(""); }}>New artifact</button></div><div className="artifact-filter"><button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>All</button>{Object.entries(labels).map(([type, label]) => <button key={type} className={filter === type ? "active" : ""} onClick={() => setFilter(type as WorkspaceArtifactInput["type"])}>{label}</button>)}</div>{visibleArtifacts.length ? visibleArtifacts.map((item) => <button key={item.id} className={`artifact-card ${item.type} ${selected?.id === item.id ? "selected" : ""}`} onClick={() => void select(item)}><span className={`artifact-status ${item.status}`}>{item.status}</span><strong>{item.title}</strong><small>{labels[item.type]}{item.releaseVersion ? ` · ${item.releaseVersion}` : ""} · {item.ownerName ?? "Unassigned"}</small></button>) : <p className="muted">No artifacts yet. Save the next useful team output here.</p>}</section>
     <section className="artifact-form"><div className="section-heading"><h2>{selected ? selected.title : "New artifact"}</h2><span className="artifact-type-label">{labels[draft.type]}</span></div><div className="artifact-two-columns"><label>Type<select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as WorkspaceArtifactInput["type"] })}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Status<select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as WorkspaceArtifactInput["status"] })}><option value="draft">Draft</option><option value="published" disabled={draft.type === "dashboard"}>Published</option><option value="archived">Archived</option></select></label></div><label>Title<input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Release readiness plan" /></label><label>Summary<input value={draft.summary} onChange={(e) => setDraft({ ...draft, summary: e.target.value })} placeholder="A concise description for the workspace" /></label><label>Owner<select value={draft.ownerUserId ?? ""} onChange={(e) => setDraft({ ...draft, ownerUserId: e.target.value || null })}><option value="">Unassigned</option>{members.map((member) => <option key={member.id} value={member.id}>{member.displayName}</option>)}</select></label>
-      {draft.type === "dashboard" ? <>
+      {draft.type !== "dashboard" && blockSuggestions[draft.type] && <section className="artifact-guided-builder"><div><p className="eyebrow">GUIDED BUILDER</p><h3>{labels[draft.type]} building blocks</h3><p>Add a structured section, then fill in its details in the artifact below.</p></div><div>{blockSuggestions[draft.type]!.map((block) => <button type="button" key={block.label} onClick={() => addSuggestedBlock(block.content)}>{block.label}</button>)}</div></section>}      {draft.type === "dashboard" ? <>
         {/* A dashboard's numbers come from the workspace itself (connected
             tools, workflows, and the audit trail -- see
             workspaceDashboardSnapshot in services/chat-server/src/server.ts),

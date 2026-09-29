@@ -1913,3 +1913,19 @@ textarea {
 .workflow-specialist-picker button svg { width: 19px; height: 19px; }
 .workflow-specialist-picker button:hover:not(:disabled),.workflow-specialist-picker button.selected { border-color: #6684ee; background: #edf2ff; color: #315cec; }
 .workflow-specialist-picker button:disabled { cursor: not-allowed; opacity: .48; }
+.workflow-agent-picker { min-width: 0; margin: 0; padding: 0; border: 0; }
+.workflow-agent-picker legend { margin-bottom: 7px; font-size: 13px; font-weight: 700; }
+.workflow-agent-picker > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.workflow-agent-picker button { display: grid; place-items: center; width: 37px; height: 37px; padding: 0; border: 1px solid #d9e1ef; border-radius: 9px; background: #fff; color: #667085; cursor: pointer; }
+.workflow-agent-picker button svg { width: 19px; height: 19px; }
+.workflow-agent-picker button:hover,.workflow-agent-picker button.selected { border-color: #6684ee; background: #edf2ff; color: #315cec; }
+.workflow-agent-picker > small { display: block; margin-top: 8px; color: #718097; font-size: 11px; line-height: 1.35; }
+.workflow-custom-agent-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; color: #fff; font-size: 9px; font-weight: 800; }
+.artifact-guided-builder { display: grid; grid-template-columns: minmax(180px, .9fr) minmax(0, 1.3fr); gap: 14px; margin: 0 0 16px; padding: 15px; border: 1px solid #dfe7f8; border-radius: 12px; background: linear-gradient(135deg, #f7f9ff, #f8fffc); }
+.artifact-guided-builder .eyebrow { margin: 0 0 4px; font-size: 10px; }
+.artifact-guided-builder h3 { margin: 0; color: #283b68; font-size: 14px; }
+.artifact-guided-builder p:not(.eyebrow) { margin: 5px 0 0; color: #65738a; font-size: 12px; line-height: 1.4; }
+.artifact-guided-builder > div:last-child { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 7px; }
+.artifact-guided-builder button { padding: 7px 9px; border: 1px solid #cbd8f4; border-radius: 8px; background: #fff; color: #315cec; font: 650 12px inherit; cursor: pointer; }
+.artifact-guided-builder button:hover { border-color: #7898ed; background: #edf2ff; }
+@media (max-width: 650px) { .artifact-guided-builder { grid-template-columns: 1fr; } }
