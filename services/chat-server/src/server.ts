@@ -201,6 +201,19 @@ export function preferWorkspaceMemoryForRepositoryUnavailableWorkflow(reply: str
   return `Live GitHub data is unavailable, so this is a policy-based release update rather than a live repository report.\n\n${workspaceMemory}\n\nUse the saved policy above for the release decision. Connect a repository later to add current pull-request, issue, and CI details.`;
 }
 
+const artifactTypes = ["plan", "report", "release_notes", "dashboard", "task_list"] as const;
+const artifactStatuses = ["draft", "published", "archived"] as const;
+export function parseWorkspaceArtifactInput(body: Record<string, unknown>) {
+  return {
+    type: artifactTypes.includes(body.type as typeof artifactTypes[number]) ? body.type as typeof artifactTypes[number] : "plan",
+    status: artifactStatuses.includes(body.status as typeof artifactStatuses[number]) ? body.status as typeof artifactStatuses[number] : "draft",
+    title: typeof body.title === "string" ? body.title.trim() : "",
+    summary: typeof body.summary === "string" ? body.summary.trim() : "",
+    content: typeof body.content === "string" ? body.content.trim() : "",
+    ownerUserId: typeof body.ownerUserId === "string" && UUID_RE.test(body.ownerUserId) ? body.ownerUserId : null,
+  };
+}
+
 export function createApp(deps: CreateServerDeps = defaultDeps) {
   const app = express();
   // Browser Origin never includes a trailing slash. Normalizing the
@@ -601,6 +614,61 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!memory) return res.status(404).json({ error: "Memory not found." });
     await db.recordAuditEvent({ workspaceId: memory.workspaceId, eventType: "memory.deleted", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} deleted memory ${memory.title}` });
     res.status(204).end();
+  });
+
+  async function canManageArtifact(req: Request, artifactId: string) {
+    const workspaceId = paramString(req.params.id); const artifact = await db.getWorkspaceArtifact(workspaceId, artifactId);
+    if (!artifact) return { artifact: null, allowed: false };
+    const role = await db.getWorkspaceRole(workspaceId, req.user!.id);
+    return { artifact, allowed: role === "admin" || artifact.createdByUserId === req.user!.id };
+  }
+  app.get("/workspaces/:id/artifacts", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    res.json(await db.listWorkspaceArtifacts(paramString(req.params.id)));
+  });
+  app.post("/workspaces/:id/artifacts", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const input = parseWorkspaceArtifactInput(req.body ?? {});
+    if (!input.title || !input.content) return res.status(400).json({ error: "An artifact title and content are required." });
+    if (input.ownerUserId && !(await db.getWorkspaceRole(paramString(req.params.id), input.ownerUserId))) return res.status(400).json({ error: "Artifact owner must be a workspace member." });
+    const artifact = await db.createWorkspaceArtifact(paramString(req.params.id), req.user!.id, input);
+    await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.created", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} created ${artifact.type.replace("_", " ")} ${artifact.title}` });
+    res.status(201).json(artifact);
+  });
+  app.patch("/workspaces/:id/artifacts/:artifactId", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const access = await canManageArtifact(req, paramString(req.params.artifactId));
+    if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
+    if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can edit it." });
+    const input = parseWorkspaceArtifactInput(req.body ?? {});
+    if (!input.title || !input.content) return res.status(400).json({ error: "An artifact title and content are required." });
+    if (input.ownerUserId && !(await db.getWorkspaceRole(paramString(req.params.id), input.ownerUserId))) return res.status(400).json({ error: "Artifact owner must be a workspace member." });
+    const artifact = await db.updateWorkspaceArtifact(paramString(req.params.id), paramString(req.params.artifactId), input);
+    if (!artifact) return res.status(404).json({ error: "Artifact not found." });
+    await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} updated artifact ${artifact.title}` }); res.json(artifact);
+  });
+  app.delete("/workspaces/:id/artifacts/:artifactId", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const access = await canManageArtifact(req, paramString(req.params.artifactId));
+    if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
+    if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can delete it." });
+    const artifact = await db.deleteWorkspaceArtifact(paramString(req.params.id), paramString(req.params.artifactId));
+    if (!artifact) return res.status(404).json({ error: "Artifact not found." });
+    await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.deleted", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} deleted artifact ${artifact.title}` }); res.status(204).end();
+  });
+  app.get("/workspaces/:id/artifacts/:artifactId/comments", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    if (!(await db.getWorkspaceArtifact(paramString(req.params.id), paramString(req.params.artifactId)))) return res.status(404).json({ error: "Artifact not found." });
+    res.json(await db.listWorkspaceArtifactComments(paramString(req.params.id), paramString(req.params.artifactId)));
+  });
+  app.post("/workspaces/:id/artifacts/:artifactId/comments", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const content = typeof req.body?.content === "string" ? req.body.content.trim() : "";
+    if (!content) return res.status(400).json({ error: "A comment is required." });
+    const artifact = await db.getWorkspaceArtifact(paramString(req.params.id), paramString(req.params.artifactId));
+    if (!artifact) return res.status(404).json({ error: "Artifact not found." });
+    const comment = await db.createWorkspaceArtifactComment(artifact.workspaceId, artifact.id, req.user!.id, content.slice(0, 8_000));
+    await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.commented", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} commented on artifact ${artifact.title}` }); res.status(201).json(comment);
   });
 
   app.patch("/workspaces/:id/members/:userId", async (req: Request, res: Response) => {

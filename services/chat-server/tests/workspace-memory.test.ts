@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatWorkspaceMemoryContext } from "@mai-chat/db";
-import { parseWorkspaceMemoryInput, preferWorkspaceMemoryForRepositoryUnavailableWorkflow } from "../src/server.js";
+import { parseWorkspaceArtifactInput, parseWorkspaceMemoryInput, preferWorkspaceMemoryForRepositoryUnavailableWorkflow } from "../src/server.js";
 import type { WorkspaceMemory } from "@mai-chat/shared-types";
 
 function memory(overrides: Partial<WorkspaceMemory> = {}): WorkspaceMemory {
@@ -52,5 +52,10 @@ describe("workspace memory", () => {
   it("does not replace ordinary responses or responses without saved memory", () => {
     expect(preferWorkspaceMemoryForRepositoryUnavailableWorkflow("A release update is ready.", "[Memory: Release policy]", true)).toBe("A release update is ready.");
     expect(preferWorkspaceMemoryForRepositoryUnavailableWorkflow("I can't create the release update because no repository is connected.", "", true)).toContain("can't create");
+  });
+
+  it("parses collaboration artifact input into safe workspace values", () => {
+    expect(parseWorkspaceArtifactInput({ type: "release_notes", status: "published", title: "v1", summary: "Ready", content: "Shipped", ownerUserId: "not-a-uuid" })).toEqual({ type: "release_notes", status: "published", title: "v1", summary: "Ready", content: "Shipped", ownerUserId: null });
+    expect(parseWorkspaceArtifactInput({ type: "unknown", status: "unknown" })).toMatchObject({ type: "plan", status: "draft", title: "", content: "" });
   });
 });

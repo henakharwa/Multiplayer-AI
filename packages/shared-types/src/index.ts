@@ -194,6 +194,37 @@ export interface WorkspaceMemory {
   updatedAt: string;
 }
 
+export type WorkspaceArtifactType = "plan" | "report" | "release_notes" | "dashboard" | "task_list";
+export type WorkspaceArtifactStatus = "draft" | "published" | "archived";
+
+/** A durable, shared output created by a teammate or an agent. */
+export interface WorkspaceArtifact {
+  id: string;
+  workspaceId: string;
+  type: WorkspaceArtifactType;
+  status: WorkspaceArtifactStatus;
+  title: string;
+  summary: string;
+  content: string;
+  ownerUserId: string | null;
+  ownerName: string | null;
+  createdByUserId: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceArtifactComment {
+  id: string;
+  artifactId: string;
+  workspaceId: string;
+  content: string;
+  authorUserId: string | null;
+  authorName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface GithubIntegrationConfig {
   id?: string;
   type: "github";
@@ -511,6 +542,10 @@ export type AuditEventType =
   | "memory.created"
   | "memory.updated"
   | "memory.deleted"
+  | "artifact.created"
+  | "artifact.updated"
+  | "artifact.deleted"
+  | "artifact.commented"
   | "action.proposed"
   | "action.confirmed"
   | "action.cancelled"

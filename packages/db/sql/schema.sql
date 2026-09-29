@@ -451,3 +451,31 @@ CREATE TABLE IF NOT EXISTS workspace_memory (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS workspace_memory_workspace_updated_idx ON workspace_memory (workspace_id, updated_at DESC);
+
+-- Shared outputs that can outlive a chat turn: plans, reports, release notes,
+-- dashboards, and task lists. Comments are separate rows so teammates can
+-- collaborate without overwriting the artifact itself.
+CREATE TABLE IF NOT EXISTS workspace_artifacts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('plan','report','release_notes','dashboard','task_list')),
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published','archived')),
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  content TEXT NOT NULL,
+  owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS workspace_artifacts_workspace_updated_idx ON workspace_artifacts (workspace_id, updated_at DESC);
+CREATE TABLE IF NOT EXISTS workspace_artifact_comments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  artifact_id UUID NOT NULL REFERENCES workspace_artifacts(id) ON DELETE CASCADE,
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  author_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS workspace_artifact_comments_artifact_idx ON workspace_artifact_comments (artifact_id, created_at ASC);
