@@ -215,8 +215,13 @@ export interface WorkspaceArtifact {
   content: string;
   dashboardData: WorkspaceArtifactDashboard | null;
   // Non-null while a public, read-only share link is active for this
-  // artifact (dashboards only) -- see server.ts's POST/DELETE .../share.
+  // artifact (dashboard or release_notes) -- see server.ts's POST/DELETE
+  // .../share.
   shareToken: string | null;
+  // Release Notes only (null for every other type) -- a free-form tag
+  // like "v1.2.0" or "Sprint 14" so one release note has a clear
+  // boundary from the next.
+  releaseVersion: string | null;
   ownerUserId: string | null;
   ownerName: string | null;
   createdByUserId: string | null;
@@ -233,6 +238,17 @@ export interface PublicDashboardView {
   summary: string;
   workspaceName: string;
   dashboardData: WorkspaceArtifactDashboard;
+  updatedAt: string;
+}
+
+// The safe subset of a Release Notes artifact served, without auth, at a
+// public share link (GET /public/release-notes/:token).
+export interface PublicReleaseNotesView {
+  title: string;
+  summary: string;
+  workspaceName: string;
+  content: string;
+  releaseVersion: string | null;
   updatedAt: string;
 }
 

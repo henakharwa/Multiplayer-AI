@@ -723,12 +723,12 @@ export async function workspaceMemoryContext(workspaceId: string, limit = 12): P
   return formatWorkspaceMemoryContext(await listWorkspaceMemory(workspaceId), limit);
 }
 
-type ArtifactInput = { type: WorkspaceArtifactType; status: WorkspaceArtifactStatus; title: string; summary: string; content: string; ownerUserId: string | null; dashboardData?: WorkspaceArtifactDashboard | null };
+type ArtifactInput = { type: WorkspaceArtifactType; status: WorkspaceArtifactStatus; title: string; summary: string; content: string; ownerUserId: string | null; dashboardData?: WorkspaceArtifactDashboard | null; releaseVersion?: string | null };
 
 function toWorkspaceArtifact(row: Record<string, unknown>): WorkspaceArtifact {
   return {
     id: String(row.id), workspaceId: String(row.workspace_id), type: row.type as WorkspaceArtifactType, status: row.status as WorkspaceArtifactStatus,
-    title: String(row.title), summary: String(row.summary ?? ""), content: String(row.content), dashboardData: row.dashboard_data && typeof row.dashboard_data === "object" ? row.dashboard_data as WorkspaceArtifactDashboard : null, shareToken: row.share_token ? String(row.share_token) : null, ownerUserId: row.owner_user_id ? String(row.owner_user_id) : null,
+    title: String(row.title), summary: String(row.summary ?? ""), content: String(row.content), dashboardData: row.dashboard_data && typeof row.dashboard_data === "object" ? row.dashboard_data as WorkspaceArtifactDashboard : null, shareToken: row.share_token ? String(row.share_token) : null, releaseVersion: row.release_version ? String(row.release_version) : null, ownerUserId: row.owner_user_id ? String(row.owner_user_id) : null,
     ownerName: row.owner_name ? String(row.owner_name) : null, createdByUserId: row.created_by_user_id ? String(row.created_by_user_id) : null,
     createdByName: row.created_by_name ? String(row.created_by_name) : null, createdAt: (row.created_at as Date).toISOString(), updatedAt: (row.updated_at as Date).toISOString(),
   };
@@ -746,13 +746,13 @@ export async function getWorkspaceArtifact(workspaceId: string, artifactId: stri
   return result.rows[0] ? toWorkspaceArtifact(result.rows[0]) : null;
 }
 export async function createWorkspaceArtifact(workspaceId: string, createdByUserId: string, input: ArtifactInput): Promise<WorkspaceArtifact> {
-  const result = await getPool().query(`INSERT INTO workspace_artifacts (workspace_id,type,status,title,summary,content,dashboard_data,owner_user_id,created_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [workspaceId,input.type,input.status,input.title.trim(),input.summary.trim(),input.content.trim(),input.dashboardData ?? null,input.ownerUserId,createdByUserId]);
+  const result = await getPool().query(`INSERT INTO workspace_artifacts (workspace_id,type,status,title,summary,content,dashboard_data,owner_user_id,created_by_user_id,release_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`, [workspaceId,input.type,input.status,input.title.trim(),input.summary.trim(),input.content.trim(),input.dashboardData ?? null,input.ownerUserId,createdByUserId,input.releaseVersion ?? null]);
   const artifact = (await getWorkspaceArtifact(workspaceId, String(result.rows[0].id)))!;
   await saveWorkspaceArtifactVersion(artifact, createdByUserId);
   return artifact;
 }
 export async function updateWorkspaceArtifact(workspaceId: string, artifactId: string, input: ArtifactInput, savedByUserId?: string): Promise<WorkspaceArtifact | null> {
-  const result = await getPool().query(`UPDATE workspace_artifacts SET type=$3,status=$4,title=$5,summary=$6,content=$7,dashboard_data=$8,owner_user_id=$9,updated_at=now() WHERE workspace_id=$1 AND id=$2 RETURNING id`, [workspaceId,artifactId,input.type,input.status,input.title.trim(),input.summary.trim(),input.content.trim(),input.dashboardData ?? null,input.ownerUserId]);
+  const result = await getPool().query(`UPDATE workspace_artifacts SET type=$3,status=$4,title=$5,summary=$6,content=$7,dashboard_data=$8,owner_user_id=$9,release_version=$10,updated_at=now() WHERE workspace_id=$1 AND id=$2 RETURNING id`, [workspaceId,artifactId,input.type,input.status,input.title.trim(),input.summary.trim(),input.content.trim(),input.dashboardData ?? null,input.ownerUserId,input.releaseVersion ?? null]);
   const artifact = result.rows[0] ? await getWorkspaceArtifact(workspaceId, artifactId) : null;
   if (artifact) await saveWorkspaceArtifactVersion(artifact, savedByUserId ?? null);
   return artifact;
@@ -787,6 +787,20 @@ export async function getPublicDashboardByShareToken(token: string): Promise<imp
   if (!row || !row.dashboard_data) return null;
   return { title: String(row.title), summary: String(row.summary ?? ""), workspaceName: String(row.workspace_name), dashboardData: row.dashboard_data, updatedAt: (row.updated_at as Date).toISOString() };
 }
+
+// Same idea as getPublicDashboardByShareToken above, for a published
+// Release Notes artifact's share link.
+export async function getPublicReleaseNotesByShareToken(token: string): Promise<import("@mai-chat/shared-types").PublicReleaseNotesView | null> {
+  const result = await getPool().query(
+    `SELECT a.title, a.summary, a.content, a.release_version, a.updated_at, w.name AS workspace_name
+     FROM workspace_artifacts a JOIN workspaces w ON w.id = a.workspace_id
+     WHERE a.share_token = $1 AND a.type = 'release_notes' AND a.status = 'published'`,
+    [token]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return { title: String(row.title), summary: String(row.summary ?? ""), workspaceName: String(row.workspace_name), content: String(row.content), releaseVersion: row.release_version ? String(row.release_version) : null, updatedAt: (row.updated_at as Date).toISOString() };
+}
 export async function listWorkspaceArtifactComments(workspaceId: string, artifactId: string): Promise<WorkspaceArtifactComment[]> {
   const result = await getPool().query("SELECT c.*, u.display_name AS author_name FROM workspace_artifact_comments c LEFT JOIN users u ON u.id=c.author_user_id WHERE c.workspace_id=$1 AND c.artifact_id=$2 ORDER BY c.created_at ASC", [workspaceId,artifactId]); return result.rows.map(toWorkspaceArtifactComment);
 }
@@ -809,7 +823,7 @@ export async function restoreWorkspaceArtifactVersion(workspaceId: string, artif
   const result = await getPool().query("SELECT * FROM workspace_artifact_versions WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3", [workspaceId,artifactId,versionId]);
   if (!result.rows[0]) return null;
   const version = toWorkspaceArtifactVersion(result.rows[0]); const current = await getWorkspaceArtifact(workspaceId, artifactId); if (!current) return null;
-  return updateWorkspaceArtifact(workspaceId, artifactId, { type: current.type, status: version.status, title: version.title, summary: version.summary, content: version.content, dashboardData: current.dashboardData, ownerUserId: current.ownerUserId }, savedByUserId);
+  return updateWorkspaceArtifact(workspaceId, artifactId, { type: current.type, status: version.status, title: version.title, summary: version.summary, content: version.content, dashboardData: current.dashboardData, ownerUserId: current.ownerUserId, releaseVersion: current.releaseVersion }, savedByUserId);
 }
 
 /** Formats durable memories for an agent turn without reading another workspace. */

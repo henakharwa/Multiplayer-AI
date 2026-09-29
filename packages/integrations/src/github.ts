@@ -1,5 +1,5 @@
 import { Octokit } from "@octokit/rest";
-import type { GithubIssueSummary, GithubRepoSummary } from "@mai-chat/shared-types";
+import type { GithubIssueSummary, GithubPullRequestSummary, GithubRepoSummary } from "@mai-chat/shared-types";
 
 // This file used to be the full GitHub tool surface for the agent (~49
 // methods wrapped by services/chat-server/src/tools.ts's buildGithubTools).
@@ -36,6 +36,38 @@ export interface GithubClientOptions {
 
 export interface GithubClient {
   listIssues(state?: "open" | "closed" | "all", limit?: number): Promise<GithubIssueSummary[]>;
+  // Added for the Release Notes artifact's "Generate from GitHub" action
+  // (see server.ts's workspaceReleaseNotesDraft) -- listIssues
+  // deliberately filters PRs out (see its own comment), so drafting a
+  // changelog from merged work needs its own method rather than
+  // repurposing that one.
+  listPullRequests(state?: "open" | "closed" | "all", limit?: number): Promise<GithubPullRequestSummary[]>;
+}
+
+interface RawPullRequest {
+  number: number;
+  title: string;
+  state: string;
+  user: { login: string } | null;
+  html_url: string;
+  created_at: string;
+  updated_at: string;
+  merged_at: string | null;
+  draft: boolean;
+}
+
+function toPullRequestSummary(pr: RawPullRequest): GithubPullRequestSummary {
+  return {
+    number: pr.number,
+    title: pr.title,
+    state: pr.state,
+    author: pr.user?.login ?? "unknown",
+    url: pr.html_url,
+    createdAt: pr.created_at,
+    updatedAt: pr.updated_at,
+    merged: Boolean(pr.merged_at),
+    draft: pr.draft,
+  };
 }
 
 interface RawIssue {
@@ -77,6 +109,10 @@ export function createGithubClient(opts: GithubClientOptions): GithubClient {
       // "issues" internally); filter them out, matching this method's
       // original behavior back when it was also used as a real tool.
       return (data as unknown as RawIssue[]).filter((i) => !i.pull_request).map(toIssueSummary);
+    },
+    async listPullRequests(state = "closed", limit = 30) {
+      const { data } = await octokit.pulls.list({ owner, repo, state, per_page: limit, sort: "updated", direction: "desc" });
+      return (data as unknown as RawPullRequest[]).map(toPullRequestSummary);
     },
   };
 }

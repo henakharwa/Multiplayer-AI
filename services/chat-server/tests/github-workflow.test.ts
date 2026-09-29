@@ -27,6 +27,7 @@ const verifiedGithubClient: GithubClient = {
 function makeDeps(overrides: Partial<CreateServerDeps> = {}): CreateServerDeps {
   return {
     githubClientFactory: () => verifiedGithubClient,
+    slackClientFactory: () => ({ postMessage: async () => {} }),
     githubMcpToolsFactory: async () => [],
     slackMcpToolsFactory: async () => [],
     runAgentTurn: async () => ({ reply: "Agent reply", toolCallsMade: 0 }),

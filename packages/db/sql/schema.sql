@@ -473,6 +473,9 @@ CREATE INDEX IF NOT EXISTS workspace_artifacts_workspace_updated_idx ON workspac
 -- dashboard artifact (see POST .../share in server.ts); NULL means no
 -- active share link exists.
 ALTER TABLE workspace_artifacts ADD COLUMN IF NOT EXISTS share_token TEXT UNIQUE;
+-- Release Notes only: a free-form version/tag (e.g. "v1.2.0") so one
+-- release note has a clear boundary from the next.
+ALTER TABLE workspace_artifacts ADD COLUMN IF NOT EXISTS release_version TEXT;
 CREATE TABLE IF NOT EXISTS workspace_artifact_comments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   artifact_id UUID NOT NULL REFERENCES workspace_artifacts(id) ON DELETE CASCADE,

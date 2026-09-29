@@ -25,6 +25,7 @@ const fakeGithubClient: GithubClient = {
 function makeDeps(overrides: Partial<CreateServerDeps> = {}): CreateServerDeps {
   return {
     githubClientFactory: () => fakeGithubClient,
+    slackClientFactory: () => ({ postMessage: async () => {} }),
     // Real implementations spawn/connect a subprocess or a remote MCP
     // server (see github-mcp-pool.ts / slack-mcp-pool.ts) -- these tests
     // never connect either integration, so neither is actually called,

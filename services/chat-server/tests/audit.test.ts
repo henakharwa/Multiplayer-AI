@@ -26,6 +26,7 @@ const fakeGithubClient: GithubClient = { listIssues: async () => [] };
 function makeDeps(overrides: Partial<CreateServerDeps> = {}): CreateServerDeps {
   return {
     githubClientFactory: () => fakeGithubClient,
+    slackClientFactory: () => ({ postMessage: async () => {} }),
     githubMcpToolsFactory: async () => [],
     slackMcpToolsFactory: async () => [],
     runAgentTurn: async () => ({ reply: "Agent reply", toolCallsMade: 0 }),

@@ -1,4 +1,4 @@
-import type { AuditEvent, AuditEventType, ChatMessage, Conversation, GithubRepoSummary, IntegrationConfig, PendingAction, PublicDashboardView, Workspace, WorkspaceInvitation, WorkspaceMember, WorkspaceNotification, WorkspaceRole } from "@mai-chat/shared-types";
+import type { AuditEvent, AuditEventType, ChatMessage, Conversation, GithubRepoSummary, IntegrationConfig, PendingAction, PublicDashboardView, PublicReleaseNotesView, Workspace, WorkspaceInvitation, WorkspaceMember, WorkspaceNotification, WorkspaceRole } from "@mai-chat/shared-types";
 import { CHAT_SERVER_URL } from "./config";
 
 function authenticatedFetch(input: RequestInfo | URL, init?: RequestInit) {
@@ -166,7 +166,7 @@ export async function createWorkspaceMemory(workspaceId: string, input: Workspac
 export async function updateWorkspaceMemory(workspaceId: string, memoryId: string, input: WorkspaceMemoryInput): Promise<import("@mai-chat/shared-types").WorkspaceMemory> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/memory/${encodeURIComponent(memoryId)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceMemory; }
 export async function deleteWorkspaceMemory(workspaceId: string, memoryId: string): Promise<void> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/memory/${encodeURIComponent(memoryId)}`, { method: "DELETE" }); if (!res.ok) await parseJsonOrThrow(res); }
 
-export type WorkspaceArtifactInput = { type: import("@mai-chat/shared-types").WorkspaceArtifactType; status: import("@mai-chat/shared-types").WorkspaceArtifactStatus; title: string; summary: string; content: string; dashboardData?: import("@mai-chat/shared-types").WorkspaceArtifactDashboard | null; ownerUserId?: string | null };
+export type WorkspaceArtifactInput = { type: import("@mai-chat/shared-types").WorkspaceArtifactType; status: import("@mai-chat/shared-types").WorkspaceArtifactStatus; title: string; summary: string; content: string; dashboardData?: import("@mai-chat/shared-types").WorkspaceArtifactDashboard | null; ownerUserId?: string | null; releaseVersion?: string | null };
 export async function listWorkspaceArtifacts(workspaceId: string): Promise<import("@mai-chat/shared-types").WorkspaceArtifact[]> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/artifacts`); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceArtifact[]; }
 export async function createWorkspaceArtifact(workspaceId: string, input: WorkspaceArtifactInput): Promise<import("@mai-chat/shared-types").WorkspaceArtifact> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/artifacts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceArtifact; }
 export async function updateWorkspaceArtifact(workspaceId: string, artifactId: string, input: WorkspaceArtifactInput): Promise<import("@mai-chat/shared-types").WorkspaceArtifact> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(artifactId)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceArtifact; }
@@ -193,6 +193,12 @@ export async function notifyDashboardHealthChange(workspaceId: string, artifactI
 // plain fetch (no credentials) hitting the chat server directly, not
 // authenticatedFetch.
 export async function getPublicDashboard(token: string): Promise<PublicDashboardView> { const res = await fetch(`${CHAT_SERVER_URL}/public/dashboards/${encodeURIComponent(token)}`); return await parseJsonOrThrow(res) as PublicDashboardView; }
+
+export async function generateReleaseNotes(workspaceId: string, artifactId: string): Promise<import("@mai-chat/shared-types").WorkspaceArtifact> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(artifactId)}/generate-release-notes`, { method: "POST" }); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceArtifact; }
+export async function shareArtifactToSlack(workspaceId: string, artifactId: string, channel: string): Promise<void> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(artifactId)}/share-to-slack`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ channel }) }); if (!res.ok) await parseJsonOrThrow(res); }
+// No auth -- the public release-notes share link, same shape as getPublicDashboard above.
+export async function getPublicReleaseNotes(token: string): Promise<PublicReleaseNotesView> { const res = await fetch(`${CHAT_SERVER_URL}/public/release-notes/${encodeURIComponent(token)}`); return await parseJsonOrThrow(res) as PublicReleaseNotesView; }
+
 
 
 export async function checkToolConnectionPermission(workspaceId: string): Promise<void> {

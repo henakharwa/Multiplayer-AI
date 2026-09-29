@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import * as db from "@mai-chat/db";
-import { createGithubClient, type GithubClient } from "@mai-chat/integrations";
+import { createGithubClient, createSlackClient, type GithubClient, type SlackClient } from "@mai-chat/integrations";
 import type { AuditEventType, Participant } from "@mai-chat/shared-types";
 import { RoomRegistry } from "./rooms.js";
 import { toLlmHistory } from "./history.js";
@@ -45,6 +45,9 @@ export interface CreateServerDeps {
   // (the two /integrations/github... routes below) -- NOT the agent's
   // GitHub tool source anymore. See githubMcpToolsFactory for that.
   githubClientFactory: (opts: { token: string; owner: string; repo: string }) => GithubClient;
+  // Release Notes' "Share to Slack" action only -- see the note on
+  // packages/integrations/src/slack.ts's SlackClient.
+  slackClientFactory: (opts: { token: string }) => SlackClient;
   // The agent's actual GitHub tool surface: spawns (or reuses) this
   // workspace's own GitHub MCP server process and returns its tools
   // converted to this project's ToolExecutor shape. Injectable so tests
@@ -141,6 +144,7 @@ export function defaultSlackOAuthConfig(): SlackOAuthConfig {
 
 const defaultDeps: CreateServerDeps = {
   githubClientFactory: createGithubClient,
+  slackClientFactory: createSlackClient,
   githubMcpToolsFactory: defaultGithubMcpToolsFactory,
   slackMcpToolsFactory: defaultSlackMcpToolsFactory,
   runAgentTurn: defaultRunAgentTurn,
@@ -225,6 +229,7 @@ export function parseWorkspaceArtifactInput(body: Record<string, unknown>) {
     content: typeof body.content === "string" ? body.content.trim() : "",
     dashboardData: dashboardData(body.dashboardData),
     ownerUserId: typeof body.ownerUserId === "string" && UUID_RE.test(body.ownerUserId) ? body.ownerUserId : null,
+    releaseVersion: typeof body.releaseVersion === "string" && body.releaseVersion.trim() ? body.releaseVersion.trim().slice(0, 40) : null,
   };
 }
 
@@ -287,6 +292,93 @@ async function workspaceDashboardSnapshot(workspaceId: string, deps: CreateServe
     { id: "workflow", label: "Enable an automation workflow", done: activeWorkflows.length > 0 },
     { id: "approvals", label: "Resolve pending approval requests", done: pendingActions.length === 0 },
   ] };
+}
+
+// Drafts a Release Notes artifact's content from real GitHub activity --
+// merged PRs since the last published release note (or the last 30 days,
+// if there isn't one) become Highlights, closed issues in that window
+// become Fixes, and open bug-labeled issues become Known issues. Every
+// line links back to the actual PR/issue and credits its author, so the
+// draft isn't just prose -- see the "Generate from GitHub" button in
+// apps/web's artifacts page. A person still edits this before publishing;
+// it's a draft, not a silent auto-publish.
+async function workspaceReleaseNotesDraft(workspaceId: string, artifactId: string, deps: CreateServerDeps): Promise<string> {
+  const [integrations, existingArtifacts] = await Promise.all([db.listIntegrations(workspaceId), db.listWorkspaceArtifacts(workspaceId)]);
+  const githubIntegration = integrations.find(
+    (integration): integration is Extract<typeof integrations[number], { type: "github" }> =>
+      integration.type === "github" && Boolean(integration.owner) && Boolean(integration.repo)
+  );
+  const previousRelease = existingArtifacts
+    .filter((artifact) => artifact.type === "release_notes" && artifact.status === "published" && artifact.id !== artifactId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  const since = previousRelease ? new Date(previousRelease.createdAt) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const sinceLabel = since.toISOString().slice(0, 10);
+
+  if (!githubIntegration?.id || !githubIntegration.owner || !githubIntegration.repo) {
+    return `## Highlights
+
+_No GitHub repo is connected to this workspace yet -- connect one in Integrations to auto-generate this from merged PRs and closed issues._
+
+## Fixes
+
+## Known issues
+`;
+  }
+  const credential = await db.getIntegrationCredential(workspaceId, "github", githubIntegration.id);
+  if (!credential) {
+    return `## Highlights
+
+_GitHub's connection needs to be re-authorized before this can be generated._
+
+## Fixes
+
+## Known issues
+`;
+  }
+  const client = deps.githubClientFactory({ token: credential.token, owner: githubIntegration.owner, repo: githubIntegration.repo });
+  try {
+    const [pulls, closedIssues, openIssues] = await Promise.all([
+      client.listPullRequests("closed", 50),
+      client.listIssues("closed", 50),
+      client.listIssues("open", 50),
+    ]);
+    const mergedPrs = pulls.filter((pr) => pr.merged && new Date(pr.updatedAt) >= since);
+    const fixedIssues = closedIssues.filter((issue) => new Date(issue.updatedAt) >= since);
+    const knownIssues = openIssues.filter((issue) => issue.labels.some((label) => /bug/i.test(label))).slice(0, 10);
+
+    const highlightLines = mergedPrs.length
+      ? mergedPrs.map((pr) => `- ${pr.title} ([#${pr.number}](${pr.url})) by @${pr.author}`).join("
+")
+      : "_No PRs merged since the last release._";
+    const fixLines = fixedIssues.length
+      ? fixedIssues.map((issue) => `- ${issue.title} ([#${issue.number}](${issue.url})) by @${issue.author}`).join("
+")
+      : "_No issues closed since the last release._";
+    const knownLines = knownIssues.length
+      ? knownIssues.map((issue) => `- ${issue.title} ([#${issue.number}](${issue.url}))`).join("
+")
+      : "_No open bugs flagged right now._";
+
+    return `## Highlights
+${highlightLines}
+
+## Fixes
+${fixLines}
+
+## Known issues
+${knownLines}
+
+_Generated from ${githubIntegration.owner}/${githubIntegration.repo} activity since ${sinceLabel}._`;
+  } catch (err) {
+    return `## Highlights
+
+_Could not reach GitHub to generate this: ${errMessage(err)}_
+
+## Fixes
+
+## Known issues
+`;
+  }
 }
 
 export function createApp(deps: CreateServerDeps = defaultDeps) {
@@ -366,6 +458,14 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!token) return res.status(404).json({ error: "not found" });
     const view = await db.getPublicDashboardByShareToken(token);
     if (!view) return res.status(404).json({ error: "This dashboard link is no longer available." });
+    res.json(view);
+  });
+
+  app.get("/public/release-notes/:token", async (req: Request, res: Response) => {
+    const token = paramString(req.params.token);
+    if (!token) return res.status(404).json({ error: "not found" });
+    const view = await db.getPublicReleaseNotesByShareToken(token);
+    if (!view) return res.status(404).json({ error: "This release notes link is no longer available." });
     res.json(view);
   });
   app.get("/readyz", async (_req: Request, res: Response) => {
@@ -768,6 +868,39 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!artifact) return res.status(404).json({ error: "Artifact not found." });
     await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "system", actorName: "Dashboard refresh", summary: `${req.user!.displayName} refreshed live workspace data for ${artifact.title}` }); res.json(artifact);
   });
+
+  app.post("/workspaces/:id/artifacts/:artifactId/generate-release-notes", async (req: Request, res: Response) => {
+    const access = await canManageArtifact(req, paramString(req.params.artifactId));
+    if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
+    if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can generate it." });
+    if (access.artifact.type !== "release_notes") return res.status(400).json({ error: "Only Release notes artifacts can be generated." });
+    const content = await workspaceReleaseNotesDraft(access.artifact.workspaceId, access.artifact.id, deps);
+    const artifact = await db.updateWorkspaceArtifact(access.artifact.workspaceId, access.artifact.id, { type: access.artifact.type, status: access.artifact.status, title: access.artifact.title, summary: access.artifact.summary, content, dashboardData: null, ownerUserId: access.artifact.ownerUserId, releaseVersion: access.artifact.releaseVersion }, req.user!.id);
+    if (!artifact) return res.status(404).json({ error: "Artifact not found." });
+    await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "system", actorName: "Release notes generator", summary: `${req.user!.displayName} generated release notes for ${artifact.title} from GitHub activity` });
+    res.json(artifact);
+  });
+
+  app.post("/workspaces/:id/artifacts/:artifactId/share-to-slack", async (req: Request, res: Response) => {
+    const access = await canManageArtifact(req, paramString(req.params.artifactId));
+    if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
+    if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can share it." });
+    if (access.artifact.type !== "release_notes") return res.status(400).json({ error: "Only Release notes artifacts can be shared to Slack." });
+    const channel = typeof req.body?.channel === "string" ? req.body.channel.trim() : "";
+    if (!channel) return res.status(400).json({ error: "A Slack channel is required." });
+    const slackIntegration = (await db.listIntegrations(access.artifact.workspaceId)).find((integration) => integration.type === "slack");
+    if (!slackIntegration?.id) return res.status(400).json({ error: "Slack isn't connected for this workspace yet." });
+    const credential = await db.getIntegrationCredential(access.artifact.workspaceId, "slack", slackIntegration.id);
+    if (!credential) return res.status(400).json({ error: "Slack isn't connected for this workspace yet." });
+    const text = `*${access.artifact.title}*${access.artifact.releaseVersion ? ` (${access.artifact.releaseVersion})` : ""}\n${access.artifact.content.slice(0, 2800)}`;
+    try {
+      await deps.slackClientFactory({ token: credential.token }).postMessage(channel, text);
+    } catch (err) {
+      return res.status(400).json({ error: `Could not post to Slack: ${errMessage(err)}` });
+    }
+    await db.recordAuditEvent({ workspaceId: access.artifact.workspaceId, eventType: "artifact.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} shared release notes "${access.artifact.title}" to Slack (#${channel})` });
+    res.status(204).end();
+  });
   app.get("/workspaces/:id/artifacts/:artifactId/comments", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     if (!(await db.getWorkspaceArtifact(paramString(req.params.id), paramString(req.params.artifactId)))) return res.status(404).json({ error: "Artifact not found." });
@@ -825,7 +958,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     const access = await canManageArtifact(req, paramString(req.params.artifactId));
     if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
     if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can share it." });
-    if (access.artifact.type !== "dashboard") return res.status(400).json({ error: "Only Dashboard artifacts can be shared." });
+    if (access.artifact.type !== "dashboard" && access.artifact.type !== "release_notes") return res.status(400).json({ error: "Only Dashboard and Release notes artifacts can be shared." });
     const artifact = await db.setArtifactShareToken(access.artifact.workspaceId, access.artifact.id, false);
     if (!artifact) return res.status(404).json({ error: "Artifact not found." });
     await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} created a public share link for ${artifact.title}` });
