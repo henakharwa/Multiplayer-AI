@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { WorkspaceArtifact, WorkspaceArtifactComment, WorkspaceArtifactDashboard, WorkspaceArtifactVersion, WorkspaceMember } from "@mai-chat/shared-types";
-import { ApiError, createWorkspaceArtifact, createWorkspaceArtifactComment, deleteWorkspaceArtifact, generateAssistedArtifactDraft, generateReleaseNotes, generateReport, listWorkspaceArtifactComments, listWorkspaceArtifactVersions, listWorkspaceArtifacts, listWorkspaceMembers, notifyDashboardHealthChange, pingDashboardPresence, refreshWorkspaceDashboard, restoreWorkspaceArtifactVersion, revokeWorkspaceArtifactShare, shareArtifactToSlack, shareWorkspaceArtifact, updateWorkspaceArtifact, type WorkspaceArtifactInput } from "../../../../lib/api";
+import { ApiError, createWorkspaceArtifact, createWorkspaceArtifactComment, deleteWorkspaceArtifact, generateAssistedArtifactDraft, generateReleaseNotes, generateReport, listWorkspaceArtifactComments, listWorkspaceArtifactVersions, listWorkspaceArtifacts, listWorkspaceMembers, notifyDashboardHealthChange, pingDashboardPresence, refreshWorkspaceDashboard, restoreWorkspaceArtifactVersion, shareArtifactToSlack, updateWorkspaceArtifact, type WorkspaceArtifactInput } from "../../../../lib/api";
 import { DashboardCanvas } from "../../../_components/DashboardCanvas";
 
 const empty: WorkspaceArtifactInput = { type: "plan", status: "draft", title: "", summary: "", content: "", ownerUserId: null };
@@ -96,35 +96,6 @@ export default function ArtifactsPage() {
       }
     } catch (err) { setError(err instanceof Error ? err.message : "Could not refresh dashboard."); } finally { setSaving(false); }
   }
-  // Every artifact type can now carry a public link. Dashboard and
-  // Release notes each render distinctly enough to keep their own public
-  // pages (app/dashboard/[token], app/release-notes/[token]); Plan,
-  // Report, and Task list share plain title/summary/content, so they all
-  // point at the one generic page (app/shared/[token]).
-  function publicUrlFor(item: WorkspaceArtifact) { const path = item.type === "dashboard" ? "dashboard" : item.type === "release_notes" ? "release-notes" : "shared"; return `${window.location.origin}/${path}/${item.shareToken}`; }
-  async function createShareLink() {
-    if (!selected) return;
-    setSaving(true);
-    try {
-      const updated = await shareWorkspaceArtifact(workspaceId, selected.id);
-      await refresh(); await select(updated);
-      const url = publicUrlFor(updated);
-      await navigator.clipboard.writeText(url).catch(() => {});
-      setNotice(`Public link copied to your clipboard: ${url}`);
-    } catch (err) { setError(err instanceof Error ? err.message : "Could not create a share link."); } finally { setSaving(false); }
-  }
-  async function copyShareLink() {
-    if (!selected?.shareToken) return;
-    const url = publicUrlFor(selected);
-    await navigator.clipboard.writeText(url).catch(() => {});
-    setNotice(`Public link copied to your clipboard: ${url}`);
-  }
-  async function revokeShareLink() {
-    if (!selected) return;
-    setSaving(true);
-    try { const updated = await revokeWorkspaceArtifactShare(workspaceId, selected.id); await refresh(); await select(updated); setNotice("Public link revoked."); }
-    catch (err) { setError(err instanceof Error ? err.message : "Could not revoke the share link."); } finally { setSaving(false); }
-  }
   async function generateAssistedDraft() {
     if (!draft.title.trim()) { setError("Add a title before creating an AI-assisted draft."); return; }
     setSaving(true); setError("");
@@ -162,12 +133,6 @@ export default function ArtifactsPage() {
     setDraft((current) => ({ ...current, content: current.content.trim() ? `${current.content.trim()}\n\n${content}` : content }));
     setNotice("Added a structured block. Fill in its details below.");
   }
-  // Shared across every artifact type that can have a public link (see
-  // publicUrlFor above -- that's all five now).
-  const shareControls = selected ? (selected.shareToken ? <>
-    <button type="button" className="secondary-button" onClick={() => void copyShareLink()}>Copy public link</button>
-    <button type="button" className="secondary-button" disabled={saving} onClick={() => void revokeShareLink()}>Revoke public link</button>
-  </> : <button type="button" className="secondary-button" disabled={saving} onClick={() => void createShareLink()}>Create public link</button>) : null;
   // Plan and Task list use the same "- [ ] / - [x]" checklist convention
   // as the templates above -- parse it client-side for a quick progress
   // readout; no backend change needed since it's just counting markdown.
@@ -191,20 +156,20 @@ export default function ArtifactsPage() {
         {selected && viewers.length > 0 && <p className="dashboard-viewers">Also viewing now: {viewers.map((viewer) => viewer.name).join(", ")}</p>}
         {selected && <div className="dashboard-actions-row">
           <button type="button" className="secondary-button dashboard-refresh-button" disabled={saving} onClick={() => void refreshDashboard()}>{saving ? "Refreshing…" : "Refresh live data"}</button>
-          {shareControls}
+
         </div>}
       </> : draft.type === "release_notes" ? <>
         <label>Version / tag<input value={draft.releaseVersion ?? ""} onChange={(e) => setDraft({ ...draft, releaseVersion: e.target.value || null })} placeholder="v1.2.0 or Sprint 14" /></label>
         {selected && <div className="dashboard-actions-row">
           <button type="button" className="secondary-button" disabled={saving} onClick={() => void generateFromGithub()}>{saving ? "Generating…" : "Generate from GitHub"}</button>
           <button type="button" className="secondary-button" disabled={saving} onClick={() => void shareToSlack()}>Share to Slack</button>
-          {shareControls}
+
         </div>}
       </> : draft.type === "report" ? <>
         {selected && <div className="dashboard-actions-row">
           <button type="button" className="secondary-button" disabled={saving} onClick={() => void generateFromAuditTrail()}>{saving ? "Generating…" : "Generate from activity"}</button>
           <button type="button" className="secondary-button" disabled={saving} onClick={() => void shareToSlack()}>Share to Slack</button>
-          {shareControls}
+
         </div>}
       </> : (draft.type === "plan" || draft.type === "task_list") ? <>
         {(() => { const progress = checklistProgress(draft.content); return progress && progress.total > 0 ? (
@@ -213,7 +178,7 @@ export default function ArtifactsPage() {
             <small className="muted">{progress.done}/{progress.total} complete</small>
           </div>
         ) : null; })()}
-        {selected && <div className="dashboard-actions-row">{shareControls}</div>}
+
       </> : null}
       <label>Notes and context<textarea rows={draft.type === "dashboard" ? 4 : 11} value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })} placeholder="Write the shared artifact. Use headings and checklist items where helpful." /></label>{error && <p className="error-text">{error}</p>}{notice && <p className="success-text">{notice}</p>}<div className="agent-builder-actions"><button className="primary-button" disabled={saving || !draft.title.trim() || !draft.content.trim()} onClick={() => void save()}>{saving ? "Saving…" : selected ? "Save changes" : "Save artifact"}</button>{selected && draft.type === "dashboard" && draft.status !== "published" && <button className="secondary-button" disabled={saving} onClick={() => void publishDashboard()}>Publish dashboard</button>}{selected && <button className="agent-delete-button" disabled={saving} onClick={() => void remove()}>Delete artifact</button>}</div>{selected && <><section className="artifact-history"><h3>Version history</h3>{versions.slice(0, 5).map((version) => <div key={version.id}><span>Version {version.version} · {version.savedByName ?? "Former member"}</span><button className="secondary-button" onClick={() => void restore(version)}>Restore</button></div>)}</section><section className="artifact-comments"><h3>Comments</h3>{comments.map((entry) => <article key={entry.id}><strong>{entry.authorName ?? "Former member"}</strong><small>{new Date(entry.createdAt).toLocaleString()}</small><p>{entry.content}</p></article>)}<div><textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Leave feedback for the team" /><button className="secondary-button" disabled={!comment.trim()} onClick={() => void addComment()}>Add comment</button></div></section></>}</section>
   </div></main>;
