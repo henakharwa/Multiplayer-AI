@@ -378,6 +378,60 @@ _Could not reach GitHub to generate this: ${errMessage(err)}_
   }
 }
 
+// Drafts a Report artifact's content from the workspace's own recent
+// activity (the audit trail, integrations, and membership) -- since the
+// last published report for this workspace, or the last 7 days if there
+// isn't one. Same "draft, don't silently publish" contract as the release
+// notes generator above: a person still reviews and edits this.
+async function workspaceReportDraft(workspaceId: string, artifactId: string): Promise<string> {
+  const existingArtifacts = await db.listWorkspaceArtifacts(workspaceId);
+  const previousReport = existingArtifacts
+    .filter((artifact) => artifact.type === "report" && artifact.status === "published" && artifact.id !== artifactId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  const since = previousReport ? new Date(previousReport.createdAt) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const sinceLabel = since.toISOString().slice(0, 10);
+
+  const [recentEvents, members, integrations] = await Promise.all([
+    db.listAuditEvents(workspaceId, { limit: 200 }),
+    db.listWorkspaceMembers(workspaceId),
+    db.listIntegrations(workspaceId),
+  ]);
+  const windowEvents = recentEvents.filter((event) => new Date(event.createdAt) >= since);
+  const confirmed = windowEvents.filter((event) => event.eventType === "action.confirmed");
+  const failed = windowEvents.filter((event) => event.eventType === "action.failed");
+  const joined = windowEvents.filter((event) => event.eventType === "member.joined");
+  const connected = windowEvents.filter((event) => event.eventType === "integration.connected");
+  const stillPending = recentEvents.filter((event) => event.eventType === "action.proposed").length
+    - recentEvents.filter((event) => event.eventType === "action.confirmed" || event.eventType === "action.cancelled" || event.eventType === "action.failed").length;
+
+  const progressItems = [
+    `${confirmed.length} agent action${confirmed.length === 1 ? "" : "s"} confirmed and completed`,
+    ...(joined.length ? [`${joined.length} new team member${joined.length === 1 ? "" : "s"} joined (${members.length} total now)`] : []),
+    ...(connected.length ? [`${connected.length} new tool connection${connected.length === 1 ? "" : "s"}: ${connected.map((event) => event.summary).slice(0, 5).join("; ")}`] : []),
+    ...(confirmed.length === 0 && joined.length === 0 && connected.length === 0 ? ["No recorded activity in this window."] : []),
+  ];
+  const riskItems = failed.length ? failed.slice(0, 5).map((event) => event.summary) : ["_No failed actions in this window._"];
+  const nextStepItems = [
+    ...(stillPending > 0 ? [`${stillPending} pending approval${stillPending === 1 ? "" : "s"} still awaiting a decision`] : []),
+    ...(integrations.length === 0 ? ["Connect a tool (GitHub or Slack) so future reports have real activity to summarize"] : []),
+    ...(stillPending <= 0 && integrations.length > 0 ? ["No blocking follow-ups identified -- add anything the team should know here."] : []),
+  ];
+  const bullets = (items: string[]) => items.map((item) => `- ${item}`).join(String.fromCharCode(10));
+
+  return [
+    "## Progress",
+    bullets(progressItems),
+    "",
+    "## Risks",
+    bullets(riskItems),
+    "",
+    "## Next step",
+    bullets(nextStepItems),
+    "",
+    `_Generated from this workspace's activity since ${sinceLabel}._`,
+  ].join(String.fromCharCode(10));
+}
+
 export function createApp(deps: CreateServerDeps = defaultDeps) {
   const app = express();
   // Browser Origin never includes a trailing slash. Normalizing the
@@ -878,11 +932,22 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.json(artifact);
   });
 
+  app.post("/workspaces/:id/artifacts/:artifactId/generate-report", async (req: Request, res: Response) => {
+    const access = await canManageArtifact(req, paramString(req.params.artifactId));
+    if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
+    if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can generate it." });
+    if (access.artifact.type !== "report") return res.status(400).json({ error: "Only Report artifacts can be generated." });
+    const content = await workspaceReportDraft(access.artifact.workspaceId, access.artifact.id);
+    const artifact = await db.updateWorkspaceArtifact(access.artifact.workspaceId, access.artifact.id, { type: access.artifact.type, status: access.artifact.status, title: access.artifact.title, summary: access.artifact.summary, content, dashboardData: null, ownerUserId: access.artifact.ownerUserId, releaseVersion: access.artifact.releaseVersion }, req.user!.id);
+    if (!artifact) return res.status(404).json({ error: "Artifact not found." });
+    await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "system", actorName: "Report generator", summary: `${req.user!.displayName} generated a status report for ${artifact.title} from workspace activity` });
+    res.json(artifact);
+  });
+
   app.post("/workspaces/:id/artifacts/:artifactId/share-to-slack", async (req: Request, res: Response) => {
     const access = await canManageArtifact(req, paramString(req.params.artifactId));
     if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
     if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can share it." });
-    if (access.artifact.type !== "release_notes") return res.status(400).json({ error: "Only Release notes artifacts can be shared to Slack." });
     const channel = typeof req.body?.channel === "string" ? req.body.channel.trim() : "";
     if (!channel) return res.status(400).json({ error: "A Slack channel is required." });
     const slackIntegration = (await db.listIntegrations(access.artifact.workspaceId)).find((integration) => integration.type === "slack");
@@ -955,7 +1020,6 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     const access = await canManageArtifact(req, paramString(req.params.artifactId));
     if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
     if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can share it." });
-    if (access.artifact.type !== "dashboard" && access.artifact.type !== "release_notes") return res.status(400).json({ error: "Only Dashboard and Release notes artifacts can be shared." });
     const artifact = await db.setArtifactShareToken(access.artifact.workspaceId, access.artifact.id, false);
     if (!artifact) return res.status(404).json({ error: "Artifact not found." });
     await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} created a public share link for ${artifact.title}` });

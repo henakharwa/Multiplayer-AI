@@ -1,4 +1,4 @@
-import type { AuditEvent, AuditEventType, ChatMessage, Conversation, GithubRepoSummary, IntegrationConfig, PendingAction, PublicDashboardView, PublicReleaseNotesView, Workspace, WorkspaceInvitation, WorkspaceMember, WorkspaceNotification, WorkspaceRole } from "@mai-chat/shared-types";
+import type { AuditEvent, AuditEventType, ChatMessage, Conversation, GithubRepoSummary, IntegrationConfig, PendingAction, PublicArtifactView, PublicDashboardView, PublicReleaseNotesView, Workspace, WorkspaceInvitation, WorkspaceMember, WorkspaceNotification, WorkspaceRole } from "@mai-chat/shared-types";
 import { CHAT_SERVER_URL } from "./config";
 
 function authenticatedFetch(input: RequestInfo | URL, init?: RequestInit) {
@@ -198,6 +198,8 @@ export async function generateReleaseNotes(workspaceId: string, artifactId: stri
 export async function shareArtifactToSlack(workspaceId: string, artifactId: string, channel: string): Promise<void> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(artifactId)}/share-to-slack`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ channel }) }); if (!res.ok) await parseJsonOrThrow(res); }
 // No auth -- the public release-notes share link, same shape as getPublicDashboard above.
 export async function getPublicReleaseNotes(token: string): Promise<PublicReleaseNotesView> { const res = await fetch(`${CHAT_SERVER_URL}/public/release-notes/${encodeURIComponent(token)}`); return await parseJsonOrThrow(res) as PublicReleaseNotesView; }
+export async function generateReport(workspaceId: string, artifactId: string): Promise<import("@mai-chat/shared-types").WorkspaceArtifact> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(artifactId)}/generate-report`, { method: "POST" }); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceArtifact; }
+export async function getPublicArtifact(token: string): Promise<PublicArtifactView> { const res = await fetch(`${CHAT_SERVER_URL}/public/artifacts/${encodeURIComponent(token)}`); return await parseJsonOrThrow(res) as PublicArtifactView; }
 
 
 

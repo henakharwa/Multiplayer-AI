@@ -801,6 +801,21 @@ export async function getPublicReleaseNotesByShareToken(token: string): Promise<
   if (!row) return null;
   return { title: String(row.title), summary: String(row.summary ?? ""), workspaceName: String(row.workspace_name), content: String(row.content), releaseVersion: row.release_version ? String(row.release_version) : null, updatedAt: (row.updated_at as Date).toISOString() };
 }
+
+// Same idea, generalized to Plan / Report / Task list -- see
+// PublicArtifactView's comment for why these three share one function
+// while Dashboard and Release Notes keep their own.
+export async function getPublicArtifactByShareToken(token: string): Promise<import("@mai-chat/shared-types").PublicArtifactView | null> {
+  const result = await getPool().query(
+    `SELECT a.type, a.title, a.summary, a.content, a.updated_at, w.name AS workspace_name
+     FROM workspace_artifacts a JOIN workspaces w ON w.id = a.workspace_id
+     WHERE a.share_token = $1 AND a.type IN ('plan', 'report', 'task_list') AND a.status = 'published'`,
+    [token]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return { type: row.type, title: String(row.title), summary: String(row.summary ?? ""), workspaceName: String(row.workspace_name), content: String(row.content), updatedAt: (row.updated_at as Date).toISOString() };
+}
 export async function listWorkspaceArtifactComments(workspaceId: string, artifactId: string): Promise<WorkspaceArtifactComment[]> {
   const result = await getPool().query("SELECT c.*, u.display_name AS author_name FROM workspace_artifact_comments c LEFT JOIN users u ON u.id=c.author_user_id WHERE c.workspace_id=$1 AND c.artifact_id=$2 ORDER BY c.created_at ASC", [workspaceId,artifactId]); return result.rows.map(toWorkspaceArtifactComment);
 }

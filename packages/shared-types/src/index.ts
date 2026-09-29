@@ -252,6 +252,20 @@ export interface PublicReleaseNotesView {
   updatedAt: string;
 }
 
+// The safe subset of a Plan / Report / Task list artifact served, without
+// auth, at a public share link (GET /public/artifacts/:token). Dashboard
+// and Release Notes have their own dedicated views above since they carry
+// extra structure (dashboardData, releaseVersion); everything else is
+// plain content, so one generic view covers all three.
+export interface PublicArtifactView {
+  type: WorkspaceArtifactType;
+  title: string;
+  summary: string;
+  workspaceName: string;
+  content: string;
+  updatedAt: string;
+}
+
 export interface WorkspaceArtifactComment {
   id: string;
   artifactId: string;
