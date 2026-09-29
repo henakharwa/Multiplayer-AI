@@ -241,6 +241,7 @@ export interface WorkspaceArtifactVersion {
   title: string;
   summary: string;
   content: string;
+  dashboardData: WorkspaceArtifactDashboard | null;
   status: WorkspaceArtifactStatus;
   savedByUserId: string | null;
   savedByName: string | null;

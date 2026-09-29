@@ -770,11 +770,11 @@ export async function createWorkspaceArtifactComment(workspaceId: string, artifa
 }
 
 function toWorkspaceArtifactVersion(row: Record<string, unknown>): WorkspaceArtifactVersion {
-  return { id: String(row.id), artifactId: String(row.artifact_id), workspaceId: String(row.workspace_id), version: Number(row.version), title: String(row.title), summary: String(row.summary ?? ""), content: String(row.content), status: row.status as WorkspaceArtifactStatus, savedByUserId: row.saved_by_user_id ? String(row.saved_by_user_id) : null, savedByName: row.saved_by_name ? String(row.saved_by_name) : null, createdAt: (row.created_at as Date).toISOString() };
+  return { id: String(row.id), artifactId: String(row.artifact_id), workspaceId: String(row.workspace_id), version: Number(row.version), title: String(row.title), summary: String(row.summary ?? ""), content: String(row.content), dashboardData: row.dashboard_data && typeof row.dashboard_data === "object" ? row.dashboard_data as WorkspaceArtifactDashboard : null, status: row.status as WorkspaceArtifactStatus, savedByUserId: row.saved_by_user_id ? String(row.saved_by_user_id) : null, savedByName: row.saved_by_name ? String(row.saved_by_name) : null, createdAt: (row.created_at as Date).toISOString() };
 }
 async function saveWorkspaceArtifactVersion(artifact: WorkspaceArtifact, savedByUserId: string | null): Promise<void> {
   const result = await getPool().query("SELECT COALESCE(MAX(version), 0) + 1 AS version FROM workspace_artifact_versions WHERE artifact_id=$1", [artifact.id]);
-  await getPool().query("INSERT INTO workspace_artifact_versions (artifact_id,workspace_id,version,title,summary,content,status,saved_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)", [artifact.id,artifact.workspaceId,Number(result.rows[0].version),artifact.title,artifact.summary,artifact.content,artifact.status,savedByUserId]);
+  await getPool().query("INSERT INTO workspace_artifact_versions (artifact_id,workspace_id,version,title,summary,content,dashboard_data,status,saved_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)", [artifact.id,artifact.workspaceId,Number(result.rows[0].version),artifact.title,artifact.summary,artifact.content,artifact.dashboardData ?? null,artifact.status,savedByUserId]);
 }
 export async function listWorkspaceArtifactVersions(workspaceId: string, artifactId: string): Promise<WorkspaceArtifactVersion[]> {
   const result = await getPool().query("SELECT v.*, u.display_name AS saved_by_name FROM workspace_artifact_versions v LEFT JOIN users u ON u.id=v.saved_by_user_id WHERE v.workspace_id=$1 AND v.artifact_id=$2 ORDER BY v.version DESC", [workspaceId,artifactId]); return result.rows.map(toWorkspaceArtifactVersion);

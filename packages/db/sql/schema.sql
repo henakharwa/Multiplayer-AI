@@ -497,3 +497,4 @@ CREATE TABLE IF NOT EXISTS workspace_artifact_versions (
 );
 CREATE INDEX IF NOT EXISTS workspace_artifact_versions_artifact_idx ON workspace_artifact_versions (artifact_id, version DESC);
 ALTER TABLE workspace_artifacts ADD COLUMN IF NOT EXISTS dashboard_data JSONB;
+ALTER TABLE workspace_artifact_versions ADD COLUMN IF NOT EXISTS dashboard_data JSONB;

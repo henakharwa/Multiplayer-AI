@@ -55,7 +55,7 @@ describe("workspace memory", () => {
   });
 
   it("parses collaboration artifact input into safe workspace values", () => {
-    expect(parseWorkspaceArtifactInput({ type: "release_notes", status: "published", title: "v1", summary: "Ready", content: "Shipped", ownerUserId: "not-a-uuid" })).toEqual({ type: "release_notes", status: "published", title: "v1", summary: "Ready", content: "Shipped", ownerUserId: null });
+    expect(parseWorkspaceArtifactInput({ type: "release_notes", status: "published", title: "v1", summary: "Ready", content: "Shipped", ownerUserId: "not-a-uuid" })).toEqual({ type: "release_notes", status: "published", title: "v1", summary: "Ready", content: "Shipped", ownerUserId: null, dashboardData: null });
     expect(parseWorkspaceArtifactInput({ type: "unknown", status: "unknown" })).toMatchObject({ type: "plan", status: "draft", title: "", content: "" });
   });
 });
