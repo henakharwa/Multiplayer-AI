@@ -196,6 +196,13 @@ export interface WorkspaceMemory {
 
 export type WorkspaceArtifactType = "plan" | "report" | "release_notes" | "dashboard" | "task_list";
 export type WorkspaceArtifactStatus = "draft" | "published" | "archived";
+export type DashboardHealth = "on_track" | "at_risk" | "off_track";
+export interface DashboardMetric { id: string; label: string; value: string; trend: "up" | "down" | "flat"; target: string; }
+export interface DashboardMilestone { id: string; label: string; progress: number; }
+export interface DashboardRisk { id: string; title: string; severity: "low" | "medium" | "high"; owner: string; }
+export interface DashboardDecision { id: string; title: string; owner: string; dueDate: string; }
+export interface DashboardChecklistItem { id: string; label: string; done: boolean; }
+export interface WorkspaceArtifactDashboard { health: DashboardHealth; metrics: DashboardMetric[]; milestones: DashboardMilestone[]; risks: DashboardRisk[]; decisions: DashboardDecision[]; checklist: DashboardChecklistItem[]; }
 
 /** A durable, shared output created by a teammate or an agent. */
 export interface WorkspaceArtifact {
@@ -206,6 +213,7 @@ export interface WorkspaceArtifact {
   title: string;
   summary: string;
   content: string;
+  dashboardData: WorkspaceArtifactDashboard | null;
   ownerUserId: string | null;
   ownerName: string | null;
   createdByUserId: string | null;
