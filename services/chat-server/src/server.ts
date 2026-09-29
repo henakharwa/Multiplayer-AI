@@ -347,16 +347,13 @@ _GitHub's connection needs to be re-authorized before this can be generated._
     const knownIssues = openIssues.filter((issue) => issue.labels.some((label) => /bug/i.test(label))).slice(0, 10);
 
     const highlightLines = mergedPrs.length
-      ? mergedPrs.map((pr) => `- ${pr.title} ([#${pr.number}](${pr.url})) by @${pr.author}`).join("
-")
+      ? mergedPrs.map((pr) => `- ${pr.title} ([#${pr.number}](${pr.url})) by @${pr.author}`).join("\n")
       : "_No PRs merged since the last release._";
     const fixLines = fixedIssues.length
-      ? fixedIssues.map((issue) => `- ${issue.title} ([#${issue.number}](${issue.url})) by @${issue.author}`).join("
-")
+      ? fixedIssues.map((issue) => `- ${issue.title} ([#${issue.number}](${issue.url})) by @${issue.author}`).join("\n")
       : "_No issues closed since the last release._";
     const knownLines = knownIssues.length
-      ? knownIssues.map((issue) => `- ${issue.title} ([#${issue.number}](${issue.url}))`).join("
-")
+      ? knownIssues.map((issue) => `- ${issue.title} ([#${issue.number}](${issue.url}))`).join("\n")
       : "_No open bugs flagged right now._";
 
     return `## Highlights
