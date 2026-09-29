@@ -570,6 +570,7 @@ export default function WorkspaceRoomPage() {
             {canEdit && <button type="button" title="Workspace integrations" onClick={() => setShowConnectModal(true)} aria-label="Add integration"><PlugGlyph /></button>}
           </div>
         </div>
+        <div className="workspace-sidebar-scroll">
         <div className="workspace-search"><SearchGlyph /><input value={conversationSearch} onChange={(event) => setConversationSearch(event.target.value)} placeholder="Search this conversation" aria-label="Search this conversation" /></div>
         <button
           className="workspace-new"
@@ -624,6 +625,8 @@ export default function WorkspaceRoomPage() {
               {p.activeConversationId && p.activeConversationId !== selectedConversationId && <button className="workspace-follow" onClick={() => selectConversation(p.activeConversationId!)}>Follow</button>}<span className="dot" />
             </div>
           ))}
+        </div>
+
         </div>
 
         <div className="workspace-account">

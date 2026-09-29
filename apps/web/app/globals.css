@@ -547,6 +547,7 @@ textarea {
   grid-template-columns: 270px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
+  overflow: hidden;
   background: var(--surface);
 }
 
@@ -566,6 +567,7 @@ textarea {
 }
 
 .workspace-sidebar-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.workspace-sidebar-scroll { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .workspace-brand { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control-height-sm); padding: 6px 10px; border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text); font-weight: 650; text-decoration: none; }
 .workspace-brand svg, .workspace-sidebar-icons svg, .workspace-nav svg, .workspace-new svg, .workspace-side-heading svg, .workspace-empty-tool svg, .workspace-header-actions svg, .workspace-context button svg, .composer-send svg, .workspace-account button svg { width: 19px; height: 19px; }
 .workspace-sidebar-icons { display: flex; gap: 3px; }
