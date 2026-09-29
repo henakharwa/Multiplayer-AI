@@ -1906,3 +1906,10 @@ textarea {
 
 .dashboard-milestone input[type=text]{grid-column:1;width:100%;border:0;background:transparent;padding:0;font:700 14px inherit;color:#1f2937}.dashboard-milestone input[type=range]{grid-column:1/-1}
 .dashboard-metrics .metric-slider{margin:0 0 9px;accent-color:#315cec;cursor:pointer}
+.workflow-specialist-picker { min-width: 0; margin: 0; padding: 0; border: 0; }
+.workflow-specialist-picker legend { margin-bottom: 7px; font-size: 13px; font-weight: 700; }
+.workflow-specialist-picker > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.workflow-specialist-picker button { display: grid; place-items: center; width: 37px; height: 37px; padding: 0; border: 1px solid #d9e1ef; border-radius: 9px; background: #fff; color: #667085; cursor: pointer; }
+.workflow-specialist-picker button svg { width: 19px; height: 19px; }
+.workflow-specialist-picker button:hover:not(:disabled),.workflow-specialist-picker button.selected { border-color: #6684ee; background: #edf2ff; color: #315cec; }
+.workflow-specialist-picker button:disabled { cursor: not-allowed; opacity: .48; }
