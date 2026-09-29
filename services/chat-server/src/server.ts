@@ -432,6 +432,37 @@ async function workspaceReportDraft(workspaceId: string, artifactId: string): Pr
   ].join(String.fromCharCode(10));
 }
 
+
+async function workspaceAssistedArtifactDraft(workspaceId: string, artifact: Awaited<ReturnType<typeof db.getWorkspaceArtifact>>, prompt: string) {
+  if (!artifact) return "";
+  if (artifact.type === "report") return workspaceReportDraft(workspaceId, artifact.id);
+  if (artifact.type === "release_notes") return "";
+  const [memories, events, workflows, integrations, members] = await Promise.all([
+    db.listWorkspaceMemory(workspaceId), db.listAuditEvents(workspaceId, { limit: 30 }), db.listWorkspaceWorkflows(workspaceId), db.listIntegrations(workspaceId), db.listWorkspaceMembers(workspaceId),
+  ]);
+  const memoryLines = memories.slice(0, 5).map((memory) => `- ${memory.title}: ${memory.content.replace(/\s+/g, " ").slice(0, 180)}`);
+  const eventLines = events.slice(0, 6).map((event) => `- ${event.summary}`);
+  const workflowLines = workflows.filter((workflow) => workflow.enabled).slice(0, 5).map((workflow) => `- ${workflow.name}${workflow.lastRunStatus ? ` (${workflow.lastRunStatus})` : ""}`);
+  const contextNote = prompt.trim() ? `\n_Requested focus: ${prompt.trim().slice(0, 500)}_\n` : "";
+  const failureLines = events.filter((event) => event.eventType === "action.failed").slice(0, 3).map((event) => `- ${event.summary}`);
+  if (artifact.type === "plan") return [
+    "## Goal", prompt.trim() || artifact.summary || "Define the outcome this workspace should achieve.", "",
+    "## Scope", "- Use the workspace context below to confirm what is in and out of scope.", "",
+    "## Workstreams", ...(workflowLines.length ? workflowLines : ["- Establish the primary workstream and owner."]), "",
+    "## Milestones", "- [ ] Confirm scope and owners — Owner: Workspace Admin — Due: ", "- [ ] Review progress and risks — Owner:  — Due: ", "",
+    "## Risks", ...(failureLines.length ? failureLines : ["- No recorded failures. Review connected tools and open approvals."]), "",
+    "## Success metrics", `- Connected tools: ${integrations.length}`, `- Active workflows: ${workflows.filter((workflow) => workflow.enabled).length}`, `- Team members: ${members.length}`, "",
+    "## Workspace memory", ...(memoryLines.length ? memoryLines : ["- No saved workspace memory yet."]), contextNote,
+  ].join("\n");
+  if (artifact.type === "task_list") return [
+    "## Priority tasks", "- [ ] Confirm the intended outcome — Owner:  — Due: ", "- [ ] Review workspace memory and decisions — Owner:  — Due: ", ...(integrations.length ? [] : ["- [ ] Connect a workspace tool for live context — Owner: Workspace Admin — Due: "]), ...(workflows.filter((workflow) => workflow.enabled).length ? [] : ["- [ ] Enable the recurring workflow needed for this work — Owner:  — Due: "]), "",
+    "## Follow-up from recent activity", ...(eventLines.length ? eventLines.map((event) => event.replace(/^- /, "- [ ] ")) : ["- [ ] No recent activity to triage."]), "",
+    "## Dependencies", "- [ ] Confirm dependencies and handoffs — Owner:  — Due: ", "",
+    "## Context", ...(memoryLines.length ? memoryLines : ["- No saved workspace memory yet."]), contextNote,
+  ].join("\n");
+  return artifact.content;
+}
+
 export function createApp(deps: CreateServerDeps = defaultDeps) {
   const app = express();
   // Browser Origin never includes a trailing slash. Normalizing the
@@ -932,6 +963,21 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "system", actorName: "Dashboard refresh", summary: `${req.user!.displayName} refreshed live workspace data for ${artifact.title}` }); res.json(artifact);
   });
 
+  app.post("/workspaces/:id/artifacts/:artifactId/generate-assisted-draft", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const access = await canManageArtifact(req, paramString(req.params.artifactId));
+    if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
+    if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can generate it." });
+    if (access.artifact.type === "dashboard") return res.status(400).json({ error: "Dashboards use Refresh live data instead." });
+    const prompt = typeof req.body?.prompt === "string" ? req.body.prompt : "";
+    const content = access.artifact.type === "release_notes"
+      ? await workspaceReleaseNotesDraft(access.artifact.workspaceId, access.artifact.id, deps)
+      : await workspaceAssistedArtifactDraft(access.artifact.workspaceId, access.artifact, prompt);
+    const artifact = await db.updateWorkspaceArtifact(access.artifact.workspaceId, access.artifact.id, { type: access.artifact.type, status: access.artifact.status, title: access.artifact.title, summary: access.artifact.summary, content, dashboardData: null, ownerUserId: access.artifact.ownerUserId, releaseVersion: access.artifact.releaseVersion }, req.user!.id);
+    if (!artifact) return res.status(404).json({ error: "Artifact not found." });
+    await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "system", actorName: "Artifact assistant", summary: `${req.user!.displayName} generated a workspace-assisted draft for ${artifact.title}` });
+    res.json(artifact);
+  });
   app.post("/workspaces/:id/artifacts/:artifactId/generate-release-notes", async (req: Request, res: Response) => {
     const access = await canManageArtifact(req, paramString(req.params.artifactId));
     if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });

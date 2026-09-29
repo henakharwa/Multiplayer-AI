@@ -1929,3 +1929,8 @@ textarea {
 .artifact-guided-builder button { padding: 7px 9px; border: 1px solid #cbd8f4; border-radius: 8px; background: #fff; color: #315cec; font: 650 12px inherit; cursor: pointer; }
 .artifact-guided-builder button:hover { border-color: #7898ed; background: #edf2ff; }
 @media (max-width: 650px) { .artifact-guided-builder { grid-template-columns: 1fr; } }
+.artifact-assistant { display: flex; grid-column: 1 / -1; align-items: end; gap: 8px; width: 100%; padding-top: 10px; border-top: 1px solid #dfe7f8; }
+.artifact-assistant label { display: grid; flex: 1; gap: 5px; color: #536585; font-size: 11px; font-weight: 700; }
+.artifact-assistant input { width: 100%; min-height: 35px; margin: 0; padding: 7px 9px; border: 1px solid #cbd8f4; border-radius: 8px; background: #fff; color: var(--text); font: inherit; }
+.artifact-assistant .secondary-button { min-height: 35px; padding: 7px 10px; font-size: 12px; white-space: nowrap; }
+@media (max-width: 650px) { .artifact-assistant { align-items: stretch; flex-direction: column; } }
