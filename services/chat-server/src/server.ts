@@ -472,10 +472,11 @@ async function aiArtifactDraft(workspaceId: string, artifact: NonNullable<Awaite
   const request = [
     `Create a polished ${artifact.type.replace("_", " ")} for the shared workspace.`,
     "Return only the artifact in Markdown. Do not mention being an AI, this prompt, unavailable tools, or any drafting process.",
-    "Use only facts in the grounded source draft and saved workspace memory. Preserve uncertainty instead of inventing facts, owners, dates, metrics, or completed work.",
+    "Use only facts in the existing notes and context, grounded source draft, and saved workspace memory. Preserve relevant details from existing notes; improve their organization but do not invent facts, owners, dates, metrics, or completed work.",
     prompt.trim() ? `The user wants this focus: ${prompt.trim().slice(0, 500)}` : "Use the artifact title and summary as the intended focus.",
     `Artifact title: ${artifact.title}`,
     artifact.summary ? `Artifact summary: ${artifact.summary}` : "",
+    artifact.content.trim() ? "Existing notes and context — retain relevant details from this material:\n" + artifact.content.trim().slice(0, 12_000) : "",
     "Grounded source draft:", sourceDraft,
   ].filter(Boolean).join("\n\n");
   const result = await deps.runAgentTurn({
@@ -490,7 +491,9 @@ async function aiArtifactDraft(workspaceId: string, artifact: NonNullable<Awaite
   const content = result.reply.trim();
   if (!content) throw new Error("The AI model returned an empty draft.");
   return content;
-}export function createApp(deps: CreateServerDeps = defaultDeps) {
+}
+
+export function createApp(deps: CreateServerDeps = defaultDeps) {
   const app = express();
   // Browser Origin never includes a trailing slash. Normalizing the
   // configured URL avoids rejecting legitimate deployed requests when a
