@@ -519,6 +519,18 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!view) return res.status(404).json({ error: "This release notes link is no longer available." });
     res.json(view);
   });
+
+  // Same pattern as the two routes above, for the three artifact types
+  // (Plan, Report, Task list) that share one generic public view instead
+  // of a type-specific one -- see PublicArtifactView and
+  // getPublicArtifactByShareToken's own type filter.
+  app.get("/public/artifacts/:token", async (req: Request, res: Response) => {
+    const token = paramString(req.params.token);
+    if (!token) return res.status(404).json({ error: "not found" });
+    const view = await db.getPublicArtifactByShareToken(token);
+    if (!view) return res.status(404).json({ error: "This artifact link is no longer available." });
+    res.json(view);
+  });
   app.get("/readyz", async (_req: Request, res: Response) => {
     try {
       await db.checkDatabaseHealth();
@@ -915,7 +927,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can refresh it." });
     if (access.artifact.type !== "dashboard") return res.status(400).json({ error: "Only Dashboard artifacts can be refreshed." });
     const dashboardData = await workspaceDashboardSnapshot(access.artifact.workspaceId, deps);
-    const artifact = await db.updateWorkspaceArtifact(access.artifact.workspaceId, access.artifact.id, { type: access.artifact.type, status: access.artifact.status, title: access.artifact.title, summary: access.artifact.summary, content: access.artifact.content, dashboardData, ownerUserId: access.artifact.ownerUserId }, req.user!.id);
+    const artifact = await db.updateWorkspaceArtifact(access.artifact.workspaceId, access.artifact.id, { type: access.artifact.type, status: access.artifact.status, title: access.artifact.title, summary: access.artifact.summary, content: access.artifact.content, dashboardData, ownerUserId: access.artifact.ownerUserId, releaseVersion: access.artifact.releaseVersion }, req.user!.id);
     if (!artifact) return res.status(404).json({ error: "Artifact not found." });
     await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.updated", actorType: "system", actorName: "Dashboard refresh", summary: `${req.user!.displayName} refreshed live workspace data for ${artifact.title}` }); res.json(artifact);
   });
@@ -960,7 +972,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     } catch (err) {
       return res.status(400).json({ error: `Could not post to Slack: ${errMessage(err)}` });
     }
-    await db.recordAuditEvent({ workspaceId: access.artifact.workspaceId, eventType: "artifact.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} shared release notes "${access.artifact.title}" to Slack (#${channel})` });
+    await db.recordAuditEvent({ workspaceId: access.artifact.workspaceId, eventType: "artifact.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} shared ${access.artifact.type.replace("_", " ")} "${access.artifact.title}" to Slack (#${channel})` });
     res.status(204).end();
   });
   app.get("/workspaces/:id/artifacts/:artifactId/comments", async (req: Request, res: Response) => {
