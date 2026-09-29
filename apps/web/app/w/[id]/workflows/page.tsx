@@ -63,7 +63,7 @@ export default function WorkflowsPage() {
   const publishedAgents = agents.filter((agent) => agent.status === "published");
   const triggerHelp = triggers.find((item) => item.value === draft.trigger)?.help;
   return <main className="workspace-settings-page workflow-page">
-    <Link href={`/w/${workspaceId}`} className="settings-back">← Back to workspace</Link>
+    
     <header><p className="eyebrow">WORKFLOW AUTOMATION</p><h1>Build reusable workflows</h1><p>Turn recurring work into governed agent runs. Schedules and event triggers use the same connections, permissions, and approval steps as chat.</p></header>
     <div className="workflow-layout">
       <section className="workflow-list"><div className="section-heading"><h2>Workflows</h2><button onClick={() => { setSelected(null); setDraft(empty); setRuns([]); setError(""); setNotice(""); }}>New workflow</button></div>
