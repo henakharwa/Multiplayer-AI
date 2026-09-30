@@ -69,16 +69,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Workspace canvas themes -------------------------------------------------
-   The selected theme only changes the surrounding canvas. Cards, input
-   fields, and the sidebar retain their high-contrast surfaces so a choice
-   remains subtle and practical for daily use. */
-html[data-workspace-background="cloud"] { --workspace-canvas: radial-gradient(circle at 86% 0%, rgba(224, 235, 255, .68), transparent 31%), linear-gradient(135deg, #f9fbff 0%, #f4f8ff 48%, #f8fbff 100%); }
-html[data-workspace-background="mist"] { --workspace-canvas: radial-gradient(circle at 83% 5%, rgba(216, 229, 240, .76), transparent 30%), linear-gradient(135deg, #f8fafc 0%, #f1f5f8 52%, #f7fafc 100%); }
-html[data-workspace-background="sage"] { --workspace-canvas: radial-gradient(circle at 84% 2%, rgba(213, 239, 225, .74), transparent 31%), linear-gradient(135deg, #f9fdfb 0%, #f1faf5 50%, #f8fcfa 100%); }
-html[data-workspace-background="lavender"] { --workspace-canvas: radial-gradient(circle at 84% 2%, rgba(228, 218, 251, .74), transparent 31%), linear-gradient(135deg, #fcfbff 0%, #f7f4ff 50%, #fbfaff 100%); }
-html[data-workspace-background="sand"] { --workspace-canvas: radial-gradient(circle at 84% 2%, rgba(246, 225, 196, .76), transparent 31%), linear-gradient(135deg, #fffdfa 0%, #fdf7ee 50%, #fffdf9 100%); }
-
 a {
   color: var(--accent);
 }
@@ -737,24 +727,6 @@ textarea {
 .workspace-invite:hover, .workspace-icon-button:hover { background: var(--bg-subtle); color: var(--text); }
 .workspace-icon-button { width: var(--control-height-sm); padding: 0; }
 .workspace-icon-button svg { width: 18px; height: 18px; }
-.workspace-background-picker { position: relative; }
-.workspace-background-trigger svg { width: 16px; height: 16px; }
-.workspace-background-current { color: var(--text-faint); font-size: 11px; font-weight: 650; }
-.workspace-background-trigger > svg:last-child { width: 13px; height: 13px; }
-.workspace-background-menu { position: absolute; z-index: 25; top: calc(100% + 8px); right: 0; display: grid; width: 224px; padding: 8px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,.97); box-shadow: var(--shadow-lg); backdrop-filter: blur(12px); }
-.workspace-background-menu > p { margin: 3px 7px 7px; color: var(--text-faint); font-size: 10px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
-.workspace-background-menu button { display: grid; grid-template-columns: 32px minmax(0, 1fr) 18px; align-items: center; gap: 9px; width: 100%; padding: 8px 7px; border: 0; border-radius: 8px; background: transparent; color: var(--text); text-align: left; }
-.workspace-background-menu button:hover, .workspace-background-menu button.selected { background: #eef3ff; }
-.workspace-background-menu button > span:nth-child(2) { display: grid; gap: 1px; }
-.workspace-background-menu strong { font-size: 12px; }
-.workspace-background-menu small { color: var(--text-dim); font-size: 11px; }
-.workspace-background-menu svg { width: 16px; height: 16px; color: var(--accent); }
-.workspace-background-swatch { width: 32px; height: 26px; border: 1px solid rgba(113, 131, 158, .22); border-radius: 7px; }
-.workspace-background-swatch.cloud { background: radial-gradient(circle at 82% 0%, #dceaff, transparent 52%), #f5f9ff; }
-.workspace-background-swatch.mist { background: radial-gradient(circle at 82% 0%, #d7e4ee, transparent 52%), #f3f7fa; }
-.workspace-background-swatch.sage { background: radial-gradient(circle at 82% 0%, #d5efdf, transparent 52%), #f2faf5; }
-.workspace-background-swatch.lavender { background: radial-gradient(circle at 82% 0%, #e5dcfb, transparent 52%), #f8f5ff; }
-.workspace-background-swatch.sand { background: radial-gradient(circle at 82% 0%, #f5e1c4, transparent 52%), #fff9ef; }
 .workspace-context { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 22px 30px 0; padding: 16px 18px; border: 1px solid #e4e7fb; border-radius: 14px; background: linear-gradient(110deg, #f8f9ff, #fff); }
 .workspace-context > div { display: flex; align-items: flex-start; gap: 11px; }
 .workspace-context-icon, .workspace-empty-spark { display: grid; place-items: center; border-radius: 9px; background: linear-gradient(135deg, var(--accent), var(--violet)); }
@@ -863,7 +835,6 @@ textarea {
   .workspace-main { margin-right: 0; }
   .workspace-main-header, .workspace-chat-scroll, .workspace-composer-wrap { padding-left: 20px; padding-right: 20px; }
   .workspace-overview { margin-left: 20px; margin-right: 20px; }
-  .workspace-background-current { display: none; }
 }
 @media (max-width: 680px) {
   .workspace-shell { display: block; }
@@ -872,9 +843,6 @@ textarea {
   .workspace-side-section { display: block; margin-top: 10px; }
   .workspace-main-header { align-items: flex-start; }
   .workspace-header-actions { flex-wrap: wrap; justify-content: flex-end; }
-  .workspace-background-trigger { width: var(--control-height-sm); padding: 0; font-size: 0; }
-  .workspace-background-trigger > svg:first-child { width: 18px; height: 18px; }
-  .workspace-background-trigger > svg:last-child { display: none; }
   .workspace-side-section .workspace-side-heading { margin-left: 2px; }
   .workspace-tool-row, .workspace-empty-tool { max-width: 100%; }
   .workspace-nav { display: block; margin: 10px 0 0; }
