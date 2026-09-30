@@ -24,8 +24,10 @@ export function PlanVisual({ title, summary, content, layout: _layout, onAdvance
   const data = parse(content); const done = data.tasks.filter((task) => task.stage === "done"); const todo = data.tasks.filter((task) => task.stage === "todo");
   const progress = data.tasks.length ? Math.round(done.length / data.tasks.length * 100) : 0;
   const risks = data.sections.find((section) => /risk|blocker/i.test(section.title))?.lines ?? [];
-  const completedLabels = new Set(done.map((task) => task.label.toLowerCase()));
-  const activeRisks = risks.filter((risk) => !completedLabels.has(risk.toLowerCase()));
+  const normalizeRisk = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\b(risk|mitigate|mitigation)\b/g, "").trim();
+  const completedLabels = new Set(done.map((task) => normalizeRisk(task.label)));
+  const allWorkComplete = data.tasks.length > 0 && done.length === data.tasks.length;
+  const activeRisks = allWorkComplete ? [] : risks.filter((risk) => !completedLabels.has(normalizeRisk(risk)));
   const inProgress = data.tasks.filter((task) => task.stage === "progress"); const review = data.tasks.filter((task) => task.stage === "review");
   const nextAction = todo[0] ? `Start ${todo[0].label} and move it to In progress.` : inProgress[0] ? `Continue ${inProgress[0].label}, then move it to Review.` : review[0] ? `Review ${review[0].label} and mark it Done when approved.` : "All planned work is complete. Confirm launch readiness with the team.";
   return <section className="plan-visual plan-visual-execution">
