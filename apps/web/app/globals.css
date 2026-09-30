@@ -894,6 +894,10 @@ textarea {
 .agent-directory-item .agent-builder-card small { display: block; margin-top: 4px; overflow: hidden; color: var(--text-faint); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .agent-favorite { align-self: center; width: 29px; height: 29px; margin-right: 7px; border: 0; border-radius: 7px; background: transparent; color: #a8b0bf; font-size: 16px; }
 .agent-favorite:hover { background: #e4ecff; color: #5a78d5; }.agent-favorite.active { color: #f3a82b; }
+.workflow-templates { display: grid; gap: 7px; margin: 14px 0 18px; padding: 11px; border: 1px solid #dbe4f5; border-radius: 11px; background: #f7faff; }
+.workflow-templates > p { margin: 0 0 1px; color: #6d7e9c; font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.workflow-templates button { display: grid; gap: 2px; padding: 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #324b7a; text-align: left; }
+.workflow-templates button:hover { border-color: #cbd8f7; background: white; }.workflow-templates strong { font-size: 12px; }.workflow-templates small { color: #77849a; font-size: 10px; }
 
 /* Keep the complete workspace navigation on one row. On narrow screens it
    scrolls horizontally instead of moving Integrations onto a second line. */

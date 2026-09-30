@@ -20,6 +20,11 @@ const testEventDefaults: Record<Exclude<WorkflowTrigger, "manual" | "schedule">,
   github_status: "The latest CI workflow completed with a failure in the test-and-build job. Explain whether the team is blocked and list the next action.",
   slack_mention: "@Nexus Can you summarize the release risk from today's discussion and tell us the next step?",
 };
+const workflowTemplates: Array<{ label: string; detail: string; value: WorkflowInput }> = [
+  { label: "Release readiness", detail: "Daily GitHub release review", value: { ...empty, name: "Release readiness update", description: "Summarize release risk and the next owner.", instructions: "Review the connected repository, recent workspace context, open release risks, and approvals. Post a concise release-readiness update with blockers, owners, and the next action.", agentKind: "github", trigger: "schedule", scheduleMinutes: 1440 } },
+  { label: "Mention responder", detail: "Answer Slack mentions with context", value: { ...empty, name: "Slack mention response", description: "Respond to workspace mentions with a concise next step.", instructions: "Use relevant workspace memory and connected Slack context. Summarize the request, identify risk or decisions, and provide one concrete next step.", agentKind: "slack", trigger: "slack_mention" } },
+  { label: "Issue triage", detail: "Assess new GitHub issues", value: { ...empty, name: "GitHub issue triage", description: "Classify a new issue and assign the next investigation.", instructions: "Read the incoming issue and relevant workspace context. Summarize impact, identify the likely owner, list missing information, and propose the next investigation step.", agentKind: "github", trigger: "github_issue" } },
+];
 
 function formatDate(value: string | null) { return value ? new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "Not run yet"; }
 function labelForTrigger(trigger: WorkflowTrigger) { return triggers.find((item) => item.value === trigger)?.label ?? trigger; }
@@ -67,6 +72,7 @@ export default function WorkflowsPage() {
     <header><p className="eyebrow">WORKFLOW AUTOMATION</p><h1>Build reusable workflows</h1><p>Turn recurring work into governed agent runs. Schedules and event triggers use the same connections, permissions, and approval steps as chat.</p></header>
     <div className="workflow-layout">
       <section className="workflow-list"><div className="section-heading"><h2>Workflows</h2><button onClick={() => { setSelected(null); setDraft(empty); setRuns([]); setError(""); setNotice(""); }}>New workflow</button></div>
+        {!selected && <div className="workflow-templates"><p>Start from a template</p>{workflowTemplates.map((template) => <button type="button" key={template.label} onClick={() => { setSelected(null); setDraft(template.value); setRuns([]); setNotice(`Loaded the ${template.label} template.`); }}><strong>{template.label}</strong><small>{template.detail}</small></button>)}</div>}
         {workflows.length ? workflows.map((workflow) => <button key={workflow.id} className={`workflow-card ${selected?.id === workflow.id ? "selected" : ""}`} onClick={() => void select(workflow)}><span className={`workflow-status ${workflow.enabled ? "enabled" : "paused"}`}>{workflow.enabled ? "Active" : "Paused"}</span><strong>{workflow.name}</strong><small>{labelForTrigger(workflow.trigger)} · {formatDate(workflow.lastRunAt)}</small></button>) : <p className="muted">No workflows yet. Create one for a recurring team task.</p>}
       </section>
       <section className="workflow-form"><div className="section-heading"><h2>{selected ? selected.name : "New workflow"}</h2>{selected && <button className="secondary-button workflow-run-button" disabled={saving} onClick={() => void run()}>Run now</button>}</div>
