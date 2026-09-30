@@ -580,6 +580,7 @@ export default function WorkspaceRoomPage() {
 
         <nav className="workspace-nav" aria-label="Workspace navigation">
           <a className="active" href="#conversation"><ChatGlyph /> Conversation</a>
+          <Link href={`/w/${workspaceId}/overview`}><GridGlyph /> Overview</Link>
           <Link href={`/w/${workspaceId}/audit`}><ActivityGlyph /> Activity</Link>
           <Link href={`/w/${workspaceId}/integrations`}><PlugGlyph /> Integrations</Link>
           <Link href={`/w/${workspaceId}/agents`}><AgentGlyph /> Agents</Link>

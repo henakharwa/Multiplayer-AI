@@ -26,6 +26,7 @@ const glyphs = {
 function groupsFor(workspaceId: string) {
   return [
     { label: "Workspace", items: [
+      { href: `/w/${workspaceId}/overview`, label: "Overview", glyph: glyphs.grid, exact: false },
       { href: `/w/${workspaceId}`, label: "Chat", glyph: glyphs.chat, exact: true },
       { href: `/w/${workspaceId}/audit`, label: "Activity", glyph: glyphs.activity, exact: false },
     ] },
