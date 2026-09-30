@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { WorkspaceArtifact, WorkspaceArtifactComment, WorkspaceArtifactDashboard, WorkspaceArtifactVersion, WorkspaceMember } from "@mai-chat/shared-types";
-import { ApiError, createWorkspaceArtifact, createWorkspaceArtifactComment, deleteWorkspaceArtifact, generateAssistedArtifactDraft, generateReleaseNotes, generateReport, listWorkspaceArtifactComments, listWorkspaceArtifactVersions, listWorkspaceArtifacts, listWorkspaceMembers, notifyDashboardHealthChange, pingDashboardPresence, refreshWorkspaceDashboard, restoreWorkspaceArtifactVersion, shareArtifactToSlack, updateWorkspaceArtifact, type WorkspaceArtifactInput } from "../../../../lib/api";
+import { ApiError, createWorkspaceArtifact, createWorkspaceArtifactComment, deleteWorkspaceArtifact, generateAssistedArtifactDraft, generateReleaseNotes, generateReport, listWorkspaceArtifactComments, listWorkspaceArtifactVersions, listWorkspaceArtifacts, listWorkspaceMembers, notifyDashboardHealthChange, pingDashboardPresence, refreshWorkspaceDashboard, restoreWorkspaceArtifactVersion, updateWorkspaceArtifact, type WorkspaceArtifactInput } from "../../../../lib/api";
 import { DashboardCanvas } from "../../../_components/DashboardCanvas";
 import { PlanVisual } from "../../../_components/PlanVisual";
 import { ReportVisual } from "../../../_components/ReportVisual";
@@ -119,14 +119,6 @@ export default function ArtifactsPage() {
     try { const generated = await generateReleaseNotes(workspaceId, selected.id); await refresh(); await select(generated); setNotice("Drafted from GitHub activity -- review before publishing."); }
     catch (err) { setError(err instanceof Error ? err.message : "Could not generate release notes."); } finally { setSaving(false); }
   }
-  async function shareToSlack() {
-    if (!selected) return;
-    const channel = window.prompt("Which Slack channel? (e.g. #product-updates or a channel ID)");
-    if (!channel) return;
-    setSaving(true);
-    try { await shareArtifactToSlack(workspaceId, selected.id, channel.replace(/^#/, "")); setNotice(`Posted to Slack (#${channel.replace(/^#/, "")}).`); }
-    catch (err) { setError(err instanceof Error ? err.message : "Could not share to Slack."); } finally { setSaving(false); }
-  }
   async function generateAiReportVisual() {
     if (!selected) { setError("Save the report before generating an AI visual source."); return; }
     setSaving(true); setError("");
@@ -195,14 +187,12 @@ export default function ArtifactsPage() {
         <label>Version / tag<input value={draft.releaseVersion ?? ""} onChange={(e) => setDraft({ ...draft, releaseVersion: e.target.value || null })} placeholder="v1.2.0 or Sprint 14" /></label>
         {selected && <div className="dashboard-actions-row">
           <button type="button" className="secondary-button" disabled={saving} onClick={() => void generateFromGithub()}>{saving ? "Generating…" : "Generate from GitHub"}</button>
-          <button type="button" className="secondary-button" disabled={saving} onClick={() => void shareToSlack()}>Share to Slack</button>
 
         </div>}
       </> : draft.type === "report" ? <>
         {selected && <div className="dashboard-actions-row">
           <button type="button" className="secondary-button" disabled={saving} onClick={() => void generateAiReportVisual()}>{saving ? "Generating…" : "Generate AI visual source"}</button>
           <button type="button" className="secondary-button" disabled={saving} onClick={() => void generateFromAuditTrail()}>{saving ? "Generating…" : "Generate from activity"}</button>
-          <button type="button" className="secondary-button" disabled={saving} onClick={() => void shareToSlack()}>Share to Slack</button>
 
         </div>}
       </> : (draft.type === "plan" || draft.type === "task_list") ? <>
