@@ -895,6 +895,14 @@ textarea {
 .agent-favorite { align-self: center; width: 29px; height: 29px; margin-right: 7px; border: 0; border-radius: 7px; background: transparent; color: #a8b0bf; font-size: 16px; }
 .agent-favorite:hover { background: #e4ecff; color: #5a78d5; }.agent-favorite.active { color: #f3a82b; }
 
+/* Keep the complete workspace navigation on one row. On narrow screens it
+   scrolls horizontally instead of moving Integrations onto a second line. */
+.workspace-secondary-nav { flex-wrap: nowrap; gap: 8px; overflow-x: auto; scrollbar-width: thin; }
+.workspace-secondary-nav-group { flex: 0 0 auto; flex-wrap: nowrap; gap: 4px; }
+.workspace-secondary-nav-divider { margin: 0 4px; }
+.workspace-secondary-nav-label { margin-right: 1px; font-size: 9px; }
+.workspace-secondary-nav a { padding-left: 8px; padding-right: 8px; white-space: nowrap; }
+
 @media (max-width: 800px) { .workspace-overview-page { width: min(100% - 30px, 680px); padding-top: 25px; }.workspace-hub-header { align-items: flex-start; flex-direction: column; }.workspace-hub-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }.workspace-hub-grid { grid-template-columns: 1fr; }.workspace-hub-output { grid-column: auto; }.workspace-hub-artifacts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 480px) { .workspace-hub-metrics { grid-template-columns: 1fr; }.workspace-hub-next { align-items: flex-start; flex-direction: column; }.workspace-hub-actions { width: 100%; }.workspace-hub-actions a { flex: 1; }.workspace-hub-artifacts { grid-template-columns: 1fr; } }
 
