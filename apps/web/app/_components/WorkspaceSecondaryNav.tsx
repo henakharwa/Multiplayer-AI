@@ -28,6 +28,7 @@ function groupsFor(workspaceId: string) {
     { label: "Workspace", items: [
       { href: `/w/${workspaceId}/overview`, label: "Overview", glyph: glyphs.grid, exact: false },
       { href: `/w/${workspaceId}`, label: "Chat", glyph: glyphs.chat, exact: true },
+      { href: `/w/${workspaceId}/tasks`, label: "Tasks", glyph: glyphs.grid, exact: false },
       { href: `/w/${workspaceId}/audit`, label: "Activity", glyph: glyphs.activity, exact: false },
     ] },
     { label: "Build", items: [

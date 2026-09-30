@@ -177,6 +177,23 @@ export interface WorkflowRun {
   completedAt: string | null;
 }
 
+export type WorkspaceTaskStatus = "todo" | "in_progress" | "review" | "done";
+export interface WorkspaceTask {
+  id: string;
+  workspaceId: string;
+  title: string;
+  description: string;
+  status: WorkspaceTaskStatus;
+  ownerUserId: string | null;
+  ownerName: string | null;
+  dueDate: string | null;
+  sourceConversationId: string | null;
+  createdByUserId: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type WorkspaceMemoryKind = "knowledge" | "decision";
 
 export interface WorkspaceMemory {

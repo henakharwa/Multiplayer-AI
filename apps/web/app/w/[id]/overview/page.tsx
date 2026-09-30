@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import type { AuditEvent, IntegrationConfig, WorkspaceAgent, WorkspaceArtifact, WorkspaceMemory, WorkspaceWorkflow } from "@mai-chat/shared-types";
-import { listAuditEvents, listIntegrations, listWorkspaceAgents, listWorkspaceArtifacts, listWorkspaceMemory, listWorkspaceWorkflows } from "../../../../lib/api";
+import type { AuditEvent, IntegrationConfig, WorkspaceAgent, WorkspaceArtifact, WorkspaceMemory, WorkspaceTask, WorkspaceWorkflow } from "@mai-chat/shared-types";
+import { listAuditEvents, listIntegrations, listWorkspaceAgents, listWorkspaceArtifacts, listWorkspaceMemory, listWorkspaceTasks, listWorkspaceWorkflows } from "../../../../lib/api";
 
-type HubData = { agents: WorkspaceAgent[]; artifacts: WorkspaceArtifact[]; integrations: IntegrationConfig[]; memory: WorkspaceMemory[]; workflows: WorkspaceWorkflow[]; activity: AuditEvent[] };
+type HubData = { agents: WorkspaceAgent[]; artifacts: WorkspaceArtifact[]; integrations: IntegrationConfig[]; memory: WorkspaceMemory[]; tasks: WorkspaceTask[]; workflows: WorkspaceWorkflow[]; activity: AuditEvent[] };
 
 function formatDate(value: string | null) {
   if (!value) return "Not scheduled";
@@ -21,7 +21,7 @@ function relativeTime(value: string) {
   return `${Math.floor(minutes / 1440)}d ago`;
 }
 
-const empty: HubData = { agents: [], artifacts: [], integrations: [], memory: [], workflows: [], activity: [] };
+const empty: HubData = { agents: [], artifacts: [], integrations: [], memory: [], tasks: [], workflows: [], activity: [] };
 
 export default function WorkspaceOverviewPage() {
   const { id: workspaceId } = useParams<{ id: string }>();
@@ -34,9 +34,9 @@ export default function WorkspaceOverviewPage() {
     setLoading(true);
     Promise.all([
       listWorkspaceAgents(workspaceId), listWorkspaceArtifacts(workspaceId), listIntegrations(workspaceId),
-      listWorkspaceMemory(workspaceId), listWorkspaceWorkflows(workspaceId), listAuditEvents(workspaceId),
-    ]).then(([agents, artifacts, integrations, memory, workflows, audit]) => {
-      if (!cancelled) setData({ agents, artifacts, integrations, memory, workflows, activity: audit.events });
+      listWorkspaceMemory(workspaceId), listWorkspaceTasks(workspaceId), listWorkspaceWorkflows(workspaceId), listAuditEvents(workspaceId),
+    ]).then(([agents, artifacts, integrations, memory, tasks, workflows, audit]) => {
+      if (!cancelled) setData({ agents, artifacts, integrations, memory, tasks, workflows, activity: audit.events });
     }).catch((reason: Error) => { if (!cancelled) setError(reason.message || "Could not load the workspace overview."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -47,7 +47,7 @@ export default function WorkspaceOverviewPage() {
     const activeWorkflows = data.workflows.filter((workflow) => workflow.enabled);
     const failedWorkflows = activeWorkflows.filter((workflow) => workflow.lastRunStatus === "failed");
     const upcoming = activeWorkflows.filter((workflow) => workflow.nextRunAt).sort((a, b) => (a.nextRunAt ?? "").localeCompare(b.nextRunAt ?? ""));
-    return { published, activeWorkflows, failedWorkflows, upcoming, publishedAgents: data.agents.filter((agent) => agent.status === "published") };
+    return { published, activeWorkflows, failedWorkflows, upcoming, openTasks: data.tasks.filter((task) => task.status !== "done").length, publishedAgents: data.agents.filter((agent) => agent.status === "published") };
   }, [data]);
 
   const nextAction = summary.failedWorkflows[0]
@@ -69,7 +69,7 @@ export default function WorkspaceOverviewPage() {
     {error && <p className="error-text">{error}</p>}
     <section className="workspace-hub-metrics" aria-label="Workspace health">
       <article><span>Connected sources</span><strong>{data.integrations.length + data.memory.length}</strong><small>{data.integrations.length} tools · {data.memory.length} saved context</small></article>
-      <article><span>Active execution</span><strong>{summary.activeWorkflows.length}</strong><small>{summary.failedWorkflows.length ? `${summary.failedWorkflows.length} need attention` : "Workflows are healthy"}</small></article>
+      <article><span>Open work</span><strong>{summary.openTasks}</strong><small>{summary.activeWorkflows.length} active workflows · {summary.failedWorkflows.length ? `${summary.failedWorkflows.length} need attention` : "all healthy"}</small></article>
       <article><span>Published outputs</span><strong>{summary.published}</strong><small>Plans, reports, releases, and dashboards</small></article>
       <article><span>Agent team</span><strong>{summary.publishedAgents.length}</strong><small>{data.agents.length - summary.publishedAgents.length} draft agents</small></article>
     </section>

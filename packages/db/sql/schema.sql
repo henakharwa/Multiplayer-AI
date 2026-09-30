@@ -434,6 +434,23 @@ CREATE TABLE IF NOT EXISTS workspace_workflow_runs (
 );
 CREATE INDEX IF NOT EXISTS workspace_workflow_runs_workflow_idx ON workspace_workflow_runs (workflow_id, started_at DESC);
 
+-- Shared execution records. Tasks may come from a conversation, workflow,
+-- or teammate and remain visible to the full workspace until completed.
+CREATE TABLE IF NOT EXISTS workspace_tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo','in_progress','review','done')),
+  owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  due_date DATE,
+  source_conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS workspace_tasks_workspace_status_idx ON workspace_tasks (workspace_id, status, due_date, updated_at DESC);
+
 -- Durable, workspace-wide context. Unlike transient chat history, these
 -- records are deliberately curated with a source and freshness date so an
 -- agent can cite current team knowledge and previously saved decisions.

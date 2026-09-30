@@ -74,6 +74,8 @@ export default function IntegrationsPage() {
   const teammateGithubConnections = githubConnections.filter((integration) => integration.ownerUserId !== user.id);
   const slackConnections = integrations.filter((i): i is Extract<IntegrationConfig, { type: "slack" }> => i.type === "slack");
   const slackConnected = slackConnections.find((integration) => integration.ownerUserId === user.id);
+  const connectionLabel = (integration: IntegrationConfig) => integration.type === "github" ? (integration.owner && integration.repo ? `${integration.owner}/${integration.repo}` : "Repository not selected") : integration.type === "slack" ? integration.teamName : integration.accountName ?? integration.endpoint;
+  const healthAge = (value: string) => { const hours = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 3_600_000)); return hours < 1 ? "Connected less than an hour ago" : hours < 48 ? `Connected ${hours}h ago` : `Connected ${Math.floor(hours / 24)}d ago`; };
 
   async function handleGithubSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -106,6 +108,11 @@ export default function IntegrationsPage() {
           <span>•</span>
           <span>{loading ? "Checking connections…" : integrations.length ? "Ready for agent requests" : "Connect your first tool"}</span>
         </div>
+      </section>
+
+      <section className="integration-health-panel" aria-label="Integration health">
+        <header><div><p>Connection health</p><h2>Sources available to agents</h2></div><span className={integrations.length ? "healthy" : "empty"}>{integrations.length ? "All connected sources ready" : "No sources connected"}</span></header>
+        {loading ? <p className="hint">Checking source availability…</p> : integrations.length ? <div>{integrations.map((integration) => <article key={integration.id ?? `${integration.type}-${integration.connectionName}`}><span className="integration-health-dot"/><span><strong>{integration.type[0].toUpperCase() + integration.type.slice(1)}</strong><small>{connectionLabel(integration)}</small></span><span><strong>Connected</strong><small>{healthAge(integration.connectedAt)} · {integration.connectionScope} access</small></span></article>)}</div> : <p className="hint">Connect GitHub, Slack, Linear, Notion, or Figma to make current company context available to agents.</p>}
       </section>
 
       {policy && <section className="integration-panel permission-panel">
