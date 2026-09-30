@@ -58,7 +58,7 @@ export default function ArtifactsPage() {
   const [selected, setSelected] = useState<WorkspaceArtifact | null>(null); const [draft, setDraft] = useState<WorkspaceArtifactInput>(empty);
   const [comments, setComments] = useState<WorkspaceArtifactComment[]>([]); const [versions, setVersions] = useState<WorkspaceArtifactVersion[]>([]); const [comment, setComment] = useState(""); const [filter, setFilter] = useState<"all" | WorkspaceArtifactInput["type"]>("all"); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [saving, setSaving] = useState(false);
   const [viewers, setViewers] = useState<{ userId: string; name: string }[]>([]);
-  const [assistantPrompt, setAssistantPrompt] = useState(""); const [reportLayout, setReportLayout] = useState<ReportVisualLayout>("brief"); const [planEditing, setPlanEditing] = useState(false);
+  const [assistantPrompt, setAssistantPrompt] = useState(""); const [reportLayout, setReportLayout] = useState<ReportVisualLayout>("operating"); const [planEditing, setPlanEditing] = useState(false);
   const refresh = async () => setArtifacts(await listWorkspaceArtifacts(workspaceId));
   useEffect(() => { void Promise.all([refresh(), listWorkspaceMembers(workspaceId)]).then(([, team]) => setMembers(team)).catch((err: Error) => setError(err.message)); }, [workspaceId]);
 
