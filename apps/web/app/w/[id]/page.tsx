@@ -89,6 +89,20 @@ interface StoredNotification {
   read: boolean;
 }
 
+const WORKSPACE_BACKGROUNDS = [
+  { id: "cloud", label: "Cloud", description: "Clean blue" },
+  { id: "mist", label: "Mist", description: "Cool gray" },
+  { id: "sage", label: "Sage", description: "Soft green" },
+  { id: "lavender", label: "Lavender", description: "Muted violet" },
+  { id: "sand", label: "Sand", description: "Warm neutral" },
+] as const;
+
+type WorkspaceBackground = (typeof WORKSPACE_BACKGROUNDS)[number]["id"];
+
+function isWorkspaceBackground(value: string | null): value is WorkspaceBackground {
+  return WORKSPACE_BACKGROUNDS.some((background) => background.id === value);
+}
+
 type AgentKind = "project" | "github" | "slack" | "linear" | "notion" | "figma";
 const AGENTS: Array<{ id: AgentKind; name: string; description: string }> = [
   { id: "project", name: "Project", description: "Planning and coordination" },
@@ -189,6 +203,18 @@ export default function WorkspaceRoomPage() {
   const [slackNotice, setSlackNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationConfig[]>([]);
   const [toolMenu, setToolMenu] = useState<IntegrationConfig["type"] | null>(null);
+  const [backgroundPickerOpen, setBackgroundPickerOpen] = useState(false);
+  const [workspaceBackground, setWorkspaceBackground] = useState<WorkspaceBackground>("cloud");
+
+  useEffect(() => {
+    const storedBackground = window.localStorage.getItem("nexus-workspace-background");
+    if (isWorkspaceBackground(storedBackground)) setWorkspaceBackground(storedBackground);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.workspaceBackground = workspaceBackground;
+    window.localStorage.setItem("nexus-workspace-background", workspaceBackground);
+  }, [workspaceBackground]);
 
   useEffect(() => {
     const agentId = new URLSearchParams(window.location.search).get("agentId");
@@ -640,6 +666,13 @@ export default function WorkspaceRoomPage() {
         <header className="workspace-main-header">
           <div><p className="workspace-kicker">Shared workspace</p><h1>{workspace.name}</h1></div>
           <div className="workspace-header-actions">
+            <div className="workspace-background-picker">
+              <button type="button" className="workspace-invite workspace-background-trigger" aria-expanded={backgroundPickerOpen} aria-haspopup="listbox" onClick={() => setBackgroundPickerOpen((open) => !open)}><PaletteGlyph /> Appearance <span className="workspace-background-current">{WORKSPACE_BACKGROUNDS.find((background) => background.id === workspaceBackground)?.label}</span><ChevronGlyph direction={backgroundPickerOpen ? "up" : "down"} /></button>
+              {backgroundPickerOpen && <div className="workspace-background-menu" role="listbox" aria-label="Workspace background">
+                <p>Workspace background</p>
+                {WORKSPACE_BACKGROUNDS.map((background) => <button key={background.id} type="button" role="option" aria-selected={workspaceBackground === background.id} className={workspaceBackground === background.id ? "selected" : ""} onClick={() => { setWorkspaceBackground(background.id); setBackgroundPickerOpen(false); }}><span className={`workspace-background-swatch ${background.id}`} aria-hidden="true" /><span><strong>{background.label}</strong><small>{background.description}</small></span>{workspaceBackground === background.id && <CheckGlyph />}</button>)}
+              </div>}
+            </div>
             {workspaceRole === "admin" && <button className="workspace-invite" onClick={() => { setInviteState({ sending: false, message: null, error: null }); setShowInviteModal(true); }}><LinkGlyph /> Invite teammates</button>}
             {workspaceRole === "admin" && <button className="workspace-invite" onClick={() => setShowAccessManager(true)}>Manage access</button>}
             <button className="workspace-invite workspace-leave" onClick={() => void leaveCurrentWorkspace()}>Leave workspace</button>
@@ -905,5 +938,7 @@ function LinkGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path 
 function ArrowGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13m-5-5 5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
 function SignOutGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H5v14h5m4-4 5-3-5-3m5 3H9" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
 function CloseGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>; }
+function PaletteGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1.2a1.8 1.8 0 0 0 .9-3.36 1.8 1.8 0 0 1 .9-3.36H17A4 4 0 0 0 21 10.3C20.1 6.05 16.45 3 12 3Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><circle cx="7.5" cy="11" r="1" fill="currentColor"/><circle cx="10.5" cy="7.5" r="1" fill="currentColor"/><circle cx="15" cy="8" r="1" fill="currentColor"/></svg>; }
+function CheckGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4.2 4.2L19 6.7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
 function BellGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 10a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 22h4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
 function KeyGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4" fill="none" stroke="currentColor" strokeWidth="2"/><path d="m11 12 8-8m-3 0h3v3m-6 3 2 2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
