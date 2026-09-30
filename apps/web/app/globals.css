@@ -907,8 +907,8 @@ textarea {
 
 /* Keep the complete workspace navigation on one row. On narrow screens it
    scrolls horizontally instead of moving Integrations onto a second line. */
-.workspace-secondary-nav { flex-wrap: nowrap; gap: 8px; overflow-x: auto; scrollbar-width: thin; }
-.workspace-secondary-nav-group { flex: 0 0 auto; flex-wrap: nowrap; gap: 4px; }
+.workspace-secondary-nav { display: flex !important; flex-wrap: nowrap !important; gap: 8px; width: 100%; max-width: none; overflow-x: auto !important; overflow-y: hidden; scrollbar-width: thin; white-space: nowrap; }
+.workspace-secondary-nav-group { flex: 0 0 auto; flex-wrap: nowrap !important; gap: 4px; white-space: nowrap; }
 .workspace-secondary-nav-divider { margin: 0 4px; }
 .workspace-secondary-nav-label { margin-right: 1px; font-size: 9px; }
 .workspace-secondary-nav a { padding-left: 8px; padding-right: 8px; white-space: nowrap; }
