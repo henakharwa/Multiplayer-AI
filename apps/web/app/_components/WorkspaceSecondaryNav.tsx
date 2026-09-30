@@ -38,8 +38,6 @@ function groupsFor(workspaceId: string) {
     { label: "Keep", items: [
       { href: `/w/${workspaceId}/memory`, label: "Memory", glyph: glyphs.grid, exact: false },
       { href: `/w/${workspaceId}/artifacts`, label: "Artifacts", glyph: glyphs.grid, exact: false },
-    ] },
-    { label: "Admin", items: [
       { href: `/w/${workspaceId}/integrations`, label: "Integrations", glyph: glyphs.plug, exact: false },
     ] },
   ];
