@@ -10,7 +10,7 @@ function clean(value: string) {
   const trimmed = value.trim();
   if (!trimmed || /^[-| :]+$/.test(trimmed)) return "";
   const cells = trimmed.startsWith("|") && trimmed.endsWith("|") ? trimmed.split("|").slice(1, -1).map((cell) => cell.trim()).filter(Boolean).join(" · ") : trimmed;
-  return cells.replace(/<!--plan-stage:(todo|progress|review|done)-->/g, "").replace(/^#{1,6}\s+/, "").replace(/^[-*+]\s+/, "").replace(/^\d+[.)]\s+/, "").replace(/^\[[ xX]\]\s*/, "").replace(/(\*\*|__|`|~~)/g, "").replace(/[□☐]/g, "").replace(/\bTBD\b/gi, "").replace(/\s*[·|]\s*(?=[·|]|$)/g, "").replace(/\s+/g, " ").replace(/^[-·\s]+|[-·\s]+$/g, "").trim();
+  return cells.replace(/<!--plan-stage:(todo|progress|review|done)-->/g, "").replace(/^#{1,6}\s+/, "").replace(/^[-*+]\s+/, "").replace(/^\d+\s*[.)·]\s*/, "").replace(/^\[[ xX]\]\s*/, "").replace(/(\*\*|__|`|~~|\*)/g, "").replace(/[□☐]/g, "").replace(/\bTBD\b/gi, "").replace(/\s*[·|]\s*(?=[·|]|$)/g, "").replace(/\s+/g, " ").replace(/^[-·\s]+|[-·\s]+$/g, "").trim();
 }
 function parse(content: string) {
   const chunks = content.split(/^##\s+/m).filter(Boolean);
@@ -19,8 +19,8 @@ function parse(content: string) {
   return { sections: sections.length ? sections : [{ title: "Plan", lines: ["Add plan details to build this view."] }], tasks };
 }
 function Lines({ lines }: { lines: string[] }) { return <ul>{lines.slice(0, 5).map((line, index) => <li key={`${line}-${index}`}>{line}</li>)}</ul>; }
-function TaskLines({ tasks, onAdvanceTask, empty }: { tasks: Task[]; onAdvanceTask?: (index: number) => void; empty: string }) { return <ul className="plan-task-lines">{tasks.length ? tasks.slice(0, 6).map((task) => <li key={task.index}><label><input type="checkbox" checked={task.stage === "done"} onChange={() => onAdvanceTask?.(task.index)} disabled={!onAdvanceTask} aria-label={`Move ${task.label} to the next stage`} /><span>{task.label}</span></label></li>) : <li>{empty}</li>}</ul>; }
-export function PlanVisual({ title, summary, content, layout: _layout, onAdvanceTask }: { title: string; summary: string; content: string; layout: PlanVisualLayout; onAdvanceTask?: (index: number) => void }) {
+function TaskLines({ tasks, onAdvanceTask, empty }: { tasks: Task[]; onAdvanceTask?: (index: number, direction: "next" | "previous") => void; empty: string }) { return <ul className="plan-task-lines">{tasks.length ? tasks.slice(0, 6).map((task) => <li key={task.index}><label><input type="checkbox" checked={task.stage === "done"} onChange={() => onAdvanceTask?.(task.index, task.stage === "done" ? "previous" : "next")} disabled={!onAdvanceTask} aria-label={`Move ${task.label} to the next stage`} /><span>{task.label}</span></label></li>) : <li>{empty}</li>}</ul>; }
+export function PlanVisual({ title, summary, content, layout: _layout, onAdvanceTask }: { title: string; summary: string; content: string; layout: PlanVisualLayout; onAdvanceTask?: (index: number, direction: "next" | "previous") => void }) {
   const data = parse(content); const done = data.tasks.filter((task) => task.stage === "done"); const todo = data.tasks.filter((task) => task.stage === "todo");
   const progress = data.tasks.length ? Math.round(done.length / data.tasks.length * 100) : 0;
   const risks = data.sections.find((section) => /risk|blocker/i.test(section.title))?.lines ?? ["No active risks captured."];
