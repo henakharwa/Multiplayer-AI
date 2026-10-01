@@ -188,7 +188,7 @@ export default function IntegrationsPage() {
         )}</div>
 
         <p className="hint" style={{ marginTop: 16 }}>
-          Connect your GitHub account and choose the repository for this workspace.
+          Link a repository for workspace context.
         </p>
         {teammateGithubConnections.length > 0 && <p className="hint">Also connected by teammates: {teammateGithubConnections.map((integration) => `${integration.connectedByName ?? "Workspace member"} (${integration.owner && integration.repo ? `${integration.owner}/${integration.repo}` : "repository not selected"})`).join(", ")}.</p>}
       </div>
@@ -211,7 +211,7 @@ export default function IntegrationsPage() {
           )}
         </h2>
         <p className="hint">
-          Connect your Slack workspace so agents can use the access you approve in each chat.
+          Use approved Slack context in chat.
         </p>
         <div className="integration-actions"><button
           className="btn"
@@ -225,7 +225,7 @@ export default function IntegrationsPage() {
         </button></div>
       </div>
 
-      <>{(["linear", "notion", "figma"] as const).map((provider) => { const setup = remoteSetup[provider]; const connected = integrations.find((item) => item.type === provider); const open = remoteSetupOpen === provider; return <article className="integration-panel remote-integration-card" key={provider}><div><strong>{provider[0].toUpperCase() + provider.slice(1)}</strong><small>{connected ? `Connected · ${connectionLabel(connected)}` : "Not connected"}</small></div><p>{provider === "linear" ? "Bring project and issue context into agent work." : provider === "notion" ? "Ground agents in pages and databases your team trusts." : "Give agents design and review context from your files."}</p><div className="integration-actions"><button className="btn" type="button" onClick={() => setRemoteSetupOpen(open ? null : provider)}>{connected ? "Manage connection" : `Connect ${provider[0].toUpperCase() + provider.slice(1)}`}</button></div>{open && <form className="remote-advanced-form" onSubmit={(event) => { event.preventDefault(); void connectRemote(provider); }}><label>HTTPS MCP endpoint<input type="url" value={setup.endpoint} onChange={(event) => setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], endpoint: event.target.value } }))} placeholder="https://mcp.example.com" required/></label><label>Access token<input type="password" value={setup.token} onChange={(event) => setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], token: event.target.value } }))} placeholder="Provider token" required/></label><button className="btn" disabled={setup.busy}>{setup.busy ? "Connecting…" : connected ? "Update connection" : "Save connection"}</button>{setup.error && <p className="error-text">{setup.error}</p>}</form>}</article>; })}</>
+      <>{(["linear", "notion", "figma"] as const).map((provider) => { const setup = remoteSetup[provider]; const connected = integrations.find((item) => item.type === provider); const open = remoteSetupOpen === provider; return <article className="integration-panel remote-integration-card" key={provider}><div><strong>{provider[0].toUpperCase() + provider.slice(1)}</strong><small>{connected ? `Connected · ${connectionLabel(connected)}` : "Not connected"}</small></div><p>{provider === "linear" ? "Use projects and issues in chat." : provider === "notion" ? "Use team pages and databases in chat." : "Use design files in chat."}</p><div className="integration-actions"><button className="btn" type="button" onClick={() => setRemoteSetupOpen(open ? null : provider)}>{connected ? "Manage connection" : `Connect ${provider[0].toUpperCase() + provider.slice(1)}`}</button></div>{open && <form className="remote-advanced-form" onSubmit={(event) => { event.preventDefault(); void connectRemote(provider); }}><label>HTTPS MCP endpoint<input type="url" value={setup.endpoint} onChange={(event) => setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], endpoint: event.target.value } }))} placeholder="https://mcp.example.com" required/></label><label>Access token<input type="password" value={setup.token} onChange={(event) => setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], token: event.target.value } }))} placeholder="Provider token" required/></label><button className="btn" disabled={setup.busy}>{setup.busy ? "Connecting…" : connected ? "Update connection" : "Save connection"}</button>{setup.error && <p className="error-text">{setup.error}</p>}</form>}</article>; })}</>
 
       {!loading && integrations.length === 0 && <p style={{ color: "var(--text-dim)", fontSize: 13 }}>No integrations connected yet.</p>}</section>}
 
