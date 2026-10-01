@@ -915,14 +915,15 @@ textarea {
 /* One consistent card for every provider. Advanced configuration expands
    only the selected card, leaving the connection overview uniform. */
 .integration-tool-box { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 10px; overflow: visible; }
-.integration-tool-box > .integration-panel { min-height: 214px; padding: 16px; border: 1px solid #dfe7f3; border-radius: 11px; background: #fafcff; }
+.integration-tool-box > .integration-panel { height: 264px; min-height: 264px; padding: 16px; border: 1px solid #dfe7f3; border-radius: 11px; background: #fafcff; overflow: hidden; }
 .integration-tool-box > .integration-panel-featured { border-right: 1px solid #dfe7f3; }
 .integration-tool-box > .remote-integrations-panel { display: contents; }
 .integration-tool-box > .remote-integrations-panel > header { display: none; }
 .integration-tool-box > .remote-integrations-panel > .remote-integration-grid { display: contents; }
-.remote-integration-grid article { min-height: 214px; }
+.remote-integration-grid article { height: 264px; min-height: 264px; overflow: hidden; }
 @media (max-width: 960px) { .integration-tool-box { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 620px) { .integration-tool-box { grid-template-columns: 1fr; }.integration-tool-box > .integration-panel-featured { border-right: 1px solid #dfe7f3; } }
+.integration-tool-box .integration-actions { margin-top: auto; }.integration-tool-box .integration-panel { display: flex; flex-direction: column; }.integration-tool-box .integration-panel h2 { flex: 0 0 auto; }.integration-tool-box .integration-panel > .hint { margin-bottom: 12px; }.integration-tool-box .integration-panel .btn { width: fit-content; }.integration-tool-box .integration-panel .btn + .btn { margin-top: 8px !important; }
 
 /* Keep the complete workspace navigation on one row. On narrow screens it
    scrolls horizontally instead of moving Integrations onto a second line. */

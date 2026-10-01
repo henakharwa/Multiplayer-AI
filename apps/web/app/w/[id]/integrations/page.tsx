@@ -188,7 +188,7 @@ export default function IntegrationsPage() {
         )}</div>
 
         <p className="hint" style={{ marginTop: 16 }}>
-          Connect your own GitHub account and choose the repository you will work with. Your token is encrypted at rest and never shown again.
+          Connect your GitHub account and choose the repository for this workspace.
         </p>
         {teammateGithubConnections.length > 0 && <p className="hint">Also connected by teammates: {teammateGithubConnections.map((integration) => `${integration.connectedByName ?? "Workspace member"} (${integration.owner && integration.repo ? `${integration.owner}/${integration.repo}` : "repository not selected"})`).join(", ")}.</p>}
       </div>
@@ -211,8 +211,7 @@ export default function IntegrationsPage() {
           )}
         </h2>
         <p className="hint">
-          Slack&apos;s own official MCP server needs a real login, not a pasted token -- your Slack account&apos;s own read/write
-          access is what the agent uses (see the chat for exactly what it&apos;s about to do before anything happens).
+          Connect your Slack workspace so agents can use the access you approve in each chat.
         </p>
         <div className="integration-actions"><button
           className="btn"
