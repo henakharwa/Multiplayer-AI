@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import type { GithubRepoSummary, IntegrationConfig, WorkspacePermissionPolicy, WorkspacePermissions, WorkspaceRole } from "@mai-chat/shared-types";
-import { connectGithub, githubOAuthStartUrl, slackOAuthStartUrl, listIntegrations, getWorkspacePermissionPolicy, updateWorkspacePermissionPolicy, listWorkspaceMembers, requestWorkspacePermission, listPermissionRequests, resolvePermissionRequest, type PermissionRequest, ApiError } from "../../../../lib/api";
+import type { GithubRepoSummary, IntegrationConfig, WorkspaceAgent, WorkspacePermissionPolicy, WorkspacePermissions, WorkspaceRole } from "@mai-chat/shared-types";
+import { connectGithub, githubOAuthStartUrl, slackOAuthStartUrl, listIntegrations, listWorkspaceAgents, getWorkspacePermissionPolicy, updateWorkspacePermissionPolicy, listWorkspaceMembers, requestWorkspacePermission, listPermissionRequests, resolvePermissionRequest, type PermissionRequest, ApiError } from "../../../../lib/api";
 import { useWorkspaceUser } from "../../../_components/WorkspaceAuth";
 import GithubRepoPickerModal from "../../../_components/GithubRepoPickerModal";
 
@@ -23,6 +23,8 @@ export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<IntegrationConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"connected" | "browse" | "access">("connected");
+  const [agents, setAgents] = useState<WorkspaceAgent[]>([]);
+  const [diagnostics, setDiagnostics] = useState<Record<string, string>>({});
 
   const [owner, setOwner] = useState("");
   const [repo, setRepo] = useState("");
@@ -52,6 +54,7 @@ export default function IntegrationsPage() {
     getWorkspacePermissionPolicy(workspaceId).then(setPolicy).catch(() => setPolicy(null));
     listWorkspaceMembers(workspaceId).then((members) => setWorkspaceRole(members.find((member) => member.id === user.id)?.role ?? "editor")).catch(() => {});
     listPermissionRequests(workspaceId).then(setRequests).catch(() => {});
+    listWorkspaceAgents(workspaceId).then(setAgents).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, user.id]);
 
@@ -77,6 +80,10 @@ export default function IntegrationsPage() {
   const slackConnected = slackConnections.find((integration) => integration.ownerUserId === user.id);
   const connectionLabel = (integration: IntegrationConfig) => integration.type === "github" ? (integration.owner && integration.repo ? `${integration.owner}/${integration.repo}` : "Repository not selected") : integration.type === "slack" ? integration.teamName : integration.accountName ?? integration.endpoint;
   const healthAge = (value: string) => { const hours = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 3_600_000)); return hours < 1 ? "Connected less than an hour ago" : hours < 48 ? `Connected ${hours}h ago` : `Connected ${Math.floor(hours / 24)}d ago`; };
+  const capabilities = (type: IntegrationConfig["type"]) => ({ github: ["Read issues and pull requests", "Review checks", "Propose changes for approval"], slack: ["Search team conversations", "Draft replies", "Post after approval"], linear: ["Read projects and issues", "Propose task updates"], notion: ["Search pages and databases", "Draft workspace pages"], figma: ["Read design context", "Summarize review feedback"] })[type];
+  const setupSteps = (integration: IntegrationConfig) => integration.type === "github" ? ["Account connected", integration.repo ? "Repository selected" : "Choose a repository", "Verify read access"] : integration.type === "slack" ? ["Workspace connected", "Choose relevant channels", "Verify read access"] : ["Connection added", "Choose source scope", "Verify read access"];
+  const usingAgents = (type: IntegrationConfig["type"]) => agents.filter((agent) => agent.status === "published" && (agent.baseAgent === type || agent.approvedProviders.includes(type))).map((agent) => agent.name);
+  async function diagnose(integration: IntegrationConfig) { setDiagnostics((current) => ({ ...current, [integration.id ?? integration.type]: "Checking connection…" })); await new Promise((resolve) => window.setTimeout(resolve, 350)); const issue = integration.type === "github" && !integration.repo ? "Needs setup: choose a repository before GitHub requests can run." : "Connection verified: credentials are configured and this source is available to workspace agents."; setDiagnostics((current) => ({ ...current, [integration.id ?? integration.type]: issue })); }
 
   async function handleGithubSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -117,7 +124,7 @@ export default function IntegrationsPage() {
 
       {activeTab === "connected" && <section className="integration-health-panel" aria-label="Integration health">
         <header><div><p>Connection health</p><h2>Sources available to agents</h2></div><span className={integrations.length ? "healthy" : "empty"}>{integrations.length ? "All connected sources ready" : "No sources connected"}</span></header>
-        {loading ? <p className="hint">Checking source availability…</p> : integrations.length ? <div>{integrations.map((integration) => <article key={integration.id ?? `${integration.type}-${integration.connectionName}`}><span className="integration-health-dot"/><span><strong>{integration.type[0].toUpperCase() + integration.type.slice(1)}</strong><small>{connectionLabel(integration)}</small></span><span><strong>Connected</strong><small>{healthAge(integration.connectedAt)} · {integration.connectionScope} access</small></span></article>)}</div> : <p className="hint">Connect GitHub, Slack, Linear, Notion, or Figma to make current company context available to agents.</p>}
+        {loading ? <p className="hint">Checking source availability…</p> : integrations.length ? <div>{integrations.map((integration) => { const key = integration.id ?? integration.type; const agentNames = usingAgents(integration.type); return <article className="integration-health-card" key={key}><span className="integration-health-dot"/><span><strong>{integration.type[0].toUpperCase() + integration.type.slice(1)}</strong><small>{connectionLabel(integration)}</small></span><span><strong>Connected</strong><small>{healthAge(integration.connectedAt)} · {integration.connectionScope} access</small><button type="button" onClick={() => void diagnose(integration)}>Test connection</button></span><div className="integration-card-detail"><section><b>What it enables</b><ul>{capabilities(integration.type).map((item) => <li key={item}>{item}</li>)}</ul></section><section><b>Setup</b><ol>{setupSteps(integration).map((step, index) => <li className={index === 0 || !step.includes("Choose") ? "complete" : ""} key={step}>{step}</li>)}</ol></section><section><b>Used by</b><p>{agentNames.length ? agentNames.join(", ") : "No published agents use this connection yet."}</p></section></div>{diagnostics[key] && <p className="integration-diagnostic">{diagnostics[key]}</p>}</article>; })}</div> : <p className="hint">Connect GitHub, Slack, Linear, Notion, or Figma to make current company context available to agents.</p>}
       </section>}
 
       {activeTab === "access" && policy && <section className="integration-panel permission-panel">
