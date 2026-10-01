@@ -22,6 +22,7 @@ export default function IntegrationsPage() {
 
   const [integrations, setIntegrations] = useState<IntegrationConfig[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"connected" | "browse" | "access">("connected");
 
   const [owner, setOwner] = useState("");
   const [repo, setRepo] = useState("");
@@ -110,12 +111,16 @@ export default function IntegrationsPage() {
         </div>
       </section>
 
-      <section className="integration-health-panel" aria-label="Integration health">
+      <nav className="integration-tabs" aria-label="Integration sections"><button className={activeTab === "connected" ? "active" : ""} onClick={() => setActiveTab("connected")}>Connected <span>{integrations.length}</span></button><button className={activeTab === "browse" ? "active" : ""} onClick={() => setActiveTab("browse")}>Browse integrations</button><button className={activeTab === "access" ? "active" : ""} onClick={() => setActiveTab("access")}>Access & permissions</button></nav>
+
+      {activeTab === "browse" && <section className="integration-catalog"><header><div><p>Browse integrations</p><h2>Bring company context into every workflow</h2></div><span>Choose a provider to begin setup</span></header><div>{[{ name: "GitHub", detail: "Issues, pull requests, checks, and repositories", action: () => { setActiveTab("connected"); document.getElementById("github-integration")?.scrollIntoView({ behavior: "smooth" }); } }, { name: "Slack", detail: "Conversation context and governed replies", action: () => { setActiveTab("connected"); document.getElementById("slack-integration")?.scrollIntoView({ behavior: "smooth" }); } }, { name: "Linear", detail: "Project tracking through a workspace MCP connection", action: () => setActiveTab("connected") }, { name: "Notion", detail: "Pages and databases as grounded knowledge", action: () => setActiveTab("connected") }, { name: "Figma", detail: "Design files and review context", action: () => setActiveTab("connected") }].map((provider) => <article key={provider.name}><span>{provider.name.slice(0, 1)}</span><div><strong>{provider.name}</strong><small>{provider.detail}</small></div><button onClick={provider.action}>{integrations.some((item) => item.type === provider.name.toLowerCase()) ? "Connected" : "Set up"}</button></article>)}</div></section>}
+
+      {activeTab === "connected" && <section className="integration-health-panel" aria-label="Integration health">
         <header><div><p>Connection health</p><h2>Sources available to agents</h2></div><span className={integrations.length ? "healthy" : "empty"}>{integrations.length ? "All connected sources ready" : "No sources connected"}</span></header>
         {loading ? <p className="hint">Checking source availability…</p> : integrations.length ? <div>{integrations.map((integration) => <article key={integration.id ?? `${integration.type}-${integration.connectionName}`}><span className="integration-health-dot"/><span><strong>{integration.type[0].toUpperCase() + integration.type.slice(1)}</strong><small>{connectionLabel(integration)}</small></span><span><strong>Connected</strong><small>{healthAge(integration.connectedAt)} · {integration.connectionScope} access</small></span></article>)}</div> : <p className="hint">Connect GitHub, Slack, Linear, Notion, or Figma to make current company context available to agents.</p>}
-      </section>
+      </section>}
 
-      {policy && <section className="integration-panel permission-panel">
+      {activeTab === "access" && policy && <section className="integration-panel permission-panel">
         <h2>Tool and agent permissions</h2>
         {workspaceRole === "admin" ? <>
           <p className="hint">Admins have access to every capability. Choose the permissions available to Editors.</p>
@@ -129,7 +134,7 @@ export default function IntegrationsPage() {
         </>}        {policyError && <p className="error-text">{policyError}</p>}
       </section>}
 
-      <div className="integration-panel integration-panel-featured">
+      {activeTab === "connected" && <><div id="github-integration" className="integration-panel integration-panel-featured">
         <h2>
           <span className="channel-icon" aria-hidden style={{ marginRight: 10 }}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -211,7 +216,7 @@ export default function IntegrationsPage() {
         </form>
       </div>
 
-      <div className="integration-panel">
+      <div id="slack-integration" className="integration-panel">
         <h2>
           <span className="channel-icon" aria-hidden style={{ marginRight: 10, color: "#611f69" }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -244,7 +249,7 @@ export default function IntegrationsPage() {
         </button></div>
       </div>
 
-      {!loading && integrations.length === 0 && <p style={{ color: "var(--text-dim)", fontSize: 13 }}>No integrations connected yet.</p>}
+      {!loading && integrations.length === 0 && <p style={{ color: "var(--text-dim)", fontSize: 13 }}>No integrations connected yet.</p>}</>}
 
       {showRepoPicker && (
         <GithubRepoPickerModal
