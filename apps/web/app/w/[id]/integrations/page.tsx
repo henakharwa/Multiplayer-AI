@@ -145,7 +145,7 @@ export default function IntegrationsPage() {
         </>}        {policyError && <p className="error-text">{policyError}</p>}
       </section>}
 
-      {activeTab === "connected" && <><div id="github-integration" className="integration-panel integration-panel-featured">
+      {activeTab === "connected" && <section className="integration-tool-box"><div id="github-integration" className="integration-panel integration-panel-featured">
         <h2>
           <span className="channel-icon" aria-hidden style={{ marginRight: 10 }}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -263,7 +263,7 @@ export default function IntegrationsPage() {
 
       <section className="integration-panel remote-integrations-panel"><header><div><p>Connected tools</p><h2>Linear, Notion, and Figma</h2></div><span>Use an approved MCP connection when your team is ready.</span></header><div className="remote-integration-grid">{(["linear", "notion", "figma"] as const).map((provider) => { const setup = remoteSetup[provider]; const connected = integrations.find((item) => item.type === provider); const open = remoteSetupOpen === provider; return <article key={provider}><div><strong>{provider[0].toUpperCase() + provider.slice(1)}</strong><small>{connected ? `Connected · ${connectionLabel(connected)}` : "Not connected"}</small></div><p>{provider === "linear" ? "Bring project and issue context into agent work." : provider === "notion" ? "Ground agents in pages and databases your team trusts." : "Give agents design and review context from your files."}</p><div className="integration-actions"><button className="btn" type="button" onClick={() => setRemoteSetupOpen(open ? null : provider)}>{connected ? "Manage connection" : `Connect ${provider[0].toUpperCase() + provider.slice(1)}`}</button></div>{open && <form className="remote-advanced-form" onSubmit={(event) => { event.preventDefault(); void connectRemote(provider); }}><label>HTTPS MCP endpoint<input type="url" value={setup.endpoint} onChange={(event) => setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], endpoint: event.target.value } }))} placeholder="https://mcp.example.com" required/></label><label>Access token<input type="password" value={setup.token} onChange={(event) => setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], token: event.target.value } }))} placeholder="Provider token" required/></label><button className="btn" disabled={setup.busy}>{setup.busy ? "Connecting…" : connected ? "Update connection" : "Save connection"}</button>{setup.error && <p className="error-text">{setup.error}</p>}</form>}</article>; })}</div></section>
 
-      {!loading && integrations.length === 0 && <p style={{ color: "var(--text-dim)", fontSize: 13 }}>No integrations connected yet.</p>}</>}
+      {!loading && integrations.length === 0 && <p style={{ color: "var(--text-dim)", fontSize: 13 }}>No integrations connected yet.</p>}</section>}
 
       {showRepoPicker && (
         <GithubRepoPickerModal
