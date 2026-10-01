@@ -912,6 +912,18 @@ textarea {
 .integration-tool-box { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0; margin-bottom: 20px; overflow: hidden; border: 1px solid #d7e3f4; border-radius: 15px; background: rgba(255,255,255,.76); }.integration-tool-box > .integration-panel { min-width: 0; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }.integration-tool-box > .integration-panel-featured { border-right: 1px solid #e1e8f3; }.integration-tool-box > .remote-integrations-panel { grid-column: 1 / -1; border-top: 1px solid #e1e8f3; }.integration-tool-box > .remote-integrations-panel header { padding-top: 2px; }
 @media (max-width: 760px) { .integration-tool-box { grid-template-columns: 1fr; }.integration-tool-box > .integration-panel-featured { border-right: 0; border-bottom: 1px solid #e1e8f3; } }
 
+/* One consistent card for every provider. Advanced configuration expands
+   only the selected card, leaving the connection overview uniform. */
+.integration-tool-box { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 10px; overflow: visible; }
+.integration-tool-box > .integration-panel { min-height: 214px; padding: 16px; border: 1px solid #dfe7f3; border-radius: 11px; background: #fafcff; }
+.integration-tool-box > .integration-panel-featured { border-right: 1px solid #dfe7f3; }
+.integration-tool-box > .remote-integrations-panel { display: contents; }
+.integration-tool-box > .remote-integrations-panel > header { display: none; }
+.integration-tool-box > .remote-integrations-panel > .remote-integration-grid { display: contents; }
+.remote-integration-grid article { min-height: 214px; }
+@media (max-width: 960px) { .integration-tool-box { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px) { .integration-tool-box { grid-template-columns: 1fr; }.integration-tool-box > .integration-panel-featured { border-right: 1px solid #dfe7f3; } }
+
 /* Keep the complete workspace navigation on one row. On narrow screens it
    scrolls horizontally instead of moving Integrations onto a second line. */
 .workspace-secondary-nav { display: flex !important; flex-wrap: nowrap !important; gap: 8px; width: 100%; max-width: none; overflow-x: auto !important; overflow-y: hidden; scrollbar-width: none; white-space: nowrap; }

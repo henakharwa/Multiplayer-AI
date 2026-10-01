@@ -36,7 +36,6 @@ export default function IntegrationsPage() {
   const [githubBusy, setGithubBusy] = useState(false);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [githubSuccess, setGithubSuccess] = useState(false);
-  const [githubManualSetupOpen, setGithubManualSetupOpen] = useState(false);
 
   const [showRepoPicker, setShowRepoPicker] = useState(false);
   const [policy, setPolicy] = useState<WorkspacePermissionPolicy | null>(null);
@@ -192,40 +191,6 @@ export default function IntegrationsPage() {
           Connect your own GitHub account and choose the repository you will work with. Your token is encrypted at rest and never shown again.
         </p>
         {teammateGithubConnections.length > 0 && <p className="hint">Also connected by teammates: {teammateGithubConnections.map((integration) => `${integration.connectedByName ?? "Workspace member"} (${integration.owner && integration.repo ? `${integration.owner}/${integration.repo}` : "repository not selected"})`).join(", ")}.</p>}
-        <button type="button" className="integration-advanced-toggle" onClick={() => setGithubManualSetupOpen((open) => !open)}>{githubManualSetupOpen ? "Hide manual setup" : "Use a personal access token instead"}</button>
-        {githubManualSetupOpen && <form className="integration-advanced-form" onSubmit={handleGithubSubmit}>
-          <div className="field"><label htmlFor="gh-connection-name">Connection name</label><input id="gh-connection-name" value={connectionName} onChange={(e) => setConnectionName(e.target.value)} placeholder="Engineering GitHub" autoComplete="off" /></div>
-          <div className="field"><label htmlFor="gh-connection-scope">Account access</label><select id="gh-connection-scope" value={connectionScope} onChange={(e) => setConnectionScope(e.target.value as "shared" | "personal")}><option value="shared">Shared with this workspace</option><option value="personal">Personal to me</option></select></div>
-          <div className="field">
-            <label htmlFor="gh-owner">Owner</label>
-            <input id="gh-owner" data-testid="github-owner-input" value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="octocat" autoComplete="off" />
-          </div>
-          <div className="field">
-            <label htmlFor="gh-repo">Repository</label>
-            <input id="gh-repo" data-testid="github-repo-input" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="hello-world" autoComplete="off" />
-          </div>
-          <div className="field">
-            <label htmlFor="gh-token">Personal access token</label>
-            <input
-              id="gh-token"
-              data-testid="github-token-input"
-              type="password"
-              value={githubToken}
-              onChange={(e) => setGithubToken(e.target.value)}
-              placeholder="ghp_…"
-              autoComplete="off"
-            />
-          </div>
-          <button className="btn" type="submit" data-testid="github-connect-btn" disabled={githubBusy || !owner.trim() || !repo.trim() || !githubToken.trim()}>
-            {githubBusy ? "Verifying…" : githubConnected ? "Reconnect" : "Connect GitHub"}
-          </button>
-          {githubError && (
-            <p className="error-text" data-testid="github-error">
-              {githubError}
-            </p>
-          )}
-          {githubSuccess && <p className="success-text">Your GitHub repository is connected.</p>}
-        </form>}
       </div>
 
       <div id="slack-integration" className="integration-panel">
