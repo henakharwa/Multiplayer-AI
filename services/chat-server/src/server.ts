@@ -611,7 +611,9 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   app.post("/notifications/read", requireAuth, async (req: Request, res: Response) => {
     const workspaceId = typeof req.body?.workspaceId === "string" ? req.body.workspaceId : "";
     if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "valid workspaceId is required" });
-    await db.markNotificationsRead(req.user!.id, workspaceId);
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id: unknown): id is string => typeof id === "string" && UUID_RE.test(id)) : [];
+    if (ids.length) await db.markNotificationSelectionRead(req.user!.id, workspaceId, ids);
+    else await db.markNotificationsRead(req.user!.id, workspaceId);
     res.status(204).end();
   });
 
@@ -1654,9 +1656,11 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     }, 30_000);
   };
   let retentionScheduler: NodeJS.Timeout | undefined;
+  let notificationScheduler: NodeJS.Timeout | undefined;
   const enforceRetention = () => void db.enforceWorkflowRunRetention().catch((error) => console.error("workflow retention failed", error));
-  server.on("listening", () => { startWorkflowScheduler(); enforceRetention(); retentionScheduler = setInterval(enforceRetention, 24 * 60 * 60 * 1000); });
-  server.on("close", () => { if (workflowScheduler) clearInterval(workflowScheduler); if (retentionScheduler) clearInterval(retentionScheduler); workflowScheduler = undefined; retentionScheduler = undefined; });
+  const deliverNotificationJobs = () => void Promise.all([db.escalateUnreadDecisionNotifications(), db.createDailyNotificationDigests()]).catch((error) => console.error("notification scheduler failed", error));
+  server.on("listening", () => { startWorkflowScheduler(); enforceRetention(); deliverNotificationJobs(); retentionScheduler = setInterval(enforceRetention, 24 * 60 * 60 * 1000); notificationScheduler = setInterval(deliverNotificationJobs, 5 * 60 * 1000); });
+  server.on("close", () => { if (workflowScheduler) clearInterval(workflowScheduler); if (retentionScheduler) clearInterval(retentionScheduler); if (notificationScheduler) clearInterval(notificationScheduler); workflowScheduler = undefined; retentionScheduler = undefined; notificationScheduler = undefined; });
 
   wss.on("connection", (ws: WebSocket, req) => {
     if (req.headers.origin && req.headers.origin !== (process.env.WEB_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "")) {

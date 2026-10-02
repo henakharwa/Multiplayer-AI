@@ -42,6 +42,10 @@ export interface WorkspaceNotification {
   conversationId: string | null;
   kind: "agent_completed" | "decision_needed" | "action_completed" | "permission_request" | "workflow_alert";
   text: string;
+  priority: "low" | "normal" | "high";
+  groupKey: string | null;
+  resourceType: "conversation" | "workflow" | "action" | "artifact" | "integration" | null;
+  resourceId: string | null;
   createdAt: string;
   readAt: string | null;
 }
@@ -53,6 +57,10 @@ export interface WorkspaceNotificationPreferences {
   slackEnabled: boolean;
   escalationMinutes: number;
   dailySummaryEnabled: boolean;
+  quietHoursEnabled: boolean;
+  quietHoursStart: number;
+  quietHoursEnd: number;
+  digestHour: number;
   updatedAt: string | null;
 }
 

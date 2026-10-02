@@ -253,6 +253,11 @@ CREATE TABLE IF NOT EXISTS workspace_notifications (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   kind TEXT NOT NULL CHECK (kind IN ('agent_completed', 'decision_needed', 'action_completed')),
   text TEXT NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low','normal','high')),
+  group_key TEXT,
+  resource_type TEXT,
+  resource_id TEXT,
+  escalated_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   read_at TIMESTAMPTZ
 );
@@ -272,6 +277,17 @@ CREATE TABLE IF NOT EXISTS workspace_notification_preferences (
 ALTER TABLE workspace_notifications DROP CONSTRAINT IF EXISTS workspace_notifications_kind_check;
 ALTER TABLE workspace_notifications ADD CONSTRAINT workspace_notifications_kind_check
   CHECK (kind IN ('agent_completed', 'decision_needed', 'action_completed', 'permission_request', 'workflow_alert'));
+ALTER TABLE workspace_notifications ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal';
+ALTER TABLE workspace_notifications ADD COLUMN IF NOT EXISTS group_key TEXT;
+ALTER TABLE workspace_notifications ADD COLUMN IF NOT EXISTS resource_type TEXT;
+ALTER TABLE workspace_notifications ADD COLUMN IF NOT EXISTS resource_id TEXT;
+ALTER TABLE workspace_notifications ADD COLUMN IF NOT EXISTS escalated_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS workspace_notifications_group_idx ON workspace_notifications (user_id, workspace_id, group_key, created_at DESC);
+ALTER TABLE workspace_notification_preferences ADD COLUMN IF NOT EXISTS quiet_hours_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE workspace_notification_preferences ADD COLUMN IF NOT EXISTS quiet_hours_start INTEGER NOT NULL DEFAULT 20;
+ALTER TABLE workspace_notification_preferences ADD COLUMN IF NOT EXISTS quiet_hours_end INTEGER NOT NULL DEFAULT 8;
+ALTER TABLE workspace_notification_preferences ADD COLUMN IF NOT EXISTS digest_hour INTEGER NOT NULL DEFAULT 9;
+ALTER TABLE workspace_notification_preferences ADD COLUMN IF NOT EXISTS digest_sent_on DATE;
 
 -- Added after the first version of this table shipped -- IF NOT EXISTS
 -- keeps re-running this idempotent schema safe for anyone who already has
