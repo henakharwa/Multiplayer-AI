@@ -36,6 +36,7 @@ export interface RunAgentTurnInput {
 export interface RunAgentTurnResult {
   reply: string;
   toolCallsMade: number;
+  toolTrace: Array<{ name: string; durationMs: number; status: "succeeded" | "failed" }>;
   // IDs of write actions proposed during this turn. The server uses these
   // exact IDs to avoid publishing a stale "please confirm" reply when a
   // person resolves the card before the model's follow-up text arrives.
@@ -296,6 +297,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
 
   const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }, ...trimmedHistory];
   let toolCallsMade = 0;
+  const toolTrace: Array<{ name: string; durationMs: number; status: "succeeded" | "failed" }> = [];
   let proposedWriteAction = false;
   const proposedActionIds: string[] = [];
 
@@ -312,7 +314,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
 
     if (!message.tool_calls || message.tool_calls.length === 0) {
       const reply = message.content ?? "";
-      return { reply: proposedWriteAction ? stripConfirmationBoilerplate(reply) : reply, toolCallsMade, proposedActionIds };
+      return { reply: proposedWriteAction ? stripConfirmationBoilerplate(reply) : reply, toolCallsMade, toolTrace, proposedActionIds };
     }
 
     for (const call of message.tool_calls) {
@@ -337,6 +339,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
         }
       }
       console.log(`[timing] tool "${call.function.name}" took ${Date.now() - toolCallStart}ms`);
+      toolTrace.push({ name: call.function.name, durationMs: Date.now() - toolCallStart, status: resultText.startsWith("error:") ? "failed" : "succeeded" });
       messages.push({ role: "tool", tool_call_id: call.id, name: call.function.name, content: resultText });
     }
   }
@@ -344,6 +347,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   return {
     reply: "I wasn't able to finish that within my turn budget -- try asking something narrower.",
     toolCallsMade,
+    toolTrace,
     proposedActionIds,
   };
 }

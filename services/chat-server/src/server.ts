@@ -1477,7 +1477,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     configuredAgentId?: string,
     workflowInstructions?: string,
     workflowReadOnly = false
-  ): Promise<{ toolCalls: number; estimatedTokens: number; estimatedCostUsd: number; outputExcerpt: string }> {
+  ): Promise<{ toolCalls: number; estimatedTokens: number; estimatedCostUsd: number; outputExcerpt: string; toolTrace: Array<{ name: string; durationMs: number; status: "succeeded" | "failed" }> }> {
     const configuredAgent = configuredAgentId ? await db.getPublishedWorkspaceAgent(workspaceId, configuredAgentId) : null;
     if (configuredAgentId && !configuredAgent) throw new Error("That workspace agent has not been published yet.");
     if (configuredAgent && configuredAgent.baseAgent !== agentKind) throw new Error("The selected agent configuration does not match this specialist.");
@@ -1569,7 +1569,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     });
     const output = agentMessage.content;
     const estimatedTokens = Math.ceil(((workflowInstructions?.length ?? 0) + output.length) / 4);
-    return { toolCalls: result.toolCallsMade, estimatedTokens, estimatedCostUsd: Number((estimatedTokens * 0.00000059).toFixed(6)), outputExcerpt: output.slice(0, 1000) };
+    return { toolCalls: result.toolCallsMade, estimatedTokens, estimatedCostUsd: Number((estimatedTokens * 0.00000059).toFixed(6)), outputExcerpt: output.slice(0, 1000), toolTrace: result.toolTrace };
   }
 
   // The HTTP routes created by createApp enqueue a workflow through this

@@ -448,6 +448,7 @@ ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS tool_calls INTEGER 
 ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS estimated_tokens INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC(12,6) NOT NULL DEFAULT 0;
 ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS output_excerpt TEXT;
+ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS tool_trace JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 -- Shared execution records. Tasks may come from a conversation, workflow,
 -- or teammate and remain visible to the full workspace until completed.
