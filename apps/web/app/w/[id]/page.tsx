@@ -583,6 +583,7 @@ export default function WorkspaceRoomPage() {
           <Link href={`/w/${workspaceId}/overview`}><GridGlyph /> Overview</Link>
           <Link href={`/w/${workspaceId}/audit`}><ActivityGlyph /> Activity</Link>
           <Link href={`/w/${workspaceId}/integrations`}><PlugGlyph /> Integrations</Link>
+          <Link href={`/w/${workspaceId}/observability`}><ActivityGlyph /> Observability</Link>
           <Link href={`/w/${workspaceId}/agents`}><AgentGlyph /> Agents</Link>
           <Link href={`/w/${workspaceId}/workflows`}><ActivityGlyph /> Workflows</Link>
           <Link href={`/w/${workspaceId}/memory`}><MemoryGlyph /> Memory</Link>
