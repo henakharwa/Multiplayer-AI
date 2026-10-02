@@ -189,6 +189,7 @@ export interface WorkflowRun {
   estimatedTokens: number;
   estimatedCostUsd: number;
   outputExcerpt: string | null;
+  inputExcerpt: string | null;
   toolTrace: Array<{ name: string; durationMs: number; status: "succeeded" | "failed" }>;
 }
 
