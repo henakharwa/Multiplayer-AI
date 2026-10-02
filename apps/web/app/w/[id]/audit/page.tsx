@@ -53,11 +53,11 @@ export default function AuditPage() {
   const workspaceId = params.id;
 
   const [events, setEvents] = useState<AuditEvent[]>([]);
-  const [nextBefore, setNextBefore] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [reload, setReload] = useState(0);
   const [search, setSearch] = useState("");
   const [type, setType] = useState<AuditEventType | "">("");
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [tasks, setTasks] = useState<WorkspaceTask[]>([]); const [memories, setMemories] = useState<WorkspaceMemory[]>([]); const [artifacts, setArtifacts] = useState<WorkspaceArtifact[]>([]);
@@ -71,11 +71,21 @@ export default function AuditPage() {
     setLoading(true);
     setError(null);
     const timeout = setTimeout(() => {
-      listAuditEvents(workspaceId, { q: search.trim() || undefined, type: type || undefined })
-        .then(({ events: list, nextBefore: next }) => {
+      const loadAllEvents = async () => {
+        const all: AuditEvent[] = [];
+        let before: string | undefined;
+        do {
+          const { events: batch } = await listAuditEvents(workspaceId, { q: search.trim() || undefined, type: type || undefined, before, limit: 200 });
+          all.push(...batch);
+          before = batch.length === 200 ? batch[batch.length - 1]?.createdAt : undefined;
+        } while (before);
+        return all;
+      };
+      loadAllEvents()
+        .then((list) => {
           if (cancelled) return;
           setEvents(list);
-          setNextBefore(next);
+          setPage(1);
         })
         .catch((err) => {
           if (cancelled) return;
@@ -89,8 +99,8 @@ export default function AuditPage() {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [workspaceId, search, type]);
-  useEffect(() => { if (!live) return; const timer = window.setInterval(() => { listAuditEvents(workspaceId, { q: search.trim() || undefined, type: type || undefined }).then(({ events: list, nextBefore: next }) => { setEvents(list); setNextBefore(next); }).catch(() => {}); }, 30000); return () => window.clearInterval(timer); }, [workspaceId, search, type, live]);
+  }, [workspaceId, search, type, reload]);
+  useEffect(() => { if (!live) return; const timer = window.setInterval(() => setReload((value) => value + 1), 30000); return () => window.clearInterval(timer); }, [live]);
   useEffect(() => { try { setSavedViews(JSON.parse(window.localStorage.getItem(`nexus-activity-views-${workspaceId}`) ?? "[]")); } catch { setSavedViews([]); } }, [workspaceId]);
   useEffect(() => { void Promise.all([listWorkspaceTasks(workspaceId), listWorkspaceMemory(workspaceId), listWorkspaceArtifacts(workspaceId)]).then(([workspaceTasks, workspaceMemories, workspaceArtifacts]) => { setTasks(workspaceTasks); setMemories(workspaceMemories); setArtifacts(workspaceArtifacts); }).catch(() => {}); }, [workspaceId]);
   const attention = events.filter((event) => /failed|proposed/i.test(event.eventType));
@@ -108,30 +118,15 @@ export default function AuditPage() {
   const workflowDurations = events.filter((event) => event.eventType === "workflow.completed").map((event) => { const startedAt = workflowStarts.get(String(event.metadata.runId)); return startedAt ? new Date(event.createdAt).getTime() - startedAt : null; }).filter((duration): duration is number => duration !== null && duration >= 0);
   const averageWorkflowDuration = workflowDurations.length ? Math.round(workflowDurations.reduce((total, duration) => total + duration, 0) / workflowDurations.length / 1000) : null;
   const filteredEvents = useMemo(() => events.filter((event) => { const age = Date.now() - new Date(event.createdAt).getTime(); const within = range === "all" || (range === "today" && age < 86400000) || (range === "week" && age < 604800000); const matchesActor = !actor || event.actorName === actor; const matchesOutcome = !outcome || (outcome === "success" && /completed|confirmed|published/i.test(event.eventType)) || (outcome === "failure" && /failed/i.test(event.eventType)) || (outcome === "approval" && /proposed|confirmed|cancelled/i.test(event.eventType)); return within && matchesActor && matchesOutcome && (!agentFilter || event.summary.toLowerCase().includes(agentFilter.toLowerCase())) && (!workflowFilter || event.summary.toLowerCase().includes(workflowFilter.toLowerCase())); }), [events, actor, outcome, range, agentFilter, workflowFilter]);
-  const grouped = useMemo(() => filteredEvents.reduce<Record<string, AuditEvent[]>>((groups, event) => { const day = new Date(event.createdAt); const today = new Date(); const yesterday = new Date(); yesterday.setDate(today.getDate() - 1); const key = day.toDateString() === today.toDateString() ? "Today" : day.toDateString() === yesterday.toDateString() ? "Yesterday" : Date.now() - day.getTime() < 604800000 ? "This week" : "Earlier"; (groups[key] ??= []).push(event); return groups; }, {}), [filteredEvents]);
+  const pageSize = 10;
+  const pageCount = Math.max(1, Math.ceil(filteredEvents.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pagedEvents = filteredEvents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const grouped = useMemo(() => pagedEvents.reduce<Record<string, AuditEvent[]>>((groups, event) => { const day = new Date(event.createdAt); const today = new Date(); const yesterday = new Date(); yesterday.setDate(today.getDate() - 1); const key = day.toDateString() === today.toDateString() ? "Today" : day.toDateString() === yesterday.toDateString() ? "Yesterday" : Date.now() - day.getTime() < 604800000 ? "This week" : "Earlier"; (groups[key] ??= []).push(event); return groups; }, {}), [pagedEvents]);
+  useEffect(() => { setPage(1); }, [search, type, actor, agentFilter, workflowFilter, outcome, range]);
   const actors = [...new Set(events.map((event) => event.actorName).filter(Boolean))]; const iconFor = (event: AuditEvent) => event.eventType.startsWith("workflow") ? "↻" : event.eventType.startsWith("artifact") ? "▤" : event.eventType.startsWith("agent") ? "✦" : event.eventType.startsWith("memory") ? "▣" : event.eventType.startsWith("action") ? "✓" : event.eventType.startsWith("integration") ? "⌁" : "•";
   function saveView() { const name = window.prompt("Name this activity view"); if (!name) return; const next = [...savedViews, { name, search, type, actor, outcome, range }]; setSavedViews(next); window.localStorage.setItem(`nexus-activity-views-${workspaceId}`, JSON.stringify(next)); }
   function exportCsv() { const rows = [["Time", "Type", "Actor", "Activity"], ...filteredEvents.map((event) => [event.createdAt, EVENT_TYPE_LABELS[event.eventType], event.actorName || event.actorType, event.summary])]; const blob = new Blob(["\ufeff", rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "workspace-activity.csv"; anchor.style.display = "none"; document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 0); }
-
-  async function loadMore() {
-    if (!nextBefore) return;
-    setLoadingMore(true);
-    try {
-      const { events: more, nextBefore: next } = await listAuditEvents(workspaceId, {
-        q: search.trim() || undefined,
-        type: type || undefined,
-        before: nextBefore,
-      });
-      setEvents((prev) => [...prev, ...more]);
-      // Fewer rows than asked for is this page's "no more history" signal
-      // -- stop offering "Load older" once a page comes back short.
-      setNextBefore(more.length > 0 ? next : null);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not reach the chat server.");
-    } finally {
-      setLoadingMore(false);
-    }
-  }
 
   return (
     <div className="audit-page">
@@ -199,11 +194,7 @@ export default function AuditPage() {
         ))}</section>)}
       </div>
 
-      {nextBefore && events.length > 0 && (
-        <button className="btn secondary audit-load-more" type="button" onClick={loadMore} disabled={loadingMore} data-testid="audit-load-more">
-          {loadingMore ? "Loading…" : "Load older activity"}
-        </button>
-      )}
+      {filteredEvents.length > 0 && <nav className="audit-pagination" aria-label="Activity pages"><span>Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredEvents.length)} of {filteredEvents.length}</span><div><button type="button" onClick={() => setPage(1)} disabled={currentPage === 1} aria-label="First page">«</button><button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage === 1} aria-label="Previous page">‹</button><strong>{currentPage}</strong><span>of {pageCount}</span><button type="button" onClick={() => setPage((value) => Math.min(pageCount, value + 1))} disabled={currentPage === pageCount} aria-label="Next page">›</button><button type="button" onClick={() => setPage(pageCount)} disabled={currentPage === pageCount} aria-label="Last page">»</button></div></nav>}
     </div>
   );
 }

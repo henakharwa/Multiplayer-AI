@@ -305,12 +305,13 @@ export async function cancelAction(workspaceId: string, actionId: string, actorN
 
 export async function listAuditEvents(
   workspaceId: string,
-  options: { type?: AuditEventType; q?: string; before?: string } = {}
+  options: { type?: AuditEventType; q?: string; before?: string; limit?: number } = {}
 ): Promise<{ events: AuditEvent[]; nextBefore: string | null }> {
   const url = new URL(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/audit`);
   if (options.type) url.searchParams.set("type", options.type);
   if (options.q) url.searchParams.set("q", options.q);
   if (options.before) url.searchParams.set("before", options.before);
+  if (options.limit) url.searchParams.set("limit", String(options.limit));
   const res = await authenticatedFetch(url.toString());
   return (await parseJsonOrThrow(res)) as { events: AuditEvent[]; nextBefore: string | null };
 }
