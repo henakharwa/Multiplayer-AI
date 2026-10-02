@@ -1609,6 +1609,18 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       const detail = errMessage(error);
       await db.finishWorkflowRun(workflow.id, run.id, "failed", detail);
       await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.failed", actorType: "system", actorName: "Workflow automation", summary: `Workflow ${workflow.name} failed: ${detail}`, metadata: { workflowId: workflow.id, runId: run.id, trigger } });
+      const failureAlertThreshold = Math.max(1, Number(process.env.WORKFLOW_FAILURE_ALERT_THRESHOLD ?? 3));
+      const recentFailures = await db.countRecentFailedWorkflowRuns(workflow.workspaceId);
+      // Alert exactly when the threshold is crossed, rather than spamming
+      // everyone on every subsequent failed retry in the same 24-hour window.
+      if (recentFailures === failureAlertThreshold) {
+        await db.notifyWorkspaceMembers({
+          workspaceId: workflow.workspaceId,
+          conversationId: workflow.conversationId,
+          kind: "workflow_alert",
+          text: `${recentFailures} workflow runs failed in the last 24 hours. Review ${workflow.name} in Observability.`,
+        });
+      }
     }
   };
 

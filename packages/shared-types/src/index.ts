@@ -40,7 +40,7 @@ export interface WorkspaceNotification {
   id: string;
   workspaceId: string;
   conversationId: string | null;
-  kind: "agent_completed" | "decision_needed" | "action_completed" | "permission_request";
+  kind: "agent_completed" | "decision_needed" | "action_completed" | "permission_request" | "workflow_alert";
   text: string;
   createdAt: string;
   readAt: string | null;

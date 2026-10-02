@@ -271,7 +271,7 @@ CREATE TABLE IF NOT EXISTS workspace_notification_preferences (
 );
 ALTER TABLE workspace_notifications DROP CONSTRAINT IF EXISTS workspace_notifications_kind_check;
 ALTER TABLE workspace_notifications ADD CONSTRAINT workspace_notifications_kind_check
-  CHECK (kind IN ('agent_completed', 'decision_needed', 'action_completed', 'permission_request'));
+  CHECK (kind IN ('agent_completed', 'decision_needed', 'action_completed', 'permission_request', 'workflow_alert'));
 
 -- Added after the first version of this table shipped -- IF NOT EXISTS
 -- keeps re-running this idempotent schema safe for anyone who already has

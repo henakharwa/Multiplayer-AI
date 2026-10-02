@@ -925,6 +925,15 @@ export async function finishWorkflowRun(workflowId: string, runId: string, statu
   await getPool().query("UPDATE workspace_workflows SET last_run_status=$2,last_run_error=$3,updated_at=now() WHERE id=$1", [workflowId, status, status === "failed" ? detail ?? "Workflow failed." : null]);
 }
 
+/** Number of failures in the active alert window, including the just-finished run. */
+export async function countRecentFailedWorkflowRuns(workspaceId: string, hours = 24): Promise<number> {
+  const result = await getPool().query(
+    "SELECT count(*)::int AS count FROM workspace_workflow_runs WHERE workspace_id=$1 AND status='failed' AND completed_at >= now() - ($2::int * interval '1 hour')",
+    [workspaceId, hours]
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
 export async function listWorkflowRuns(workspaceId: string, workflowId: string): Promise<WorkflowRun[]> {
   const result = await getPool().query("SELECT r.* FROM workspace_workflow_runs r WHERE r.workspace_id=$1 AND r.workflow_id=$2 ORDER BY r.started_at DESC LIMIT 30", [workspaceId, workflowId]);
   return result.rows.map(toWorkflowRun);
