@@ -1,11 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="nexus" x1="8" y1="6" x2="56" y2="59" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#5B7CFF"/>
-      <stop offset="1" stop-color="#315FEA"/>
-    </linearGradient>
-  </defs>
-  <rect width="64" height="64" rx="16" fill="url(#nexus)"/>
-  <path d="M17 23.5 25.5 15 47 36.5 38.5 45 17 23.5Zm0 17L25.5 32 38 44.5 29.5 53 17 40.5ZM34 17l8.5-8.5L55 21l-8.5 8.5L34 17Z" fill="white"/>
-  <circle cx="47" cy="44" r="5" fill="#BDEBDE"/>
+  <rect width="64" height="64" rx="15" fill="#496CF2"/>
+  <g fill="#fff">
+    <rect x="18" y="25" width="28" height="10" rx="4" transform="rotate(45 32 30)"/>
+    <rect x="18" y="29" width="28" height="10" rx="4" transform="rotate(-45 32 34)"/>
+  </g>
+  <circle cx="32" cy="32" r="4" fill="#496CF2"/>
 </svg>
