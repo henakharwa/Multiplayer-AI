@@ -177,9 +177,7 @@ export function wrapForProposal(
           eventType: "action.proposed",
           actorType: "agent",
           actorName: "Agent",
-          summary: requestedBy
-            ? `Agent proposed (asked by ${requestedBy.name}): ${description}`
-            : `Agent proposed: ${description}`,
+          summary: `Agent prepared an action for review: ${description}`,
           metadata: { actionId: action.id, toolName: action.toolName, requestedByUserId: requestedBy?.userId ?? null, requestedByName: requestedBy?.name ?? null },
         });
         return {

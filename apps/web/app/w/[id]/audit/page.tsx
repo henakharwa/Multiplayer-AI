@@ -103,7 +103,7 @@ export default function AuditPage() {
   useEffect(() => { if (!live) return; const timer = window.setInterval(() => setReload((value) => value + 1), 30000); return () => window.clearInterval(timer); }, [live]);
   useEffect(() => { try { setSavedViews(JSON.parse(window.localStorage.getItem(`nexus-activity-views-${workspaceId}`) ?? "[]")); } catch { setSavedViews([]); } }, [workspaceId]);
   useEffect(() => { void Promise.all([listWorkspaceTasks(workspaceId), listWorkspaceMemory(workspaceId), listWorkspaceArtifacts(workspaceId)]).then(([workspaceTasks, workspaceMemories, workspaceArtifacts]) => { setTasks(workspaceTasks); setMemories(workspaceMemories); setArtifacts(workspaceArtifacts); }).catch(() => {}); }, [workspaceId]);
-  const attention = events.filter((event) => /failed|proposed/i.test(event.eventType));
+  const attention = events.filter((event) => /failed/i.test(event.eventType));
   const overdueTasks = tasks.filter((task) => task.status !== "done" && task.dueDate && new Date(`${task.dueDate}T23:59:59`).getTime() < Date.now()); const staleMemories = memories.filter((memory) => memory.freshUntil && new Date(memory.freshUntil).getTime() < Date.now());
   const recentEvents = events.filter((event) => Date.now() - new Date(event.createdAt).getTime() < 86400000).length; const previousEvents = events.filter((event) => { const age = Date.now() - new Date(event.createdAt).getTime(); return age >= 86400000 && age < 172800000; }).length; const eventTrend = recentEvents - previousEvents;
   const workflowFinished = events.filter((event) => event.eventType === "workflow.completed" || event.eventType === "workflow.failed");
