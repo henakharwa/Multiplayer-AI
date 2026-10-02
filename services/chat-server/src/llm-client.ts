@@ -30,6 +30,7 @@ export interface ChatMessage {
   tool_calls?: ToolCall[];
   tool_call_id?: string;
   name?: string;
+  usage?: { promptTokens: number; completionTokens: number; costUsd?: number };
 }
 
 export interface LlmConfig {
@@ -221,12 +222,12 @@ export const chatCompletion: LlmChatFn = async (config, messages, tools) => {
     }
 
     if (res.ok) {
-      const data = (await res.json()) as { choices?: { message?: ChatMessage }[] };
+      const data = (await res.json()) as { choices?: { message?: ChatMessage }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number } };
       const message = data.choices?.[0]?.message;
       if (!message) {
         throw new Error(`LLM response from ${url} had no choices[0].message: ${JSON.stringify(data).slice(0, 500)}`);
       }
-      return message;
+      return { ...message, usage: data.usage ? { promptTokens: data.usage.prompt_tokens ?? 0, completionTokens: data.usage.completion_tokens ?? 0, costUsd: data.usage.cost } : undefined };
     }
 
     const body = await res.text().catch(() => "");

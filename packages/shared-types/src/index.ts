@@ -188,6 +188,11 @@ export interface WorkflowRun {
   toolCalls: number;
   estimatedTokens: number;
   estimatedCostUsd: number;
+  /** Token counts supplied in the provider's response, when available. */
+  providerPromptTokens: number | null;
+  providerCompletionTokens: number | null;
+  /** Cost supplied in the provider's response, when available. */
+  providerCostUsd: number | null;
   outputExcerpt: string | null;
   inputExcerpt: string | null;
   toolTrace: Array<{ name: string; durationMs: number; status: "succeeded" | "failed" }>;

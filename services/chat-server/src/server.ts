@@ -1477,7 +1477,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     configuredAgentId?: string,
     workflowInstructions?: string,
     workflowReadOnly = false
-  ): Promise<{ toolCalls: number; estimatedTokens: number; estimatedCostUsd: number; outputExcerpt: string; inputExcerpt: string | null; toolTrace: Array<{ name: string; durationMs: number; status: "succeeded" | "failed" }> }> {
+  ): Promise<{ toolCalls: number; estimatedTokens: number; estimatedCostUsd: number; providerPromptTokens: number | null; providerCompletionTokens: number | null; providerCostUsd: number | null; outputExcerpt: string; inputExcerpt: string | null; toolTrace: Array<{ name: string; durationMs: number; status: "succeeded" | "failed" }> }> {
     const configuredAgent = configuredAgentId ? await db.getPublishedWorkspaceAgent(workspaceId, configuredAgentId) : null;
     if (configuredAgentId && !configuredAgent) throw new Error("That workspace agent has not been published yet.");
     if (configuredAgent && configuredAgent.baseAgent !== agentKind) throw new Error("The selected agent configuration does not match this specialist.");
@@ -1568,8 +1568,9 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       excludeUserIds: rooms.participants(`${workspaceId}:${conversationId}`).flatMap((participant) => participant.userId ? [participant.userId] : []),
     });
     const output = agentMessage.content;
-    const estimatedTokens = Math.ceil(((workflowInstructions?.length ?? 0) + output.length) / 4);
-    return { toolCalls: result.toolCallsMade, estimatedTokens, estimatedCostUsd: Number((estimatedTokens * 0.00000059).toFixed(6)), outputExcerpt: output.slice(0, 1000), inputExcerpt: workflowInstructions ? workflowInstructions.slice(0, 1000) : null, toolTrace: result.toolTrace };
+    const providerTokens = result.providerPromptTokens + result.providerCompletionTokens;
+    const estimatedTokens = providerTokens || Math.ceil(((workflowInstructions?.length ?? 0) + output.length) / 4);
+    return { toolCalls: result.toolCallsMade, estimatedTokens, estimatedCostUsd: Number((estimatedTokens * 0.00000059).toFixed(6)), providerPromptTokens: providerTokens ? result.providerPromptTokens : null, providerCompletionTokens: providerTokens ? result.providerCompletionTokens : null, providerCostUsd: result.providerCostUsd, outputExcerpt: output.slice(0, 1000), inputExcerpt: workflowInstructions ? workflowInstructions.slice(0, 1000) : null, toolTrace: result.toolTrace };
   }
 
   // The HTTP routes created by createApp enqueue a workflow through this

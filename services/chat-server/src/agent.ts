@@ -37,6 +37,9 @@ export interface RunAgentTurnResult {
   reply: string;
   toolCallsMade: number;
   toolTrace: Array<{ name: string; durationMs: number; status: "succeeded" | "failed" }>;
+  providerPromptTokens: number;
+  providerCompletionTokens: number;
+  providerCostUsd: number | null;
   // IDs of write actions proposed during this turn. The server uses these
   // exact IDs to avoid publishing a stale "please confirm" reply when a
   // person resolves the card before the model's follow-up text arrives.
@@ -298,6 +301,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }, ...trimmedHistory];
   let toolCallsMade = 0;
   const toolTrace: Array<{ name: string; durationMs: number; status: "succeeded" | "failed" }> = [];
+  let providerPromptTokens = 0; let providerCompletionTokens = 0; let providerCostUsd: number | null = null;
   let proposedWriteAction = false;
   const proposedActionIds: string[] = [];
 
@@ -309,12 +313,13 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     // "a specific tool call is slow" instead of just one big number.
     const llmCallStart = Date.now();
     const message = await chat(config, messages, toolDefs);
+    providerPromptTokens += message.usage?.promptTokens ?? 0; providerCompletionTokens += message.usage?.completionTokens ?? 0; if (message.usage?.costUsd !== undefined) providerCostUsd = (providerCostUsd ?? 0) + message.usage.costUsd;
     console.log(`[timing] LLM call (turn ${turn + 1}) took ${Date.now() - llmCallStart}ms`);
     messages.push(message);
 
     if (!message.tool_calls || message.tool_calls.length === 0) {
       const reply = message.content ?? "";
-      return { reply: proposedWriteAction ? stripConfirmationBoilerplate(reply) : reply, toolCallsMade, toolTrace, proposedActionIds };
+      return { reply: proposedWriteAction ? stripConfirmationBoilerplate(reply) : reply, toolCallsMade, toolTrace, providerPromptTokens, providerCompletionTokens, providerCostUsd, proposedActionIds };
     }
 
     for (const call of message.tool_calls) {
@@ -348,6 +353,9 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     reply: "I wasn't able to finish that within my turn budget -- try asking something narrower.",
     toolCallsMade,
     toolTrace,
+    providerPromptTokens,
+    providerCompletionTokens,
+    providerCostUsd,
     proposedActionIds,
   };
 }

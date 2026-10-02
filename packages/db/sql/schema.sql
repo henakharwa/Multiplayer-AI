@@ -447,6 +447,9 @@ CREATE INDEX IF NOT EXISTS workspace_workflow_runs_workflow_idx ON workspace_wor
 ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS tool_calls INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS estimated_tokens INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC(12,6) NOT NULL DEFAULT 0;
+ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS provider_prompt_tokens INTEGER;
+ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS provider_completion_tokens INTEGER;
+ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS provider_cost_usd NUMERIC(12,6);
 ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS output_excerpt TEXT;
 ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS input_excerpt TEXT;
 ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS tool_trace JSONB NOT NULL DEFAULT '[]'::jsonb;
