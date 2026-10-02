@@ -499,6 +499,22 @@ export async function markNotificationsRead(userId: string, workspaceId: string)
   await getPool().query(`UPDATE workspace_notifications SET read_at = now() WHERE user_id = $1 AND workspace_id = $2 AND read_at IS NULL`, [userId, workspaceId]);
 }
 
+export async function getNotificationPreferences(workspaceId: string, userId: string): Promise<import("@mai-chat/shared-types").WorkspaceNotificationPreferences> {
+  const result = await getPool().query("SELECT workspace_id,user_id,browser_enabled,email_enabled,slack_enabled,escalation_minutes,daily_summary_enabled,updated_at FROM workspace_notification_preferences WHERE workspace_id=$1 AND user_id=$2", [workspaceId, userId]);
+  const row = result.rows[0];
+  return { workspaceId, browserEnabled: row?.browser_enabled ?? true, emailEnabled: row?.email_enabled ?? false, slackEnabled: row?.slack_enabled ?? false, escalationMinutes: row?.escalation_minutes ?? 60, dailySummaryEnabled: row?.daily_summary_enabled ?? true, updatedAt: row?.updated_at ? row.updated_at.toISOString() : null };
+}
+
+export async function updateNotificationPreferences(workspaceId: string, userId: string, input: Partial<import("@mai-chat/shared-types").WorkspaceNotificationPreferences>): Promise<import("@mai-chat/shared-types").WorkspaceNotificationPreferences> {
+  const current = await getNotificationPreferences(workspaceId, userId);
+  const escalationMinutes = [15, 30, 60, 240, 1440].includes(input.escalationMinutes ?? current.escalationMinutes) ? input.escalationMinutes ?? current.escalationMinutes : current.escalationMinutes;
+  const result = await getPool().query(`INSERT INTO workspace_notification_preferences (workspace_id,user_id,browser_enabled,email_enabled,slack_enabled,escalation_minutes,daily_summary_enabled)
+    VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (workspace_id,user_id) DO UPDATE SET browser_enabled=EXCLUDED.browser_enabled,email_enabled=EXCLUDED.email_enabled,slack_enabled=EXCLUDED.slack_enabled,escalation_minutes=EXCLUDED.escalation_minutes,daily_summary_enabled=EXCLUDED.daily_summary_enabled,updated_at=now() RETURNING *`,
+    [workspaceId, userId, input.browserEnabled ?? current.browserEnabled, input.emailEnabled ?? current.emailEnabled, input.slackEnabled ?? current.slackEnabled, escalationMinutes, input.dailySummaryEnabled ?? current.dailySummaryEnabled]);
+  const row = result.rows[0];
+  return { workspaceId, browserEnabled: row.browser_enabled, emailEnabled: row.email_enabled, slackEnabled: row.slack_enabled, escalationMinutes: row.escalation_minutes, dailySummaryEnabled: row.daily_summary_enabled, updatedAt: row.updated_at.toISOString() };
+}
+
 const DEFAULT_ADMIN_PERMISSIONS: WorkspacePermissions = { connectTools: true, createAgents: true, publishAgents: true, approveActions: true, github: true, slack: true, linear: true, notion: true, figma: true };
 const DEFAULT_EDITOR_PERMISSIONS: WorkspacePermissions = { connectTools: true, createAgents: false, publishAgents: false, approveActions: false, github: true, slack: true, linear: true, notion: true, figma: true };
 

@@ -46,6 +46,16 @@ export interface WorkspaceNotification {
   readAt: string | null;
 }
 
+export interface WorkspaceNotificationPreferences {
+  workspaceId: string;
+  browserEnabled: boolean;
+  emailEnabled: boolean;
+  slackEnabled: boolean;
+  escalationMinutes: number;
+  dailySummaryEnabled: boolean;
+  updatedAt: string | null;
+}
+
 // A real account -- "Sign in with GitHub" (services/chat-server/src/auth.ts)
 // is the only way to get one; there's no separate password to manage.
 // Replaces the old model where anyone with a workspace's join code typed

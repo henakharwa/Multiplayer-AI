@@ -615,6 +615,18 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.status(204).end();
   });
 
+  app.get("/notifications/preferences", requireAuth, async (req: Request, res: Response) => {
+    const workspaceId = typeof req.query.workspaceId === "string" ? req.query.workspaceId : "";
+    if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "valid workspaceId is required" });
+    res.json(await db.getNotificationPreferences(workspaceId, req.user!.id));
+  });
+
+  app.put("/notifications/preferences", requireAuth, async (req: Request, res: Response) => {
+    const workspaceId = typeof req.body?.workspaceId === "string" ? req.body.workspaceId : "";
+    if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "valid workspaceId is required" });
+    res.json(await db.updateNotificationPreferences(workspaceId, req.user!.id, req.body ?? {}));
+  });
+
   app.post("/workspaces", async (req: Request, res: Response) => {
     const name = typeof req.body?.name === "string" ? db.normalizeWorkspaceName(req.body.name) : "";
     if (!name) return res.status(400).json({ error: "name is required" });

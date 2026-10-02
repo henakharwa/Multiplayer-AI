@@ -126,6 +126,9 @@ export async function markNotificationsRead(workspaceId: string): Promise<void> 
   await parseJsonOrThrow(res);
 }
 
+export async function getNotificationPreferences(workspaceId: string): Promise<import("@mai-chat/shared-types").WorkspaceNotificationPreferences> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/notifications/preferences?workspaceId=${encodeURIComponent(workspaceId)}`); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceNotificationPreferences; }
+export async function updateNotificationPreferences(workspaceId: string, input: Partial<import("@mai-chat/shared-types").WorkspaceNotificationPreferences>): Promise<import("@mai-chat/shared-types").WorkspaceNotificationPreferences> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/notifications/preferences`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ workspaceId, ...input }) }); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceNotificationPreferences; }
+
 export async function listIntegrations(workspaceId: string): Promise<IntegrationConfig[]> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/integrations`);
   return (await parseJsonOrThrow(res)) as IntegrationConfig[];

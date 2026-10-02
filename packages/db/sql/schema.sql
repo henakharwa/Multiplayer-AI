@@ -258,6 +258,17 @@ CREATE TABLE IF NOT EXISTS workspace_notifications (
 );
 CREATE INDEX IF NOT EXISTS workspace_notifications_user_idx
   ON workspace_notifications (user_id, read_at, created_at DESC);
+CREATE TABLE IF NOT EXISTS workspace_notification_preferences (
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  browser_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  email_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  slack_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  escalation_minutes INTEGER NOT NULL DEFAULT 60 CHECK (escalation_minutes IN (15, 30, 60, 240, 1440)),
+  daily_summary_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (workspace_id, user_id)
+);
 ALTER TABLE workspace_notifications DROP CONSTRAINT IF EXISTS workspace_notifications_kind_check;
 ALTER TABLE workspace_notifications ADD CONSTRAINT workspace_notifications_kind_check
   CHECK (kind IN ('agent_completed', 'decision_needed', 'action_completed', 'permission_request'));
