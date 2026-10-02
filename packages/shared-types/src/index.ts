@@ -185,6 +185,10 @@ export interface WorkflowRun {
   detail: string | null;
   startedAt: string;
   completedAt: string | null;
+  toolCalls: number;
+  estimatedTokens: number;
+  estimatedCostUsd: number;
+  outputExcerpt: string | null;
 }
 
 export type WorkspaceTaskStatus = "todo" | "in_progress" | "review" | "done";

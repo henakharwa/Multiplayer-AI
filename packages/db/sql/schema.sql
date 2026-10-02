@@ -444,6 +444,10 @@ CREATE TABLE IF NOT EXISTS workspace_workflow_runs (
   completed_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS workspace_workflow_runs_workflow_idx ON workspace_workflow_runs (workflow_id, started_at DESC);
+ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS tool_calls INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS estimated_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC(12,6) NOT NULL DEFAULT 0;
+ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS output_excerpt TEXT;
 
 -- Shared execution records. Tasks may come from a conversation, workflow,
 -- or teammate and remain visible to the full workspace until completed.

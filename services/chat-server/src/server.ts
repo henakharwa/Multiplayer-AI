@@ -1477,7 +1477,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     configuredAgentId?: string,
     workflowInstructions?: string,
     workflowReadOnly = false
-  ): Promise<void> {
+  ): Promise<{ toolCalls: number; estimatedTokens: number; estimatedCostUsd: number; outputExcerpt: string }> {
     const configuredAgent = configuredAgentId ? await db.getPublishedWorkspaceAgent(workspaceId, configuredAgentId) : null;
     if (configuredAgentId && !configuredAgent) throw new Error("That workspace agent has not been published yet.");
     if (configuredAgent && configuredAgent.baseAgent !== agentKind) throw new Error("The selected agent configuration does not match this specialist.");
@@ -1567,6 +1567,9 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       text: "Agent completed a response in the workspace.",
       excludeUserIds: rooms.participants(`${workspaceId}:${conversationId}`).flatMap((participant) => participant.userId ? [participant.userId] : []),
     });
+    const output = agentMessage.content;
+    const estimatedTokens = Math.ceil(((workflowInstructions?.length ?? 0) + output.length) / 4);
+    return { toolCalls: result.toolCallsMade, estimatedTokens, estimatedCostUsd: Number((estimatedTokens * 0.00000059).toFixed(6)), outputExcerpt: output.slice(0, 1000) };
   }
 
   // The HTTP routes created by createApp enqueue a workflow through this
@@ -1590,7 +1593,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       const systemMessage = await db.insertMessage({ workspaceId: workflow.workspaceId, conversationId: conversation.id, role: "system", authorName: "Workflow", content: `${prefix}: ${workflow.name}\n${task}` });
       rooms.broadcast(`${workflow.workspaceId}:${conversation.id}`, { type: "message", message: systemMessage });
       rooms.broadcast(workflow.workspaceId, { type: "workspace_message", message: systemMessage });
-      await runAgentReply(
+      const telemetry = await runAgentReply(
         workflow.workspaceId,
         conversation.id,
         { userId: user.id, name: user.displayName },
@@ -1599,7 +1602,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
         task,
         !workflowRequestsExternalChange(workflow.instructions)
       );
-      await db.finishWorkflowRun(workflow.id, run.id, "succeeded", "Agent response completed.");
+      await db.finishWorkflowRun(workflow.id, run.id, "succeeded", "Agent response completed.", telemetry);
       await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.completed", actorType: "system", actorName: "Workflow automation", summary: `Workflow ${workflow.name} completed`, metadata: { workflowId: workflow.id, runId: run.id, trigger } });
     } catch (error) {
       const detail = errMessage(error);
