@@ -170,6 +170,9 @@ export function wrapForProposal(
           conversationId,
           kind: "decision_needed",
           text: `Decision needed: ${description}`,
+          priority: "high",
+          resourceType: "action",
+          resourceId: action.id,
           excludeUserIds: rooms.participants(`${workspaceId}:${conversationId}`).flatMap((participant) => participant.userId ? [participant.userId] : []),
         });
         await db.recordAuditEvent({
