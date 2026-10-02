@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import type { AuditEvent, AuditEventType } from "@mai-chat/shared-types";
-import { listAuditEvents, ApiError } from "../../../../lib/api";
+import type { AuditEvent, AuditEventType, WorkspaceMemory, WorkspaceTask } from "@mai-chat/shared-types";
+import { listAuditEvents, listWorkspaceMemory, listWorkspaceTasks, ApiError } from "../../../../lib/api";
 
 // Matches the AuditEventType union in packages/shared-types -- add a new
 // kind there and in services/chat-server/src/actions.ts / server.ts
@@ -60,6 +60,7 @@ export default function AuditPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<WorkspaceTask[]>([]); const [memories, setMemories] = useState<WorkspaceMemory[]>([]);
   const [live, setLive] = useState(true);
   const [actor, setActor] = useState(""); const [outcome, setOutcome] = useState<"" | "success" | "failure" | "approval">(""); const [range, setRange] = useState<"all" | "today" | "week">("all"); const [agentFilter, setAgentFilter] = useState(""); const [workflowFilter, setWorkflowFilter] = useState(""); const [savedViews, setSavedViews] = useState<Array<{ name: string; search: string; type: AuditEventType | ""; actor: string; outcome: "" | "success" | "failure" | "approval"; range: "all" | "today" | "week" }>>([]);
 
@@ -91,7 +92,10 @@ export default function AuditPage() {
   }, [workspaceId, search, type]);
   useEffect(() => { if (!live) return; const timer = window.setInterval(() => { listAuditEvents(workspaceId, { q: search.trim() || undefined, type: type || undefined }).then(({ events: list, nextBefore: next }) => { setEvents(list); setNextBefore(next); }).catch(() => {}); }, 30000); return () => window.clearInterval(timer); }, [workspaceId, search, type, live]);
   useEffect(() => { try { setSavedViews(JSON.parse(window.localStorage.getItem(`nexus-activity-views-${workspaceId}`) ?? "[]")); } catch { setSavedViews([]); } }, [workspaceId]);
+  useEffect(() => { void Promise.all([listWorkspaceTasks(workspaceId), listWorkspaceMemory(workspaceId)]).then(([workspaceTasks, workspaceMemories]) => { setTasks(workspaceTasks); setMemories(workspaceMemories); }).catch(() => {}); }, [workspaceId]);
   const attention = events.filter((event) => /failed|proposed/i.test(event.eventType));
+  const overdueTasks = tasks.filter((task) => task.status !== "done" && task.dueDate && new Date(`${task.dueDate}T23:59:59`).getTime() < Date.now()); const staleMemories = memories.filter((memory) => memory.freshUntil && new Date(memory.freshUntil).getTime() < Date.now());
+  const recentEvents = events.filter((event) => Date.now() - new Date(event.createdAt).getTime() < 86400000).length; const previousEvents = events.filter((event) => { const age = Date.now() - new Date(event.createdAt).getTime(); return age >= 86400000 && age < 172800000; }).length; const eventTrend = recentEvents - previousEvents;
   const filteredEvents = useMemo(() => events.filter((event) => { const age = Date.now() - new Date(event.createdAt).getTime(); const within = range === "all" || (range === "today" && age < 86400000) || (range === "week" && age < 604800000); const matchesActor = !actor || event.actorName === actor; const matchesOutcome = !outcome || (outcome === "success" && /completed|confirmed|published/i.test(event.eventType)) || (outcome === "failure" && /failed/i.test(event.eventType)) || (outcome === "approval" && /proposed|confirmed|cancelled/i.test(event.eventType)); return within && matchesActor && matchesOutcome && (!agentFilter || event.summary.toLowerCase().includes(agentFilter.toLowerCase())) && (!workflowFilter || event.summary.toLowerCase().includes(workflowFilter.toLowerCase())); }), [events, actor, outcome, range, agentFilter, workflowFilter]);
   const grouped = useMemo(() => filteredEvents.reduce<Record<string, AuditEvent[]>>((groups, event) => { const day = new Date(event.createdAt); const today = new Date(); const yesterday = new Date(); yesterday.setDate(today.getDate() - 1); const key = day.toDateString() === today.toDateString() ? "Today" : day.toDateString() === yesterday.toDateString() ? "Yesterday" : Date.now() - day.getTime() < 604800000 ? "This week" : "Earlier"; (groups[key] ??= []).push(event); return groups; }, {}), [filteredEvents]);
   const actors = [...new Set(events.map((event) => event.actorName).filter(Boolean))]; const iconFor = (event: AuditEvent) => event.eventType.startsWith("workflow") ? "↻" : event.eventType.startsWith("artifact") ? "▤" : event.eventType.startsWith("agent") ? "✦" : event.eventType.startsWith("memory") ? "▣" : event.eventType.startsWith("action") ? "✓" : event.eventType.startsWith("integration") ? "⌁" : "•";
@@ -128,8 +132,8 @@ export default function AuditPage() {
         Who asked for what, what the agent did, and when -- every workspace creation, membership, integration, and agent action in
         this workspace.
       </p>
-      <section className="activity-summary"><div><span>TODAY</span><strong>{events.filter((event) => new Date(event.createdAt).toDateString() === new Date().toDateString()).length}</strong><small>events recorded</small></div><div><span>NEEDS ATTENTION</span><strong>{attention.length}</strong><small>failed runs or approvals</small></div><div><span>WORKFLOW HEALTH</span><strong>{events.filter((event) => event.eventType === "workflow.completed").length}</strong><small>completed runs shown</small></div><div><span>LIVE UPDATES</span><button type="button" className={live ? "active" : ""} onClick={() => setLive((value) => !value)}>{live ? "● Live" : "Paused"}</button></div></section>
-      {attention.length > 0 && <section className="activity-attention"><strong>Needs attention</strong>{attention.slice(0, 3).map((event) => <button type="button" key={event.id} onClick={() => setExpanded(event.id)}>{event.summary}</button>)}</section>}
+      <section className="activity-summary"><div><span>TODAY</span><strong>{recentEvents}</strong><small>{eventTrend === 0 ? "same as yesterday" : `${eventTrend > 0 ? "+" : ""}${eventTrend} vs yesterday`}</small></div><div><span>NEEDS ATTENTION</span><strong>{attention.length + overdueTasks.length + staleMemories.length}</strong><small>runs, approvals, tasks, memory</small></div><div><span>WORKFLOW HEALTH</span><strong>{events.filter((event) => event.eventType === "workflow.completed").length}</strong><small>completed runs shown</small></div><div><span>LIVE UPDATES</span><button type="button" className={live ? "active" : ""} onClick={() => setLive((value) => !value)}>{live ? "● Live" : "Paused"}</button></div></section>
+      {(attention.length > 0 || overdueTasks.length > 0 || staleMemories.length > 0) && <section className="activity-attention"><strong>Needs attention</strong>{attention.slice(0, 3).map((event) => <button type="button" key={event.id} onClick={() => setExpanded(event.id)}>{event.summary}</button>)}{overdueTasks.map((task) => <Link key={task.id} href={`/w/${workspaceId}/tasks`}>Overdue task: {task.title}</Link>)}{staleMemories.map((memory) => <Link key={memory.id} href={`/w/${workspaceId}/memory`}>Memory needs review: {memory.title}</Link>)}</section>}
 
       <div className="audit-toolbar">
         <input
