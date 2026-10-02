@@ -315,7 +315,12 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     const message = await chat(config, messages, toolDefs);
     providerPromptTokens += message.usage?.promptTokens ?? 0; providerCompletionTokens += message.usage?.completionTokens ?? 0; if (message.usage?.costUsd !== undefined) providerCostUsd = (providerCostUsd ?? 0) + message.usage.costUsd;
     console.log(`[timing] LLM call (turn ${turn + 1}) took ${Date.now() - llmCallStart}ms`);
-    messages.push(message);
+    // `usage` is our local telemetry added by llm-client, not part of the
+    // OpenAI-compatible chat message schema. Keep it for the run record,
+    // but never echo it into the next provider request (Groq rejects an
+    // assistant message carrying an unknown `usage` property).
+    const { usage: _usage, ...providerMessage } = message;
+    messages.push(providerMessage);
 
     if (!message.tool_calls || message.tool_calls.length === 0) {
       const reply = message.content ?? "";
