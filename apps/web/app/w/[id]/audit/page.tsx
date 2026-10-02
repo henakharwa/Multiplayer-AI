@@ -144,7 +144,7 @@ export default function AuditPage() {
 
       <div className="audit-toolbar">
         <div className="audit-filter-row">
-        <input
+          <div className="audit-text-filters"><input
           className="audit-search"
           type="text"
           placeholder="Search by person or action…"
@@ -153,7 +153,8 @@ export default function AuditPage() {
           data-testid="audit-search"
           aria-label="Search activity"
         />
-        <select
+          <input value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} placeholder="Agent name" aria-label="Filter by agent"/><input value={workflowFilter} onChange={(event) => setWorkflowFilter(event.target.value)} placeholder="Workflow name" aria-label="Filter by workflow"/></div>
+          <div className="audit-select-filters"><select
           className="audit-type-select"
           value={type}
           onChange={(e) => setType(e.target.value as AuditEventType | "")}
@@ -167,9 +168,9 @@ export default function AuditPage() {
             </option>
           ))}
         </select>
-        <select value={actor} onChange={(event) => setActor(event.target.value)} aria-label="Filter by teammate"><option value="">All teammates</option>{actors.map((name) => <option key={name}>{name}</option>)}</select><input value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} placeholder="Agent name" aria-label="Filter by agent"/><input value={workflowFilter} onChange={(event) => setWorkflowFilter(event.target.value)} placeholder="Workflow name" aria-label="Filter by workflow"/><select value={outcome} onChange={(event) => setOutcome(event.target.value as typeof outcome)} aria-label="Filter by outcome"><option value="">All outcomes</option><option value="success">Completed</option><option value="failure">Failed</option><option value="approval">Approvals</option></select><select value={range} onChange={(event) => setRange(event.target.value as typeof range)} aria-label="Filter by time"><option value="all">All time</option><option value="today">Today</option><option value="week">This week</option></select>
+        <select value={actor} onChange={(event) => setActor(event.target.value)} aria-label="Filter by teammate"><option value="">All teammates</option>{actors.map((name) => <option key={name}>{name}</option>)}</select><select value={outcome} onChange={(event) => setOutcome(event.target.value as typeof outcome)} aria-label="Filter by outcome"><option value="">All outcomes</option><option value="success">Completed</option><option value="failure">Failed</option><option value="approval">Approvals</option></select><select value={range} onChange={(event) => setRange(event.target.value as typeof range)} aria-label="Filter by time"><option value="all">All time</option><option value="today">Today</option><option value="week">This week</option></select>
         <button type="button" className="secondary-button" onClick={() => { setSearch(""); setType(""); setActor(""); setAgentFilter(""); setWorkflowFilter(""); setOutcome(""); setRange("all"); }}>Clear</button>
-        </div>
+        </div></div>
         <div className="audit-action-row"><button type="button" className="secondary-button" onClick={exportCsv}>Export CSV</button><button type="button" className="secondary-button" onClick={saveView}>Save view</button></div>
       </div>
       {savedViews.length > 0 && <div className="activity-saved-views">{savedViews.map((view) => <button key={view.name} type="button" onClick={() => { setSearch(view.search); setType(view.type); setActor(view.actor); setOutcome(view.outcome); setRange(view.range); }}>{view.name}</button>)}</div>}
