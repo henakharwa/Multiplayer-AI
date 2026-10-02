@@ -111,7 +111,7 @@ export default function AuditPage() {
   const grouped = useMemo(() => filteredEvents.reduce<Record<string, AuditEvent[]>>((groups, event) => { const day = new Date(event.createdAt); const today = new Date(); const yesterday = new Date(); yesterday.setDate(today.getDate() - 1); const key = day.toDateString() === today.toDateString() ? "Today" : day.toDateString() === yesterday.toDateString() ? "Yesterday" : Date.now() - day.getTime() < 604800000 ? "This week" : "Earlier"; (groups[key] ??= []).push(event); return groups; }, {}), [filteredEvents]);
   const actors = [...new Set(events.map((event) => event.actorName).filter(Boolean))]; const iconFor = (event: AuditEvent) => event.eventType.startsWith("workflow") ? "↻" : event.eventType.startsWith("artifact") ? "▤" : event.eventType.startsWith("agent") ? "✦" : event.eventType.startsWith("memory") ? "▣" : event.eventType.startsWith("action") ? "✓" : event.eventType.startsWith("integration") ? "⌁" : "•";
   function saveView() { const name = window.prompt("Name this activity view"); if (!name) return; const next = [...savedViews, { name, search, type, actor, outcome, range }]; setSavedViews(next); window.localStorage.setItem(`nexus-activity-views-${workspaceId}`, JSON.stringify(next)); }
-  function exportCsv() { const rows = [["Time", "Type", "Actor", "Activity"], ...events.map((event) => [event.createdAt, EVENT_TYPE_LABELS[event.eventType], event.actorType, event.summary])]; const blob = new Blob([rows.map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(",")).join("\n")], { type: "text/csv" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "workspace-activity.csv"; anchor.click(); URL.revokeObjectURL(url); }
+  function exportCsv() { const rows = [["Time", "Type", "Actor", "Activity"], ...filteredEvents.map((event) => [event.createdAt, EVENT_TYPE_LABELS[event.eventType], event.actorName || event.actorType, event.summary])]; const blob = new Blob(["\ufeff", rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "workspace-activity.csv"; anchor.style.display = "none"; document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 0); }
 
   async function loadMore() {
     if (!nextBefore) return;
@@ -148,6 +148,7 @@ export default function AuditPage() {
       {(attention.length > 0 || overdueTasks.length > 0 || staleMemories.length > 0) && <section className="activity-attention"><strong>Needs attention</strong>{attention.slice(0, 3).map((event) => <button type="button" key={event.id} onClick={() => setExpanded(event.id)}>{event.summary}</button>)}{overdueTasks.map((task) => <Link key={task.id} href={`/w/${workspaceId}/tasks`}>Overdue task: {task.title}</Link>)}{staleMemories.map((memory) => <Link key={memory.id} href={`/w/${workspaceId}/memory`}>Memory needs review: {memory.title}</Link>)}</section>}
 
       <div className="audit-toolbar">
+        <div className="audit-filter-row">
         <input
           className="audit-search"
           type="text"
@@ -172,8 +173,9 @@ export default function AuditPage() {
           ))}
         </select>
         <select value={actor} onChange={(event) => setActor(event.target.value)} aria-label="Filter by teammate"><option value="">All teammates</option>{actors.map((name) => <option key={name}>{name}</option>)}</select><input value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} placeholder="Agent name" aria-label="Filter by agent"/><input value={workflowFilter} onChange={(event) => setWorkflowFilter(event.target.value)} placeholder="Workflow name" aria-label="Filter by workflow"/><select value={outcome} onChange={(event) => setOutcome(event.target.value as typeof outcome)} aria-label="Filter by outcome"><option value="">All outcomes</option><option value="success">Completed</option><option value="failure">Failed</option><option value="approval">Approvals</option></select><select value={range} onChange={(event) => setRange(event.target.value as typeof range)} aria-label="Filter by time"><option value="all">All time</option><option value="today">Today</option><option value="week">This week</option></select>
-        <button type="button" className="secondary-button" onClick={() => { setSearch(""); setType(""); }}>Clear</button><button type="button" className="secondary-button" onClick={exportCsv}>Export CSV</button>
-        <button type="button" className="secondary-button" onClick={saveView}>Save view</button>
+        <button type="button" className="secondary-button" onClick={() => { setSearch(""); setType(""); setActor(""); setAgentFilter(""); setWorkflowFilter(""); setOutcome(""); setRange("all"); }}>Clear</button>
+        </div>
+        <div className="audit-action-row"><button type="button" className="secondary-button" onClick={exportCsv}>Export CSV</button><button type="button" className="secondary-button" onClick={saveView}>Save view</button></div>
       </div>
       {savedViews.length > 0 && <div className="activity-saved-views">{savedViews.map((view) => <button key={view.name} type="button" onClick={() => { setSearch(view.search); setType(view.type); setActor(view.actor); setOutcome(view.outcome); setRange(view.range); }}>{view.name}</button>)}</div>}
 
