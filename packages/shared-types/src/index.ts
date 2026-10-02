@@ -198,6 +198,12 @@ export interface WorkflowRun {
   toolTrace: Array<{ name: string; durationMs: number; status: "succeeded" | "failed" }>;
 }
 
+export interface ObservabilityRetentionPolicy {
+  workspaceId: string;
+  retentionDays: 7 | 30 | 90 | 365;
+  updatedAt: string | null;
+}
+
 export type WorkspaceTaskStatus = "todo" | "in_progress" | "review" | "done";
 export interface WorkspaceTask {
   id: string;

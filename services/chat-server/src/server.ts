@@ -881,6 +881,18 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     res.json(await db.listWorkflowRuns(paramString(req.params.id), paramString(req.params.workflowId)));
   });
+  app.get("/workspaces/:id/observability/retention", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    res.json(await db.getObservabilityRetentionPolicy(paramString(req.params.id)));
+  });
+  app.put("/workspaces/:id/observability/retention", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const retentionDays = Number(req.body?.retentionDays);
+    if (![7, 30, 90, 365].includes(retentionDays)) return res.status(400).json({ error: "retentionDays must be 7, 30, 90, or 365" });
+    const policy = await db.updateObservabilityRetentionPolicy(paramString(req.params.id), retentionDays as 7 | 30 | 90 | 365);
+    const removed = await db.enforceWorkflowRunRetention();
+    res.json({ ...policy, removed });
+  });
   app.post("/workspaces/:id/workflows/:workflowId/run", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const workflow = await db.getWorkspaceWorkflow(paramString(req.params.id), paramString(req.params.workflowId));
@@ -1641,8 +1653,10 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       })().catch((error) => console.error("workflow scheduler failed", error));
     }, 30_000);
   };
-  server.on("listening", startWorkflowScheduler);
-  server.on("close", () => { if (workflowScheduler) clearInterval(workflowScheduler); workflowScheduler = undefined; });
+  let retentionScheduler: NodeJS.Timeout | undefined;
+  const enforceRetention = () => void db.enforceWorkflowRunRetention().catch((error) => console.error("workflow retention failed", error));
+  server.on("listening", () => { startWorkflowScheduler(); enforceRetention(); retentionScheduler = setInterval(enforceRetention, 24 * 60 * 60 * 1000); });
+  server.on("close", () => { if (workflowScheduler) clearInterval(workflowScheduler); if (retentionScheduler) clearInterval(retentionScheduler); workflowScheduler = undefined; retentionScheduler = undefined; });
 
   wss.on("connection", (ws: WebSocket, req) => {
     if (req.headers.origin && req.headers.origin !== (process.env.WEB_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "")) {

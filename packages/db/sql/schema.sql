@@ -454,6 +454,12 @@ ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS output_excerpt TEXT
 ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS input_excerpt TEXT;
 ALTER TABLE workspace_workflow_runs ADD COLUMN IF NOT EXISTS tool_trace JSONB NOT NULL DEFAULT '[]'::jsonb;
 
+CREATE TABLE IF NOT EXISTS workspace_observability_settings (
+  workspace_id UUID PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+  workflow_run_retention_days INTEGER NOT NULL DEFAULT 30 CHECK (workflow_run_retention_days IN (7, 30, 90, 365)),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Shared execution records. Tasks may come from a conversation, workflow,
 -- or teammate and remain visible to the full workspace until completed.
 CREATE TABLE IF NOT EXISTS workspace_tasks (

@@ -934,6 +934,29 @@ export async function countRecentFailedWorkflowRuns(workspaceId: string, hours =
   return Number(result.rows[0]?.count ?? 0);
 }
 
+export async function getObservabilityRetentionPolicy(workspaceId: string): Promise<import("@mai-chat/shared-types").ObservabilityRetentionPolicy> {
+  const result = await getPool().query("SELECT workflow_run_retention_days,updated_at FROM workspace_observability_settings WHERE workspace_id=$1", [workspaceId]);
+  const row = result.rows[0];
+  return { workspaceId, retentionDays: (row?.workflow_run_retention_days ?? 30) as 7 | 30 | 90 | 365, updatedAt: row?.updated_at ? row.updated_at.toISOString() : null };
+}
+
+export async function updateObservabilityRetentionPolicy(workspaceId: string, retentionDays: 7 | 30 | 90 | 365): Promise<import("@mai-chat/shared-types").ObservabilityRetentionPolicy> {
+  const result = await getPool().query(
+    "INSERT INTO workspace_observability_settings (workspace_id,workflow_run_retention_days) VALUES ($1,$2) ON CONFLICT (workspace_id) DO UPDATE SET workflow_run_retention_days=EXCLUDED.workflow_run_retention_days,updated_at=now() RETURNING workflow_run_retention_days,updated_at",
+    [workspaceId, retentionDays]
+  );
+  const row = result.rows[0];
+  return { workspaceId, retentionDays: row.workflow_run_retention_days as 7 | 30 | 90 | 365, updatedAt: row.updated_at.toISOString() };
+}
+
+/** Deletes expired workflow runs according to each workspace's saved policy. */
+export async function enforceWorkflowRunRetention(): Promise<number> {
+  const result = await getPool().query(
+    "DELETE FROM workspace_workflow_runs runs WHERE runs.started_at < now() - (COALESCE((SELECT settings.workflow_run_retention_days FROM workspace_observability_settings settings WHERE settings.workspace_id=runs.workspace_id), 30) * interval '1 day')"
+  );
+  return result.rowCount ?? 0;
+}
+
 export async function listWorkflowRuns(workspaceId: string, workflowId: string): Promise<WorkflowRun[]> {
   const result = await getPool().query("SELECT r.* FROM workspace_workflow_runs r WHERE r.workspace_id=$1 AND r.workflow_id=$2 ORDER BY r.started_at DESC LIMIT 30", [workspaceId, workflowId]);
   return result.rows.map(toWorkflowRun);
