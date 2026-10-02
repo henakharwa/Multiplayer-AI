@@ -20,6 +20,8 @@ const glyphs = {
   activity: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l2-6 4 12 2-6h4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>,
   agent: <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="16" height="12" rx="3" fill="none" stroke="currentColor" strokeWidth="2" /><circle cx="9" cy="13" r="1.4" fill="currentColor" /><circle cx="15" cy="13" r="1.4" fill="currentColor" /><path d="M12 3v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>,
   grid: <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2" /><rect x="14" y="4" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2" /><rect x="4" y="14" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2" /><rect x="14" y="14" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2" /></svg>,
+  overview: <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" strokeWidth="2" /><rect x="14" y="4" width="6" height="4" rx="1" fill="none" stroke="currentColor" strokeWidth="2" /><rect x="14" y="11" width="6" height="9" rx="1" fill="none" stroke="currentColor" strokeWidth="2" /><rect x="4" y="14" width="7" height="6" rx="1.5" fill="none" stroke="currentColor" strokeWidth="2" /></svg>,
+  tasks: <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="2" fill="none" stroke="currentColor" strokeWidth="2" /><path d="m7.5 9 1.5 1.5L11.5 7M13 9h4M7.5 15 9 16.5l2.5-3.5M13 15h4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>,
   memory: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5A2.5 2.5 0 0 0 3.5 7v10.5A2.5 2.5 0 0 1 6 15h4.5a2.5 2.5 0 0 1 2.5 2.5V7a2.5 2.5 0 0 0-2.5-2.5H6Zm12 0A2.5 2.5 0 0 1 20.5 7v10.5A2.5 2.5 0 0 0 18 15h-4.5a2.5 2.5 0 0 0-2.5 2.5V7a2.5 2.5 0 0 1 2.5-2.5H18Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>,
   artifact: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4 4V20a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 20V4a.5.5 0 0 1 .5-.5Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M14 3.5V8h4M9 12h6M9 16h6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>,
   plug: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v6m8-6v6M6 9h12v2a6 6 0 0 1-12 0V9Zm6 8v4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>,
@@ -28,9 +30,9 @@ const glyphs = {
 function groupsFor(workspaceId: string) {
   return [
     { label: "Workspace", items: [
-      { href: `/w/${workspaceId}/overview`, label: "Overview", glyph: glyphs.grid, exact: false },
+      { href: `/w/${workspaceId}/overview`, label: "Overview", glyph: glyphs.overview, exact: false },
       { href: `/w/${workspaceId}`, label: "Chat", glyph: glyphs.chat, exact: true },
-      { href: `/w/${workspaceId}/tasks`, label: "Tasks", glyph: glyphs.grid, exact: false },
+      { href: `/w/${workspaceId}/tasks`, label: "Tasks", glyph: glyphs.tasks, exact: false },
       { href: `/w/${workspaceId}/audit`, label: "Activity", glyph: glyphs.activity, exact: false },
     ] },
     { label: "Build", items: [
