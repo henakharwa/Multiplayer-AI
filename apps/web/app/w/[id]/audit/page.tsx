@@ -61,6 +61,7 @@ export default function AuditPage() {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [live, setLive] = useState(true);
+  const [actor, setActor] = useState(""); const [outcome, setOutcome] = useState<"" | "success" | "failure" | "approval">(""); const [range, setRange] = useState<"all" | "today" | "week">("all"); const [savedViews, setSavedViews] = useState<Array<{ name: string; search: string; type: AuditEventType | ""; actor: string; outcome: "" | "success" | "failure" | "approval"; range: "all" | "today" | "week" }>>([]);
 
   // Debounced so every keystroke in the search box doesn't fire its own
   // request -- 250ms is short enough to still feel live.
@@ -89,8 +90,12 @@ export default function AuditPage() {
     };
   }, [workspaceId, search, type]);
   useEffect(() => { if (!live) return; const timer = window.setInterval(() => { listAuditEvents(workspaceId, { q: search.trim() || undefined, type: type || undefined }).then(({ events: list, nextBefore: next }) => { setEvents(list); setNextBefore(next); }).catch(() => {}); }, 30000); return () => window.clearInterval(timer); }, [workspaceId, search, type, live]);
+  useEffect(() => { try { setSavedViews(JSON.parse(window.localStorage.getItem(`nexus-activity-views-${workspaceId}`) ?? "[]")); } catch { setSavedViews([]); } }, [workspaceId]);
   const attention = events.filter((event) => /failed|proposed/i.test(event.eventType));
-  const grouped = useMemo(() => events.reduce<Record<string, AuditEvent[]>>((groups, event) => { const day = new Date(event.createdAt); const today = new Date(); const yesterday = new Date(); yesterday.setDate(today.getDate() - 1); const key = day.toDateString() === today.toDateString() ? "Today" : day.toDateString() === yesterday.toDateString() ? "Yesterday" : "Earlier"; (groups[key] ??= []).push(event); return groups; }, {}), [events]);
+  const filteredEvents = useMemo(() => events.filter((event) => { const age = Date.now() - new Date(event.createdAt).getTime(); const within = range === "all" || (range === "today" && age < 86400000) || (range === "week" && age < 604800000); const matchesActor = !actor || event.actorName === actor; const matchesOutcome = !outcome || (outcome === "success" && /completed|confirmed|published/i.test(event.eventType)) || (outcome === "failure" && /failed/i.test(event.eventType)) || (outcome === "approval" && /proposed|confirmed|cancelled/i.test(event.eventType)); return within && matchesActor && matchesOutcome; }), [events, actor, outcome, range]);
+  const grouped = useMemo(() => filteredEvents.reduce<Record<string, AuditEvent[]>>((groups, event) => { const day = new Date(event.createdAt); const today = new Date(); const yesterday = new Date(); yesterday.setDate(today.getDate() - 1); const key = day.toDateString() === today.toDateString() ? "Today" : day.toDateString() === yesterday.toDateString() ? "Yesterday" : Date.now() - day.getTime() < 604800000 ? "This week" : "Earlier"; (groups[key] ??= []).push(event); return groups; }, {}), [filteredEvents]);
+  const actors = [...new Set(events.map((event) => event.actorName).filter(Boolean))]; const iconFor = (event: AuditEvent) => event.eventType.startsWith("workflow") ? "↻" : event.eventType.startsWith("artifact") ? "▤" : event.eventType.startsWith("agent") ? "✦" : event.eventType.startsWith("memory") ? "▣" : event.eventType.startsWith("action") ? "✓" : event.eventType.startsWith("integration") ? "⌁" : "•";
+  function saveView() { const name = window.prompt("Name this activity view"); if (!name) return; const next = [...savedViews, { name, search, type, actor, outcome, range }]; setSavedViews(next); window.localStorage.setItem(`nexus-activity-views-${workspaceId}`, JSON.stringify(next)); }
   function exportCsv() { const rows = [["Time", "Type", "Actor", "Activity"], ...events.map((event) => [event.createdAt, EVENT_TYPE_LABELS[event.eventType], event.actorType, event.summary])]; const blob = new Blob([rows.map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(",")).join("\n")], { type: "text/csv" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "workspace-activity.csv"; anchor.click(); URL.revokeObjectURL(url); }
 
   async function loadMore() {
@@ -150,8 +155,11 @@ export default function AuditPage() {
             </option>
           ))}
         </select>
+        <select value={actor} onChange={(event) => setActor(event.target.value)} aria-label="Filter by teammate"><option value="">All teammates</option>{actors.map((name) => <option key={name}>{name}</option>)}</select><select value={outcome} onChange={(event) => setOutcome(event.target.value as typeof outcome)} aria-label="Filter by outcome"><option value="">All outcomes</option><option value="success">Completed</option><option value="failure">Failed</option><option value="approval">Approvals</option></select><select value={range} onChange={(event) => setRange(event.target.value as typeof range)} aria-label="Filter by time"><option value="all">All time</option><option value="today">Today</option><option value="week">This week</option></select>
         <button type="button" className="secondary-button" onClick={() => { setSearch(""); setType(""); }}>Clear</button><button type="button" className="secondary-button" onClick={exportCsv}>Export CSV</button>
+        <button type="button" className="secondary-button" onClick={saveView}>Save view</button>
       </div>
+      {savedViews.length > 0 && <div className="activity-saved-views">{savedViews.map((view) => <button key={view.name} type="button" onClick={() => { setSearch(view.search); setType(view.type); setActor(view.actor); setOutcome(view.outcome); setRange(view.range); }}>{view.name}</button>)}</div>}
 
       {error && <p className="error-text" style={{ marginBottom: 16 }}>{error}</p>}
 
@@ -164,10 +172,11 @@ export default function AuditPage() {
         )}
         {Object.entries(grouped).map(([day, items]) => <section key={day}><h2>{day}</h2>{items.map((event) => (
           <button type="button" className={`audit-row ${expanded === event.id ? "expanded" : ""}`} key={event.id} onClick={() => setExpanded(expanded === event.id ? null : event.id)} data-testid="audit-row">
+            <span className={`activity-event-icon ${event.eventType.split(".")[0]}`}>{iconFor(event)}</span>
             <span className={`audit-actor-badge ${event.actorType}`}>{event.actorType}</span>
             <span className="audit-summary">{event.summary}</span>
             <span className="audit-time">{formatTimestamp(event.createdAt)}</span>
-            {expanded === event.id && <span className="activity-detail"><b>{EVENT_TYPE_LABELS[event.eventType]}</b><br/>Actor: {event.actorType}. Recorded {formatTimestamp(event.createdAt)}.</span>}
+            {expanded === event.id && <span className="activity-detail"><b>{EVENT_TYPE_LABELS[event.eventType]}</b><br/>Actor: {event.actorName || event.actorType}. Recorded {formatTimestamp(event.createdAt)}.{Object.keys(event.metadata).length > 0 && <><br/>Context: {Object.entries(event.metadata).map(([key, value]) => `${key}: ${String(value)}`).join(" · ")}</>}</span>}
           </button>
         ))}</section>)}
       </div>
