@@ -26,6 +26,7 @@ const glyphs = {
   artifact: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4 4V20a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 20V4a.5.5 0 0 1 .5-.5Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M14 3.5V8h4M9 12h6M9 16h6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>,
   plug: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v6m8-6v6M6 9h12v2a6 6 0 0 1-12 0V9Zm6 8v4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>,
   observe: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V6m5 12v-7m5 7V4m5 14v-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M3 20h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>,
+  workflow: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2" fill="none" stroke="currentColor" strokeWidth="2"/><circle cx="18" cy="12" r="2" fill="none" stroke="currentColor" strokeWidth="2"/><circle cx="6" cy="18" r="2" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M8 6h4a4 4 0 0 1 4 4M8 18h4a4 4 0 0 0 4-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
 };
 
 function groupsFor(workspaceId: string) {
@@ -38,7 +39,7 @@ function groupsFor(workspaceId: string) {
     ] },
     { label: "Build", items: [
       { href: `/w/${workspaceId}/agents`, label: "Agents", glyph: glyphs.agent, exact: false },
-      { href: `/w/${workspaceId}/workflows`, label: "Workflows", glyph: glyphs.activity, exact: false },
+      { href: `/w/${workspaceId}/workflows`, label: "Workflows", glyph: glyphs.workflow, exact: false },
     ] },
     { label: "Keep", items: [
       { href: `/w/${workspaceId}/memory`, label: "Memory", glyph: glyphs.memory, exact: false },
