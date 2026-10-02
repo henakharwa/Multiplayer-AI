@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import type { AuditEvent, AuditEventType } from "@mai-chat/shared-types";
@@ -59,6 +59,8 @@ export default function AuditPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [live, setLive] = useState(true);
 
   // Debounced so every keystroke in the search box doesn't fire its own
   // request -- 250ms is short enough to still feel live.
@@ -86,6 +88,10 @@ export default function AuditPage() {
       clearTimeout(timeout);
     };
   }, [workspaceId, search, type]);
+  useEffect(() => { if (!live) return; const timer = window.setInterval(() => { listAuditEvents(workspaceId, { q: search.trim() || undefined, type: type || undefined }).then(({ events: list, nextBefore: next }) => { setEvents(list); setNextBefore(next); }).catch(() => {}); }, 30000); return () => window.clearInterval(timer); }, [workspaceId, search, type, live]);
+  const attention = events.filter((event) => /failed|proposed/i.test(event.eventType));
+  const grouped = useMemo(() => events.reduce<Record<string, AuditEvent[]>>((groups, event) => { const day = new Date(event.createdAt); const today = new Date(); const yesterday = new Date(); yesterday.setDate(today.getDate() - 1); const key = day.toDateString() === today.toDateString() ? "Today" : day.toDateString() === yesterday.toDateString() ? "Yesterday" : "Earlier"; (groups[key] ??= []).push(event); return groups; }, {}), [events]);
+  function exportCsv() { const rows = [["Time", "Type", "Actor", "Activity"], ...events.map((event) => [event.createdAt, EVENT_TYPE_LABELS[event.eventType], event.actorType, event.summary])]; const blob = new Blob([rows.map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(",")).join("\n")], { type: "text/csv" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "workspace-activity.csv"; anchor.click(); URL.revokeObjectURL(url); }
 
   async function loadMore() {
     if (!nextBefore) return;
@@ -117,6 +123,8 @@ export default function AuditPage() {
         Who asked for what, what the agent did, and when -- every workspace creation, membership, integration, and agent action in
         this workspace.
       </p>
+      <section className="activity-summary"><div><span>TODAY</span><strong>{events.filter((event) => new Date(event.createdAt).toDateString() === new Date().toDateString()).length}</strong><small>events recorded</small></div><div><span>NEEDS ATTENTION</span><strong>{attention.length}</strong><small>failed runs or approvals</small></div><div><span>WORKFLOW HEALTH</span><strong>{events.filter((event) => event.eventType === "workflow.completed").length}</strong><small>completed runs shown</small></div><div><span>LIVE UPDATES</span><button type="button" className={live ? "active" : ""} onClick={() => setLive((value) => !value)}>{live ? "● Live" : "Paused"}</button></div></section>
+      {attention.length > 0 && <section className="activity-attention"><strong>Needs attention</strong>{attention.slice(0, 3).map((event) => <button type="button" key={event.id} onClick={() => setExpanded(event.id)}>{event.summary}</button>)}</section>}
 
       <div className="audit-toolbar">
         <input
@@ -142,24 +150,26 @@ export default function AuditPage() {
             </option>
           ))}
         </select>
+        <button type="button" className="secondary-button" onClick={() => { setSearch(""); setType(""); }}>Clear</button><button type="button" className="secondary-button" onClick={exportCsv}>Export CSV</button>
       </div>
 
       {error && <p className="error-text" style={{ marginBottom: 16 }}>{error}</p>}
 
-      <div className="audit-table" data-testid="audit-table">
+      <div className="audit-table activity-timeline" data-testid="audit-table">
         {loading && events.length === 0 && <div className="audit-empty">Loading…</div>}
         {!loading && events.length === 0 && !error && (
           <div className="audit-empty" data-testid="audit-empty">
             {search || type ? "No activity matches these filters." : "No activity yet."}
           </div>
         )}
-        {events.map((event) => (
-          <div className="audit-row" key={event.id} data-testid="audit-row">
+        {Object.entries(grouped).map(([day, items]) => <section key={day}><h2>{day}</h2>{items.map((event) => (
+          <button type="button" className={`audit-row ${expanded === event.id ? "expanded" : ""}`} key={event.id} onClick={() => setExpanded(expanded === event.id ? null : event.id)} data-testid="audit-row">
             <span className={`audit-actor-badge ${event.actorType}`}>{event.actorType}</span>
             <span className="audit-summary">{event.summary}</span>
             <span className="audit-time">{formatTimestamp(event.createdAt)}</span>
-          </div>
-        ))}
+            {expanded === event.id && <span className="activity-detail"><b>{EVENT_TYPE_LABELS[event.eventType]}</b><br/>Actor: {event.actorType}. Recorded {formatTimestamp(event.createdAt)}.</span>}
+          </button>
+        ))}</section>)}
       </div>
 
       {nextBefore && events.length > 0 && (
