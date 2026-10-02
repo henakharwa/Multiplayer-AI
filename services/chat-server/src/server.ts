@@ -1514,6 +1514,14 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     const tools = wrapForProposal(specialistTools, workspaceId, conversationId, rooms, requestedBy, agentKind, {
       readOnly: workflowReadOnly,
     });
+    // A workflow configured for a specialist is an operational contract: it
+    // must have that specialist's connected tool surface. Letting the model
+    // write an apologetic text-only reply makes a broken integration look
+    // like a successful automation and hides the failure from diagnostics,
+    // alerts, and run-health metrics.
+    if (workflowInstructions && agentKind !== "project" && tools.length === 0) {
+      throw new Error(`${agentKind[0].toUpperCase()}${agentKind.slice(1)} is not connected or has no approved tools for this workflow.`);
+    }
     // Cheap, always-on diagnostic -- when someone reports "the agent says
     // it can't see GitHub" the first thing to know is whether the tool
     // list was actually empty for this turn (an integration/credential
