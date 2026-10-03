@@ -1641,6 +1641,9 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
           conversationId: workflow.conversationId,
           kind: "workflow_alert",
           text: `${recentFailures} workflow runs failed in the last 24 hours. Review ${workflow.name} in Observability.`,
+          priority: "high",
+          resourceType: "workflow",
+          resourceId: workflow.id,
         });
       }
     }
