@@ -731,6 +731,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   });
 
   app.get("/workspaces/:id", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     if (!UUID_RE.test(paramString(req.params.id))) return res.status(400).json({ error: "invalid workspace id" });
     const workspace = await db.getWorkspaceById(paramString(req.params.id));
     if (!workspace) return res.status(404).json({ error: "not found" });
@@ -738,6 +739,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   });
 
   app.get("/workspaces/:id/members", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const workspaceId = paramString(req.params.id);
     if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "invalid workspace id" });
     res.json(await db.listWorkspaceMembersWithRoles(workspaceId));
@@ -1230,6 +1232,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   });
 
   app.get("/workspaces/:id/messages", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     if (!UUID_RE.test(paramString(req.params.id))) return res.status(400).json({ error: "invalid workspace id" });
     const workspace = await db.getWorkspaceById(paramString(req.params.id));
     if (!workspace) return res.status(404).json({ error: "not found" });
@@ -1241,6 +1244,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   });
 
   app.get("/workspaces/:id/conversations", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const workspaceId = paramString(req.params.id);
     if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "invalid workspace id" });
     if (!(await db.getWorkspaceById(workspaceId))) return res.status(404).json({ error: "not found" });
@@ -1298,6 +1302,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   // `type` an exact AuditEventType, `before` an ISO timestamp for
   // "load older" pagination (keyset, not offset -- see listAuditEvents).
   app.get("/workspaces/:id/audit", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     if (!UUID_RE.test(paramString(req.params.id))) return res.status(400).json({ error: "invalid workspace id" });
     const workspaceId = paramString(req.params.id);
     const workspace = await db.getWorkspaceById(workspaceId);
@@ -1312,6 +1317,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   });
 
   app.get("/workspaces/:id/integrations", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     if (!UUID_RE.test(paramString(req.params.id))) return res.status(400).json({ error: "invalid workspace id" });
     const workspace = await db.getWorkspaceById(paramString(req.params.id));
     if (!workspace) return res.status(404).json({ error: "not found" });

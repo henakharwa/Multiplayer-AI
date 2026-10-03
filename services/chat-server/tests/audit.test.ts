@@ -40,6 +40,7 @@ function makeDeps(overrides: Partial<CreateServerDeps> = {}): CreateServerDeps {
 
 let ownerCookie: string;
 let ownerName: string;
+let outsiderCookie: string;
 
 beforeAll(async () => {
   const schema = await readFile(fileURLToPath(new URL("../../../packages/db/sql/schema.sql", import.meta.url)), "utf8");
@@ -47,10 +48,29 @@ beforeAll(async () => {
   const owner = await upsertUserFromGithub({ githubId: `audit-owner-${randomUUID()}`, username: "owner", displayName: "Audit Owner" });
   ownerName = owner.displayName;
   ownerCookie = `mai_session=${(await createSession(owner.id, 60_000)).token}`;
+  const outsider = await upsertUserFromGithub({ githubId: `audit-outsider-${randomUUID()}`, username: "outsider", displayName: "Audit Outsider" });
+  outsiderCookie = `mai_session=${(await createSession(outsider.id, 60_000)).token}`;
 });
 afterAll(async () => { await closePool(); });
 
 describe("action audit trail", () => {
+  it("denies every workspace read endpoint to a non-member", async () => {
+    const { app } = createChatServer(makeDeps());
+    const workspace = await request(app).post("/workspaces").set("Cookie", ownerCookie).send({ name: `Private audit WS ${randomUUID()}` });
+    const id = workspace.body.id as string;
+
+    const responses = await Promise.all([
+      request(app).get(`/workspaces/${id}`).set("Cookie", outsiderCookie),
+      request(app).get(`/workspaces/${id}/members`).set("Cookie", outsiderCookie),
+      request(app).get(`/workspaces/${id}/conversations`).set("Cookie", outsiderCookie),
+      request(app).get(`/workspaces/${id}/messages`).query({ conversationId: randomUUID() }).set("Cookie", outsiderCookie),
+      request(app).get(`/workspaces/${id}/audit`).set("Cookie", outsiderCookie),
+      request(app).get(`/workspaces/${id}/integrations`).set("Cookie", outsiderCookie),
+    ]);
+
+    for (const response of responses) expect(response.status).toBe(403);
+  });
+
   it("records a workspace.created event when a workspace is made", async () => {
     const { app } = createChatServer(makeDeps());
     const created = await request(app).post("/workspaces").set("Cookie", ownerCookie).send({ name: `Audit WS ${randomUUID()}` });
