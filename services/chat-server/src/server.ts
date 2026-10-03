@@ -603,8 +603,9 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   });
 
   app.get("/notifications", requireAuth, async (req: Request, res: Response) => {
-    const notifications = await db.listNotifications(req.user!.id);
     const workspaceId = typeof req.query.workspaceId === "string" ? req.query.workspaceId : null;
+    if (workspaceId && UUID_RE.test(workspaceId)) await db.ensurePendingActionNotifications(workspaceId);
+    const notifications = await db.listNotifications(req.user!.id);
     res.json(workspaceId ? notifications.filter((notification) => notification.workspaceId === workspaceId) : notifications);
   });
 

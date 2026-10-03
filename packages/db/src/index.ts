@@ -488,6 +488,19 @@ export async function notifyWorkspaceMembers(input: { workspaceId: string; conve
   );
 }
 
+/**
+ * Repairs an inbox if a pending action was created while a recipient was
+ * offline or before notification delivery was enabled. The action itself is
+ * authoritative, so this insert is idempotent per user and action.
+ */
+export async function ensurePendingActionNotifications(workspaceId: string): Promise<void> {
+  await getPool().query(`INSERT INTO workspace_notifications (workspace_id, conversation_id, user_id, kind, text, priority, group_key, resource_type, resource_id)
+    SELECT a.workspace_id, a.conversation_id, wm.user_id, 'decision_needed', 'Decision needed: ' || a.description, 'high', 'decision_needed:' || a.id::text, 'action', a.id::text
+    FROM pending_actions a JOIN workspace_members wm ON wm.workspace_id=a.workspace_id
+    WHERE a.workspace_id=$1 AND a.status='pending'
+      AND NOT EXISTS (SELECT 1 FROM workspace_notifications n WHERE n.user_id=wm.user_id AND n.resource_type='action' AND n.resource_id=a.id::text AND n.kind='decision_needed')`, [workspaceId]);
+}
+
 /** Escalate each unresolved decision once, using the recipient's saved delay. */
 export async function escalateUnreadDecisionNotifications(): Promise<number> {
   const result = await getPool().query(`WITH due AS (
