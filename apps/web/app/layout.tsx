@@ -5,9 +5,9 @@ export const metadata: Metadata = {
   title: "Nexus",
   description: "A shared AI workspace for teams, connected tools, and human-approved actions.",
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
-    apple: "/icon.svg",
+    icon: "/nexus-landing-logo.png",
+    shortcut: "/nexus-landing-logo.png",
+    apple: "/nexus-landing-logo.png",
   },
 };
 
