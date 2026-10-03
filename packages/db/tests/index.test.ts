@@ -18,6 +18,9 @@ import {
   upsertUserFromGithub,
   encryptToken,
   decryptToken,
+  notifyWorkspaceMembers,
+  listNotifications,
+  updateNotificationPreferences,
 } from "../src/index.js";
 
 loadEnv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
@@ -107,6 +110,28 @@ describe("messages", () => {
     const messagesB = await listMessages(wsB.id);
     expect(messagesA.map((m) => m.content)).toEqual(["only in A"]);
     expect(messagesB.map((m) => m.content)).toEqual(["only in B"]);
+  });
+});
+
+describe("in-app notifications", () => {
+  it("suppresses routine delivery during quiet hours or when disabled, while retaining high-priority alerts", async () => {
+    const owner = await upsertUserFromGithub({ githubId: randomUUID(), username: `notification-owner-${randomUUID()}`, displayName: "Notification Owner" });
+    const workspace = await createWorkspace(`Notification policy ${randomUUID()}`, owner.id);
+
+    await updateNotificationPreferences(workspace.id, owner.id, {
+      browserEnabled: false,
+      quietHoursEnabled: true,
+      quietHoursStart: 0,
+      quietHoursEnd: 0,
+    });
+    await notifyWorkspaceMembers({ workspaceId: workspace.id, kind: "agent_completed", text: "Routine update" });
+    await notifyWorkspaceMembers({ workspaceId: workspace.id, kind: "decision_needed", text: "Approval required", priority: "high" });
+
+    expect((await listNotifications(owner.id)).filter((notification) => notification.workspaceId === workspace.id).map((notification) => notification.text)).toEqual(["Approval required"]);
+
+    await updateNotificationPreferences(workspace.id, owner.id, { browserEnabled: true, quietHoursEnabled: false });
+    await notifyWorkspaceMembers({ workspaceId: workspace.id, kind: "agent_completed", text: "Visible routine update" });
+    expect((await listNotifications(owner.id)).filter((notification) => notification.workspaceId === workspace.id).map((notification) => notification.text)).toEqual(["Visible routine update", "Approval required"]);
   });
 });
 

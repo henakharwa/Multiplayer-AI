@@ -482,8 +482,19 @@ export async function notifyWorkspaceMembers(input: { workspaceId: string; conve
   const groupKey = input.groupKey ?? `${input.kind}:${input.resourceId ?? input.conversationId ?? input.text.slice(0, 72)}`;
   await pool.query(
     `INSERT INTO workspace_notifications (workspace_id, conversation_id, user_id, kind, text, priority, group_key, resource_type, resource_id)
-     SELECT $1, $2, wm.user_id, $3, $4, $5, $6, $7, $8 FROM workspace_members wm
-     WHERE wm.workspace_id = $1 AND NOT (wm.user_id = ANY($9::uuid[]))`,
+     SELECT $1, $2, wm.user_id, $3, $4, $5, $6, $7, $8
+     FROM workspace_members wm
+     LEFT JOIN workspace_notification_preferences p ON p.workspace_id=wm.workspace_id AND p.user_id=wm.user_id
+     WHERE wm.workspace_id = $1 AND NOT (wm.user_id = ANY($9::uuid[]))
+       AND ($5 = 'high' OR COALESCE(p.browser_enabled, true))
+       AND (
+         $5 = 'high' OR NOT COALESCE(p.quiet_hours_enabled, false) OR
+         CASE
+           WHEN p.quiet_hours_start < p.quiet_hours_end THEN NOT (EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int >= p.quiet_hours_start AND EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int < p.quiet_hours_end)
+           WHEN p.quiet_hours_start > p.quiet_hours_end THEN NOT (EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int >= p.quiet_hours_start OR EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int < p.quiet_hours_end)
+           ELSE false
+         END
+       )`,
     [input.workspaceId, input.conversationId ?? null, input.kind, input.text, input.priority ?? "normal", groupKey, input.resourceType ?? (input.conversationId ? "conversation" : null), input.resourceId ?? input.conversationId ?? null, input.excludeUserIds ?? []]
   );
 }
@@ -505,10 +516,11 @@ export async function ensurePendingActionNotifications(workspaceId: string): Pro
 export async function escalateUnreadDecisionNotifications(): Promise<number> {
   const result = await getPool().query(`WITH due AS (
     UPDATE workspace_notifications n SET escalated_at=now()
-    FROM workspace_notification_preferences p
-    WHERE n.workspace_id=p.workspace_id AND n.user_id=p.user_id
+    FROM workspace_members wm
+    LEFT JOIN workspace_notification_preferences p ON p.workspace_id=wm.workspace_id AND p.user_id=wm.user_id
+    WHERE n.workspace_id=wm.workspace_id AND n.user_id=wm.user_id
       AND n.kind IN ('decision_needed','permission_request') AND n.read_at IS NULL AND n.escalated_at IS NULL
-      AND n.created_at <= now() - (p.escalation_minutes * interval '1 minute')
+      AND n.created_at <= now() - (COALESCE(p.escalation_minutes, 60) * interval '1 minute')
     RETURNING n.workspace_id,n.user_id,n.conversation_id,n.text
   ) INSERT INTO workspace_notifications (workspace_id,user_id,conversation_id,kind,text,priority,group_key)
   SELECT workspace_id,user_id,conversation_id,'decision_needed','Reminder: ' || text,'high','escalation:' || conversation_id::text FROM due`);
@@ -519,8 +531,17 @@ export async function escalateUnreadDecisionNotifications(): Promise<number> {
 export async function createDailyNotificationDigests(): Promise<number> {
   const result = await getPool().query(`WITH due AS (
     SELECT p.workspace_id,p.user_id FROM workspace_notification_preferences p
-    WHERE p.daily_summary_enabled AND p.digest_hour = EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int
+    WHERE p.daily_summary_enabled AND p.browser_enabled
+      AND p.digest_hour <= EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int
       AND (p.digest_sent_on IS NULL OR p.digest_sent_on < (now() AT TIME ZONE 'UTC')::date)
+      AND (
+        NOT p.quiet_hours_enabled OR
+        CASE
+          WHEN p.quiet_hours_start < p.quiet_hours_end THEN NOT (EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int >= p.quiet_hours_start AND EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int < p.quiet_hours_end)
+          WHEN p.quiet_hours_start > p.quiet_hours_end THEN NOT (EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int >= p.quiet_hours_start OR EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int < p.quiet_hours_end)
+          ELSE false
+        END
+      )
   ), inserted AS (
     INSERT INTO workspace_notifications (workspace_id,user_id,kind,text,priority,group_key)
     SELECT d.workspace_id,d.user_id,'agent_completed',
@@ -533,7 +554,21 @@ export async function createDailyNotificationDigests(): Promise<number> {
 
 export async function listNotifications(userId: string, limit = 30): Promise<WorkspaceNotification[]> {
   const result = await getPool().query(
-    `SELECT id, workspace_id, conversation_id, kind, text, priority, group_key, resource_type, resource_id, created_at, read_at FROM workspace_notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`,
+    `SELECT n.id, n.workspace_id, n.conversation_id, n.kind, n.text, n.priority, n.group_key, n.resource_type, n.resource_id, n.created_at, n.read_at
+     FROM workspace_notifications n
+     LEFT JOIN workspace_notification_preferences p ON p.workspace_id=n.workspace_id AND p.user_id=n.user_id
+     WHERE n.user_id = $1 AND (
+       n.priority = 'high' OR n.kind = 'workflow_alert' OR (
+         COALESCE(p.browser_enabled, true) AND (
+           NOT COALESCE(p.quiet_hours_enabled, false) OR
+           CASE
+             WHEN p.quiet_hours_start < p.quiet_hours_end THEN NOT (EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int >= p.quiet_hours_start AND EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int < p.quiet_hours_end)
+             WHEN p.quiet_hours_start > p.quiet_hours_end THEN NOT (EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int >= p.quiet_hours_start OR EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int < p.quiet_hours_end)
+             ELSE false
+           END
+         )
+       )
+     ) ORDER BY n.created_at DESC LIMIT $2`,
     [userId, limit]
   );
   return result.rows.map((row) => ({ id: row.id, workspaceId: row.workspace_id, conversationId: row.conversation_id, kind: row.kind, text: row.text, priority: row.kind === "workflow_alert" ? "high" : row.priority, groupKey: row.group_key, resourceType: row.resource_type, resourceId: row.resource_id, createdAt: row.created_at.toISOString(), readAt: row.read_at ? row.read_at.toISOString() : null }));
@@ -623,10 +658,22 @@ export async function resolvePermissionRequest(workspaceId: string, id: string, 
   return r.rows[0] as { user_id: string; permission: keyof WorkspacePermissions; reason: string } | undefined;
 }
 
-export async function notifyWorkspaceUser(input: { workspaceId: string; userId: string; kind: WorkspaceNotification["kind"]; text: string }): Promise<void> {
+export async function notifyWorkspaceUser(input: { workspaceId: string; userId: string; kind: WorkspaceNotification["kind"]; text: string; priority?: WorkspaceNotification["priority"] }): Promise<void> {
   await getPool().query(
-    `INSERT INTO workspace_notifications (workspace_id, user_id, kind, text) VALUES ($1,$2,$3,$4)`,
-    [input.workspaceId, input.userId, input.kind, input.text]
+    `INSERT INTO workspace_notifications (workspace_id, user_id, kind, text, priority)
+     SELECT $1, $2, $3, $4, $5
+     FROM (VALUES ($1::uuid, $2::uuid)) AS recipient(workspace_id, user_id)
+     LEFT JOIN workspace_notification_preferences p ON p.workspace_id=recipient.workspace_id AND p.user_id=recipient.user_id
+     WHERE ($5 = 'high' OR COALESCE(p.browser_enabled, true))
+       AND (
+         $5 = 'high' OR NOT COALESCE(p.quiet_hours_enabled, false) OR
+         CASE
+           WHEN p.quiet_hours_start < p.quiet_hours_end THEN NOT (EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int >= p.quiet_hours_start AND EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int < p.quiet_hours_end)
+           WHEN p.quiet_hours_start > p.quiet_hours_end THEN NOT (EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int >= p.quiet_hours_start OR EXTRACT(HOUR FROM now() AT TIME ZONE 'UTC')::int < p.quiet_hours_end)
+           ELSE false
+         END
+       )`,
+    [input.workspaceId, input.userId, input.kind, input.text, input.priority ?? "normal"]
   );
 }
 
