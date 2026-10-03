@@ -53,8 +53,6 @@ export interface WorkspaceNotification {
 export interface WorkspaceNotificationPreferences {
   workspaceId: string;
   browserEnabled: boolean;
-  emailEnabled: boolean;
-  slackEnabled: boolean;
   escalationMinutes: number;
   dailySummaryEnabled: boolean;
   quietHoursEnabled: boolean;

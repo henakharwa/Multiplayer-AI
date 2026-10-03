@@ -267,8 +267,6 @@ CREATE TABLE IF NOT EXISTS workspace_notification_preferences (
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   browser_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-  email_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-  slack_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   escalation_minutes INTEGER NOT NULL DEFAULT 60 CHECK (escalation_minutes IN (15, 30, 60, 240, 1440)),
   daily_summary_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -288,6 +286,8 @@ ALTER TABLE workspace_notification_preferences ADD COLUMN IF NOT EXISTS quiet_ho
 ALTER TABLE workspace_notification_preferences ADD COLUMN IF NOT EXISTS quiet_hours_end INTEGER NOT NULL DEFAULT 8;
 ALTER TABLE workspace_notification_preferences ADD COLUMN IF NOT EXISTS digest_hour INTEGER NOT NULL DEFAULT 9;
 ALTER TABLE workspace_notification_preferences ADD COLUMN IF NOT EXISTS digest_sent_on DATE;
+ALTER TABLE workspace_notification_preferences DROP COLUMN IF EXISTS email_enabled;
+ALTER TABLE workspace_notification_preferences DROP COLUMN IF EXISTS slack_enabled;
 
 -- Added after the first version of this table shipped -- IF NOT EXISTS
 -- keeps re-running this idempotent schema safe for anyone who already has
