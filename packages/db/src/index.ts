@@ -523,7 +523,7 @@ export async function listNotifications(userId: string, limit = 30): Promise<Wor
     `SELECT id, workspace_id, conversation_id, kind, text, priority, group_key, resource_type, resource_id, created_at, read_at FROM workspace_notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`,
     [userId, limit]
   );
-  return result.rows.map((row) => ({ id: row.id, workspaceId: row.workspace_id, conversationId: row.conversation_id, kind: row.kind, text: row.text, priority: row.priority, groupKey: row.group_key, resourceType: row.resource_type, resourceId: row.resource_id, createdAt: row.created_at.toISOString(), readAt: row.read_at ? row.read_at.toISOString() : null }));
+  return result.rows.map((row) => ({ id: row.id, workspaceId: row.workspace_id, conversationId: row.conversation_id, kind: row.kind, text: row.text, priority: row.kind === "workflow_alert" ? "high" : row.priority, groupKey: row.group_key, resourceType: row.resource_type, resourceId: row.resource_id, createdAt: row.created_at.toISOString(), readAt: row.read_at ? row.read_at.toISOString() : null }));
 }
 
 export async function markNotificationsRead(userId: string, workspaceId: string): Promise<void> {
