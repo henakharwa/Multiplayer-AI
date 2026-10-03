@@ -168,6 +168,7 @@ export default function WorkspaceRoomPage() {
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
   const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMember[]>([]);
   const [showAccessManager, setShowAccessManager] = useState(false);
+  const [showAllPendingActions, setShowAllPendingActions] = useState(false);
   const [notifications, setNotifications] = useState<StoredNotification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [permissionRequests, setPermissionRequests] = useState<PermissionRequest[]>([]);
@@ -492,6 +493,7 @@ export default function WorkspaceRoomPage() {
   ];
   const notificationsToday = notifications.filter((notification) => new Date(notification.createdAt).toDateString() === new Date().toDateString());
   const notificationsEarlier = notifications.filter((notification) => !notificationsToday.includes(notification));
+  const pendingActions = chat.pendingActions.filter((action) => action.status === "pending");
 
   function useStarterTemplate(prompt: string): void {
     setDraft(prompt);
@@ -738,11 +740,10 @@ export default function WorkspaceRoomPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {chat.pendingActions.some((a) => a.status === "pending") && (
+        {pendingActions.length > 0 && (
           <div className="pending-actions-list" data-testid="pending-actions-list">
-            {chat.pendingActions
-              .filter((a) => a.status === "pending")
-              .map((a) => (
+            <div className="pending-actions-summary"><span>{pendingActions.length} approval request{pendingActions.length === 1 ? "" : "s"} awaiting review</span>{pendingActions.length > 1 && <button type="button" onClick={() => setShowAllPendingActions((open) => !open)}>{showAllPendingActions ? "Show latest" : `Review all (${pendingActions.length})`}</button>}</div>
+            {(showAllPendingActions ? pendingActions : pendingActions.slice(0, 1)).map((a) => (
                 <PendingActionCard key={a.id} workspaceId={workspaceId} action={a} actorName={displayName} />
               ))}
           </div>
