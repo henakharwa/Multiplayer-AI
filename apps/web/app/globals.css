@@ -2150,3 +2150,10 @@ textarea {
 .home-workspace-copy:hover, .home-workspace-retry:hover { color: var(--accent); border-color: var(--accent-soft-border); }
 .home-workspace-empty { margin: 0; padding: 12px; border: 1px dashed var(--border); border-radius: 10px; color: var(--text-dim); font-size: 13px; }
 .home-workspace-open { min-width: 128px; }
+/* Public legal pages (privacy policy, terms) */
+.legal-page { align-items: flex-start; }
+.legal-card { max-width: 760px; width: 100%; line-height: 1.6; }
+.legal-card h1 { margin: 12px 0 4px; }
+.legal-card h2 { margin: 24px 0 6px; font-size: 17px; }
+.legal-card ul { padding-left: 20px; }
+.legal-updated { color: var(--text-dim); font-size: 13px; margin-top: 0; }

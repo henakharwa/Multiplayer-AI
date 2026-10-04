@@ -681,9 +681,19 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
       console.error(JSON.stringify({ level: "error", event: "workspace_invitation_email_failed", workspaceId, error: message }));
       const publicError = /EAUTH|Invalid login|Username and Password not accepted/i.test(message)
         ? "Gmail rejected the sign-in. Check the Gmail address and use a new Google App Password."
-        : /ETIMEDOUT|ECONNREFUSED|ECONNRESET|ENOTFOUND/i.test(message)
-          ? "The server could not connect to Gmail SMTP. Check Render’s logs and try again."
-          : "The invitation email could not be sent. Check the Gmail configuration and try again.";
+        : /invalid_grant|Token has been expired or revoked/i.test(message)
+          ? "Gmail API access has expired or been revoked. Generate a new GMAIL_API_REFRESH_TOKEN (publish the Google OAuth app to Production so it stops expiring) and update it in Render."
+          : /invalid_client|unauthorized_client/i.test(message)
+            ? "Gmail API client credentials were rejected. Check GMAIL_API_CLIENT_ID and GMAIL_API_CLIENT_SECRET in Render."
+            : /Gmail API send failed: (401|403)/i.test(message)
+              ? "Gmail API refused to send. Make sure the refresh token was created for GMAIL_SMTP_USER with the gmail.send scope and that the Gmail API is enabled."
+              : /Gmail API token refresh failed/i.test(message)
+                ? "Could not get a Gmail API access token. Check the GMAIL_API_* settings in Render."
+                : /Resend/i.test(message)
+                  ? "Resend rejected the email. Check RESEND_API_KEY and that EMAIL_FROM_ADDRESS uses a verified domain."
+                  : /ETIMEDOUT|ECONNREFUSED|ECONNRESET|ENOTFOUND|timeout|aborted/i.test(message)
+                    ? "The server could not connect to the email provider. Render’s free plan blocks Gmail SMTP; use the Gmail API settings instead."
+                    : "The invitation email could not be sent. Check the email configuration and the server logs (event workspace_invitation_email_failed).";
       return res.status(502).json({ error: publicError });
     }
     await db.recordAuditEvent({
