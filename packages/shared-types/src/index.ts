@@ -207,6 +207,8 @@ export interface WorkflowRun {
 export interface ObservabilityRetentionPolicy {
   workspaceId: string;
   retentionDays: 7 | 30 | 90 | 365;
+  /** Failed workflow runs in 24 hours that trigger a workspace alert. */
+  failureAlertThreshold: number;
   updatedAt: string | null;
 }
 

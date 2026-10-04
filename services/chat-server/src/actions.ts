@@ -199,6 +199,7 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
     if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "invalid workspace id" });
     const conversationId = typeof req.query.conversationId === "string" ? req.query.conversationId : "";
     if (!UUID_RE.test(conversationId)) return res.status(400).json({ error: "valid conversationId is required" });
+    if (!(await db.getWorkspaceRole(workspaceId, req.user!.id))) return res.status(403).json({ error: "You do not have permission to perform this action." });
     const onlyPending = req.query.status !== "all";
     res.json(await db.listPendingActions(workspaceId, conversationId, onlyPending));
   });

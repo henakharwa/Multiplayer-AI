@@ -1091,18 +1091,32 @@ export async function countRecentFailedWorkflowRuns(workspaceId: string, hours =
 }
 
 export async function getObservabilityRetentionPolicy(workspaceId: string): Promise<import("@mai-chat/shared-types").ObservabilityRetentionPolicy> {
-  const result = await getPool().query("SELECT workflow_run_retention_days,updated_at FROM workspace_observability_settings WHERE workspace_id=$1", [workspaceId]);
+  const result = await getPool().query("SELECT workflow_run_retention_days,failure_alert_threshold,updated_at FROM workspace_observability_settings WHERE workspace_id=$1", [workspaceId]);
   const row = result.rows[0];
-  return { workspaceId, retentionDays: (row?.workflow_run_retention_days ?? 30) as 7 | 30 | 90 | 365, updatedAt: row?.updated_at ? row.updated_at.toISOString() : null };
+  return { workspaceId, retentionDays: (row?.workflow_run_retention_days ?? 30) as 7 | 30 | 90 | 365, failureAlertThreshold: row?.failure_alert_threshold ?? defaultFailureAlertThreshold(), updatedAt: row?.updated_at ? row.updated_at.toISOString() : null };
+}
+
+function defaultFailureAlertThreshold(): number {
+  const configured = Number(process.env.WORKFLOW_FAILURE_ALERT_THRESHOLD ?? 3);
+  return Number.isFinite(configured) ? Math.max(1, Math.round(configured)) : 3;
+}
+
+/** Saves the Admin-set failure-alert threshold (1-20 failed runs in 24 hours). */
+export async function updateFailureAlertThreshold(workspaceId: string, threshold: number): Promise<import("@mai-chat/shared-types").ObservabilityRetentionPolicy> {
+  await getPool().query(
+    "INSERT INTO workspace_observability_settings (workspace_id,failure_alert_threshold) VALUES ($1,$2) ON CONFLICT (workspace_id) DO UPDATE SET failure_alert_threshold=EXCLUDED.failure_alert_threshold,updated_at=now()",
+    [workspaceId, threshold]
+  );
+  return getObservabilityRetentionPolicy(workspaceId);
 }
 
 export async function updateObservabilityRetentionPolicy(workspaceId: string, retentionDays: 7 | 30 | 90 | 365): Promise<import("@mai-chat/shared-types").ObservabilityRetentionPolicy> {
   const result = await getPool().query(
-    "INSERT INTO workspace_observability_settings (workspace_id,workflow_run_retention_days) VALUES ($1,$2) ON CONFLICT (workspace_id) DO UPDATE SET workflow_run_retention_days=EXCLUDED.workflow_run_retention_days,updated_at=now() RETURNING workflow_run_retention_days,updated_at",
+    "INSERT INTO workspace_observability_settings (workspace_id,workflow_run_retention_days) VALUES ($1,$2) ON CONFLICT (workspace_id) DO UPDATE SET workflow_run_retention_days=EXCLUDED.workflow_run_retention_days,updated_at=now() RETURNING workflow_run_retention_days,failure_alert_threshold,updated_at",
     [workspaceId, retentionDays]
   );
   const row = result.rows[0];
-  return { workspaceId, retentionDays: row.workflow_run_retention_days as 7 | 30 | 90 | 365, updatedAt: row.updated_at.toISOString() };
+  return { workspaceId, retentionDays: row.workflow_run_retention_days as 7 | 30 | 90 | 365, failureAlertThreshold: row.failure_alert_threshold ?? defaultFailureAlertThreshold(), updatedAt: row.updated_at.toISOString() };
 }
 
 /** Deletes expired workflow runs according to each workspace's saved policy. */

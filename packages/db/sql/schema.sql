@@ -490,6 +490,10 @@ CREATE TABLE IF NOT EXISTS workspace_observability_settings (
   workflow_run_retention_days INTEGER NOT NULL DEFAULT 30 CHECK (workflow_run_retention_days IN (7, 30, 90, 365)),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Admin-set failure-alert threshold (failed runs in 24 hours). NULL keeps
+-- the server default (WORKFLOW_FAILURE_ALERT_THRESHOLD, or 3).
+ALTER TABLE workspace_observability_settings ADD COLUMN IF NOT EXISTS failure_alert_threshold INTEGER
+  CHECK (failure_alert_threshold IS NULL OR failure_alert_threshold BETWEEN 1 AND 20);
 
 -- Shared execution records. Tasks may come from a conversation, workflow,
 -- or teammate and remain visible to the full workspace until completed.

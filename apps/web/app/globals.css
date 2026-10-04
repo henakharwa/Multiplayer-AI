@@ -2142,3 +2142,16 @@ textarea {
 
 .pending-actions-list{flex:0 1 auto;max-height:min(280px,34vh);overflow-y:auto;overscroll-behavior:contain}.pending-actions-summary{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;background:var(--bg);color:#94631f;font-size:12px;font-weight:700}.pending-actions-summary button{border:0;background:transparent;color:#315fea;font:inherit;font-size:11px;font-weight:700;cursor:pointer}.pending-actions-list .pending-action{margin-bottom:2px}
 .artifact-sharing{display:grid;gap:10px;margin-top:20px;padding:14px;border:1px solid #d9e2ff;border-radius:11px;background:#f7f9ff}.artifact-sharing h3{margin:0;font-size:14px}.artifact-sharing>div{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.artifact-sharing input{flex:1 1 230px;margin:0!important;font-size:12px}.artifact-sharing .secondary-button{padding:7px 10px;font-size:12px}
+
+/* Role access matrix: disabled / request-access states */
+.access-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-subtle); color: var(--text-dim); font-size: 13px; }
+.access-notice > span { flex: 1 1 220px; }
+.access-notice .btn { width: auto; min-height: 30px; padding: 4px 12px; font-size: 12px; }
+.access-notice-form { flex: 1 1 100%; display: grid; gap: 8px; }
+.access-notice-form label { display: grid; gap: 6px; font-size: 12px; }
+.access-notice-form textarea { width: 100%; resize: vertical; }
+.access-notice-form > div { display: flex; gap: 8px; }
+.access-notice small { flex: 1 1 100%; }
+/* Read-only builder for members without the required permission */
+fieldset.access-readonly { border: 0; padding: 0; margin: 0; min-width: 0; display: contents; }
+fieldset.access-readonly:disabled input, fieldset.access-readonly:disabled textarea, fieldset.access-readonly:disabled select, fieldset.access-readonly:disabled button { cursor: not-allowed; opacity: .7; }

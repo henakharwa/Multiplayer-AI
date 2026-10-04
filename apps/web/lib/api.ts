@@ -391,3 +391,12 @@ export async function resetPassword(token: string, password: string): Promise<{ 
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, password }),
   }))) as { reset: true };
 }
+
+// The signed-in member's effective workspace access (Nexus role access
+// matrix): Admins hold every permission, Editors the saved Editor policy.
+export type WorkspaceAccess = { role: import("@mai-chat/shared-types").WorkspaceRole; permissions: import("@mai-chat/shared-types").WorkspacePermissions };
+export async function getWorkspaceAccess(workspaceId: string): Promise<WorkspaceAccess> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/access`);
+  return (await parseJsonOrThrow(res)) as WorkspaceAccess;
+}
+export async function updateFailureAlertThreshold(workspaceId: string, failureAlertThreshold: number): Promise<import("@mai-chat/shared-types").ObservabilityRetentionPolicy> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/observability/retention`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ failureAlertThreshold }) }); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").ObservabilityRetentionPolicy; }
