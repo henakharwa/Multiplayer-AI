@@ -178,6 +178,8 @@ export interface WorkspaceWorkflow {
   trigger: WorkflowTrigger;
   scheduleMinutes: number | null;
   enabled: boolean;
+  /** Approval checkpoint: the run must stop for review before proposing an external change. */
+  requiresApproval: boolean;
   ownerUserId: string | null;
   nextRunAt: string | null;
   lastRunAt: string | null;
@@ -212,6 +214,10 @@ export interface WorkflowRun {
 export interface ObservabilityRetentionPolicy {
   workspaceId: string;
   retentionDays: 7 | 30 | 90 | 365;
+  /** Failed workflow runs in 24 hours that trigger a workspace alert. */
+  failureAlertThreshold: number;
+  /** Server-side per-request token ceiling for agent turns (AGENT_LLM_TPM_LIMIT). */
+  perTurnTokenLimit?: number;
   updatedAt: string | null;
 }
 

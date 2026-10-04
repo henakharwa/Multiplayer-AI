@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { PendingAction } from "@mai-chat/shared-types";
 import { confirmAction, cancelAction } from "../../lib/api";
 
@@ -12,10 +12,15 @@ export default function PendingActionCard({
   workspaceId,
   action,
   actorName,
+  canApprove = true,
+  onRequestAccess,
 }: {
   workspaceId: string;
   action: PendingAction;
   actorName: string;
+  // External approvals: Admins by default, Editors with approveActions.
+  canApprove?: boolean;
+  onRequestAccess?: ReactNode;
 }) {
   const [busy, setBusy] = useState<"confirm" | "cancel" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,12 +52,13 @@ export default function PendingActionCard({
       <dl className="pending-action-details"><div><dt>Action</dt><dd>{action.toolName.replace(/[_-]/g, " ")}</dd></div><div><dt>Target</dt><dd>{target}</dd></div><div><dt>Requested by</dt><dd>{action.requestedByName ?? "A workspace member"}</dd></div></dl>
       {action.preview && <pre className="pending-action-preview">{action.preview}</pre>}
       {error && <div className="pending-action-error">{error}</div>}
-      <p className="pending-action-note">Review the target and preview, then approve to run this action.</p>
+      <p className="pending-action-note">{canApprove ? "Review the target and preview, then approve to run this action." : "An Admin or a teammate with the “Approve actions” permission must confirm this action."}</p>
+      {!canApprove && onRequestAccess}
       <div className="pending-action-buttons">
-        <button className="btn" disabled={busy !== null} onClick={() => handle("confirm")} data-testid="confirm-action-btn">
+        <button className="btn" disabled={busy !== null || !canApprove} onClick={() => handle("confirm")} data-testid="confirm-action-btn">
           {busy === "confirm" ? "Confirming…" : "Confirm"}
         </button>
-        <button className="btn secondary" disabled={busy !== null} onClick={() => handle("cancel")} data-testid="cancel-action-btn">
+        <button className="btn secondary" disabled={busy !== null || !canApprove} onClick={() => handle("cancel")} data-testid="cancel-action-btn">
           {busy === "cancel" ? "Cancelling…" : "Cancel"}
         </button>
       </div>

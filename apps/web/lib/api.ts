@@ -161,7 +161,7 @@ export async function publishWorkspaceAgent(workspaceId: string, agentId: string
 export async function deleteWorkspaceAgent(workspaceId: string, agentId: string): Promise<void> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(agentId)}`, { method: "DELETE" }); if (!res.ok) await parseJsonOrThrow(res); }
 export async function listWorkspaceAgentVersions(workspaceId: string, agentId: string): Promise<import("@mai-chat/shared-types").WorkspaceAgentVersion[]> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(agentId)}/versions`); return (await parseJsonOrThrow(res)) as import("@mai-chat/shared-types").WorkspaceAgentVersion[]; }
 
-export type WorkflowInput = { name: string; description: string; instructions: string; agentKind: "project" | "github" | "slack" | "linear" | "notion" | "figma"; workspaceAgentId?: string | null; conversationId?: string | null; trigger: import("@mai-chat/shared-types").WorkflowTrigger; scheduleMinutes?: number | null; enabled: boolean };
+export type WorkflowInput = { name: string; description: string; instructions: string; agentKind: "project" | "github" | "slack" | "linear" | "notion" | "figma"; workspaceAgentId?: string | null; conversationId?: string | null; trigger: import("@mai-chat/shared-types").WorkflowTrigger; scheduleMinutes?: number | null; enabled: boolean; requiresApproval?: boolean };
 export async function listWorkspaceWorkflows(workspaceId: string): Promise<import("@mai-chat/shared-types").WorkspaceWorkflow[]> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/workflows`); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceWorkflow[]; }
 export async function createWorkspaceWorkflow(workspaceId: string, input: WorkflowInput): Promise<import("@mai-chat/shared-types").WorkspaceWorkflow> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/workflows`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceWorkflow; }
 export async function updateWorkspaceWorkflow(workspaceId: string, workflowId: string, input: WorkflowInput): Promise<import("@mai-chat/shared-types").WorkspaceWorkflow> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/workflows/${encodeURIComponent(workflowId)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").WorkspaceWorkflow; }
@@ -395,4 +395,31 @@ export async function resetPassword(token: string, password: string): Promise<{ 
   return (await parseJsonOrThrow(await authenticatedFetch(`${CHAT_SERVER_URL}/auth/reset-password`, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, password }),
   }))) as { reset: true };
+}
+
+// The signed-in member's effective workspace access (Nexus role access
+// matrix): Admins hold every permission, Editors the saved Editor policy.
+export type WorkspaceAccess = { role: import("@mai-chat/shared-types").WorkspaceRole; permissions: import("@mai-chat/shared-types").WorkspacePermissions };
+export async function getWorkspaceAccess(workspaceId: string): Promise<WorkspaceAccess> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/access`);
+  return (await parseJsonOrThrow(res)) as WorkspaceAccess;
+}
+export async function updateFailureAlertThreshold(workspaceId: string, failureAlertThreshold: number): Promise<import("@mai-chat/shared-types").ObservabilityRetentionPolicy> { const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/observability/retention`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ failureAlertThreshold }) }); return await parseJsonOrThrow(res) as import("@mai-chat/shared-types").ObservabilityRetentionPolicy; }
+
+// Real connection check for one integration (Integrations → Test connection).
+export type IntegrationHealth = { status: "ok" | "needs_setup" | "failed"; message: string };
+export async function testIntegration(workspaceId: string, integrationKey: string): Promise<IntegrationHealth> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/integrations/${encodeURIComponent(integrationKey)}/test`, { method: "POST" });
+  return (await parseJsonOrThrow(res)) as IntegrationHealth;
+}
+
+// Small per-member settings stored on the server so they follow the person across devices.
+export type PreferenceKey = "agent-favorites" | "activity-views" | "notifications-cleared-at";
+export async function getWorkspacePreference<T>(workspaceId: string, key: PreferenceKey): Promise<T | null> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/preferences/${key}`);
+  return ((await parseJsonOrThrow(res)) as { value: T | null }).value;
+}
+export async function setWorkspacePreference(workspaceId: string, key: PreferenceKey, value: unknown): Promise<void> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/preferences/${key}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ value }) });
+  if (!res.ok) await parseJsonOrThrow(res);
 }

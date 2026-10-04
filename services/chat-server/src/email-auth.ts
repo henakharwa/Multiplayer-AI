@@ -6,7 +6,6 @@ import { sendVerificationEmail } from "./email-verification.js";
 import { createMailer, defaultMailerConfig, type Mailer } from "./mailer.js";
 
 export function registerEmailAuthRoutes(app: Express, config: UserAuthConfig, mailer: Mailer = createMailer(defaultMailerConfig())): void {
-  const attempts = new Map<string, { count: number; expiresAt: number }>();
   app.post(["/auth/signup/email", "/auth/login/email"], async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     // JSON and same-origin requests only, including login-CSRF protection.
@@ -17,17 +16,14 @@ export function registerEmailAuthRoutes(app: Express, config: UserAuthConfig, ma
     const password = typeof req.body?.password === "string" ? req.body.password : "";
     const signup = req.path === "/auth/signup/email";
     const displayName = typeof req.body?.displayName === "string" ? req.body.displayName.trim() : "";
-    const now = Date.now();
-    for (const [key, value] of attempts) if (value.expiresAt <= now) attempts.delete(key);
-    // Bound expensive password work per IP and per account on this server.
-    const limits: [string, number][] = [[`ip:${req.ip}`, 30], [`email:${email}`, 10]];
-    if (limits.some(([key, max]) => (attempts.get(key)?.count ?? 0) >= max)) {
+    // Bound expensive password work per IP and per account. Stored in the
+    // database (like password-reset limits) so a restart or a second server
+    // process does not reset the counters.
+    const ipAllowed = await db.consumeRateLimit("email-auth-ip", req.ip ?? "unknown", 30, 900);
+    const emailAllowed = !email || await db.consumeRateLimit("email-auth-email", email, 10, 900);
+    if (!ipAllowed || !emailAllowed) {
       res.setHeader("Retry-After", "900");
       return res.status(429).json({ error: "Too many sign-in attempts. Try again in 15 minutes." });
-    }
-    for (const [key] of limits) {
-      const entry = attempts.get(key) ?? { count: 0, expiresAt: now + 15 * 60 * 1000 };
-      entry.count++; attempts.set(key, entry);
     }
     if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !password || password.length > 128) {
       return res.status(400).json({ error: "Enter a valid email and a password of at most 128 characters." });

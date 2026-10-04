@@ -2166,3 +2166,16 @@ textarea {
 .legal-card h2 { margin: 24px 0 6px; font-size: 17px; }
 .legal-card ul { padding-left: 20px; }
 .legal-updated { color: var(--text-dim); font-size: 13px; margin-top: 0; }
+
+/* Role access matrix: disabled / request-access states */
+.access-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-subtle); color: var(--text-dim); font-size: 13px; }
+.access-notice > span { flex: 1 1 220px; }
+.access-notice .btn { width: auto; min-height: 30px; padding: 4px 12px; font-size: 12px; }
+.access-notice-form { flex: 1 1 100%; display: grid; gap: 8px; }
+.access-notice-form label { display: grid; gap: 6px; font-size: 12px; }
+.access-notice-form textarea { width: 100%; resize: vertical; }
+.access-notice-form > div { display: flex; gap: 8px; }
+.access-notice small { flex: 1 1 100%; }
+/* Read-only builder for members without the required permission */
+fieldset.access-readonly { border: 0; padding: 0; margin: 0; min-width: 0; display: contents; }
+fieldset.access-readonly:disabled input, fieldset.access-readonly:disabled textarea, fieldset.access-readonly:disabled select, fieldset.access-readonly:disabled button { cursor: not-allowed; opacity: .7; }

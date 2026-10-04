@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import type { AuditEvent, AuditEventType, WorkspaceArtifact, WorkspaceMemory, WorkspaceTask } from "@mai-chat/shared-types";
-import { listAuditEvents, listWorkspaceArtifacts, listWorkspaceMemory, listWorkspaceTasks, ApiError } from "../../../../lib/api";
+import { getWorkspacePreference, setWorkspacePreference, listAuditEvents, listWorkspaceArtifacts, listWorkspaceMemory, listWorkspaceTasks, ApiError } from "../../../../lib/api";
 
 // Matches the AuditEventType union in packages/shared-types -- add a new
 // kind there and in services/chat-server/src/actions.ts / server.ts
@@ -101,7 +101,19 @@ export default function AuditPage() {
     };
   }, [workspaceId, search, type, reload]);
   useEffect(() => { if (!live) return; const timer = window.setInterval(() => setReload((value) => value + 1), 30000); return () => window.clearInterval(timer); }, [live]);
-  useEffect(() => { try { setSavedViews(JSON.parse(window.localStorage.getItem(`nexus-activity-views-${workspaceId}`) ?? "[]")); } catch { setSavedViews([]); } }, [workspaceId]);
+  // Saved views live on the server per member so they follow you across devices. Older browser-only views are moved over once.
+  useEffect(() => {
+    let cancelled = false; const legacyKey = `nexus-activity-views-${workspaceId}`;
+    getWorkspacePreference<typeof savedViews>(workspaceId, "activity-views").then((saved) => {
+      if (cancelled) return;
+      if (Array.isArray(saved)) { setSavedViews(saved); return; }
+      let legacy: typeof savedViews = [];
+      try { legacy = JSON.parse(window.localStorage.getItem(legacyKey) ?? "[]"); } catch { legacy = []; }
+      setSavedViews(Array.isArray(legacy) ? legacy : []);
+      if (Array.isArray(legacy) && legacy.length) void setWorkspacePreference(workspaceId, "activity-views", legacy).then(() => { try { window.localStorage.removeItem(legacyKey); } catch { /* ignore */ } }).catch(() => {});
+    }).catch(() => setSavedViews([]));
+    return () => { cancelled = true; };
+  }, [workspaceId]);
   useEffect(() => { void Promise.all([listWorkspaceTasks(workspaceId), listWorkspaceMemory(workspaceId), listWorkspaceArtifacts(workspaceId)]).then(([workspaceTasks, workspaceMemories, workspaceArtifacts]) => { setTasks(workspaceTasks); setMemories(workspaceMemories); setArtifacts(workspaceArtifacts); }).catch(() => {}); }, [workspaceId]);
   const overdueTasks = tasks.filter((task) => task.status !== "done" && task.dueDate && new Date(`${task.dueDate}T23:59:59`).getTime() < Date.now()); const staleMemories = memories.filter((memory) => memory.freshUntil && new Date(memory.freshUntil).getTime() < Date.now());
   const recentEvents = events.filter((event) => Date.now() - new Date(event.createdAt).getTime() < 86400000).length; const previousEvents = events.filter((event) => { const age = Date.now() - new Date(event.createdAt).getTime(); return age >= 86400000 && age < 172800000; }).length; const eventTrend = recentEvents - previousEvents;
@@ -124,7 +136,7 @@ export default function AuditPage() {
   const grouped = useMemo(() => pagedEvents.reduce<Record<string, AuditEvent[]>>((groups, event) => { const day = new Date(event.createdAt); const today = new Date(); const yesterday = new Date(); yesterday.setDate(today.getDate() - 1); const key = day.toDateString() === today.toDateString() ? "Today" : day.toDateString() === yesterday.toDateString() ? "Yesterday" : Date.now() - day.getTime() < 604800000 ? "This week" : "Earlier"; (groups[key] ??= []).push(event); return groups; }, {}), [pagedEvents]);
   useEffect(() => { setPage(1); }, [search, type, actor, agentFilter, workflowFilter, outcome, range]);
   const actors = [...new Set(events.map((event) => event.actorName).filter(Boolean))]; const iconFor = (event: AuditEvent) => event.eventType.startsWith("workflow") ? "↻" : event.eventType.startsWith("artifact") ? "▤" : event.eventType.startsWith("agent") ? "✦" : event.eventType.startsWith("memory") ? "▣" : event.eventType.startsWith("action") ? "✓" : event.eventType.startsWith("integration") ? "⌁" : "•";
-  function saveView() { const name = window.prompt("Name this activity view"); if (!name) return; const next = [...savedViews, { name, search, type, actor, outcome, range }]; setSavedViews(next); window.localStorage.setItem(`nexus-activity-views-${workspaceId}`, JSON.stringify(next)); }
+  function saveView() { const name = window.prompt("Name this activity view"); if (!name) return; const next = [...savedViews, { name, search, type, actor, outcome, range }]; setSavedViews(next); void setWorkspacePreference(workspaceId, "activity-views", next).catch(() => setError("Could not save this view.")); }
   function exportCsv() { const rows = [["Time", "Type", "Actor", "Activity"], ...filteredEvents.map((event) => [event.createdAt, EVENT_TYPE_LABELS[event.eventType], event.actorName || event.actorType, event.summary])]; const blob = new Blob(["\ufeff", rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "workspace-activity.csv"; anchor.style.display = "none"; document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 0); }
 
   return (

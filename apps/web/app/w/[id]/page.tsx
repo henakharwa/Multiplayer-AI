@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Conversation, GithubRepoSummary, IntegrationConfig, Workspace, WorkspaceAgent, WorkspaceMember, WorkspaceRole } from "@mai-chat/shared-types";
-import { createConversation, deleteConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, removeWorkspaceMember, leaveWorkspace, listWorkspaceInvitations, revokeWorkspaceInvitation, disconnectIntegration, githubOAuthStartUrl, sendWorkspaceInvitation, updateConversation, listWorkspaceAgents, listPermissionRequests, resolvePermissionRequest, type PermissionRequest, ApiError } from "../../../lib/api";
+import { getWorkspacePreference, setWorkspacePreference, createConversation, deleteConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, removeWorkspaceMember, leaveWorkspace, listWorkspaceInvitations, revokeWorkspaceInvitation, disconnectIntegration, githubOAuthStartUrl, sendWorkspaceInvitation, updateConversation, listWorkspaceAgents, listPermissionRequests, resolvePermissionRequest, type PermissionRequest, ApiError } from "../../../lib/api";
 import { useWorkspaceChat } from "../../../lib/useWorkspaceChat";
 import { colorForName, initialsForName } from "../../../lib/avatar";
 import ConnectChannelModal from "../../_components/ConnectChannelModal";
@@ -12,6 +12,8 @@ import GithubRepoPickerModal from "../../_components/GithubRepoPickerModal";
 import { useWorkspaceUser } from "../../_components/WorkspaceAuth";
 import { logout } from "../../../lib/api";
 import PendingActionCard from "../../_components/PendingActionCard";
+import { AccessNotice } from "../../_components/AccessNotice";
+import { useWorkspaceAccess } from "../../../lib/useWorkspaceAccess";
 import EmailVerificationBanner from "../../_components/EmailVerificationBanner";
 import { renderWithMentions, draftLooksLikeHandoff } from "../../../lib/mentionHighlight";
 
@@ -153,6 +155,7 @@ export default function WorkspaceRoomPage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const user = useWorkspaceUser();
+  const access = useWorkspaceAccess(workspaceId);
   const displayName = user.displayName;
   const greetingName = (displayName || user.username || "there").trim().split(/\s+/)[0] || "there";
 
@@ -326,25 +329,33 @@ export default function WorkspaceRoomPage() {
 
   const chat = useWorkspaceChat(workspace ? workspaceId : null, selectedConversationId, displayName);
 
-  const notificationKey = `mai:notifications:${workspaceId}`;
+  // Notifications come from the server (the source of truth). "Clear" is
+  // saved per member on the server, so it holds across refreshes and devices.
+  const [notificationsClearedAt, setNotificationsClearedAt] = useState<string | null>(null);
   useEffect(() => {
-    try {
-      const saved = JSON.parse(window.localStorage.getItem(notificationKey) ?? "[]") as StoredNotification[];
-      setNotifications(saved.slice(0, 30));
-    } catch {
-      setNotifications([]);
-    }
-  }, [notificationKey]);
-
-  useEffect(() => {
-    window.localStorage.setItem(notificationKey, JSON.stringify(notifications.slice(0, 30)));
-  }, [notificationKey, notifications]);
+    let cancelled = false;
+    getWorkspacePreference<string>(workspaceId, "notifications-cleared-at").then((value) => { if (!cancelled) setNotificationsClearedAt(typeof value === "string" ? value : null); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+  function clearNotifications(): void {
+    const now = new Date().toISOString();
+    setNotificationsClearedAt(now);
+    setNotifications([]);
+    void setWorkspacePreference(workspaceId, "notifications-cleared-at", now).catch(() => {});
+    void markNotificationsRead(workspaceId).catch(() => {});
+  }
 
   useEffect(() => {
     let cancelled = false;
     const refresh = () => listNotifications(workspaceId).then((serverNotifications) => {
       if (cancelled) return;
-      setNotifications(serverNotifications.map((notification) => ({ id: notification.id, text: notification.text, createdAt: notification.createdAt, read: Boolean(notification.readAt) })));
+      const fromServer = serverNotifications.map((notification) => ({ id: notification.id, text: notification.text, createdAt: notification.createdAt, read: Boolean(notification.readAt) }));
+      // Keep live, in-session entries for a minute so they don't vanish
+      // before the server's copy (if any) arrives.
+      setNotifications((current) => {
+        const recentLocal = current.filter((item) => item.id.startsWith("local:") && Date.now() - new Date(item.createdAt).getTime() < 60_000 && !fromServer.some((server) => server.text === item.text));
+        return [...recentLocal, ...fromServer].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30);
+      });
     }).catch(() => {});
     refresh();
     const interval = window.setInterval(refresh, 15_000);
@@ -352,7 +363,7 @@ export default function WorkspaceRoomPage() {
   }, [workspaceId]);
 
   function addNotification(text: string): void {
-    setNotifications((current) => [{ id: crypto.randomUUID(), text, createdAt: new Date().toISOString(), read: false }, ...current].slice(0, 30));
+    setNotifications((current) => [{ id: `local:${crypto.randomUUID()}`, text, createdAt: new Date().toISOString(), read: false }, ...current].slice(0, 30));
   }
 
   useEffect(() => {
@@ -383,7 +394,8 @@ export default function WorkspaceRoomPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.historyLoaded, chat.pendingActions]);
 
-  const unreadNotifications = notifications.filter((notification) => !notification.read).length;
+  const visibleNotifications = notifications.filter((notification) => !notificationsClearedAt || notification.createdAt > notificationsClearedAt);
+  const unreadNotifications = visibleNotifications.filter((notification) => !notification.read).length;
 
   async function startNewConversation(): Promise<void> {
     try {
@@ -482,17 +494,22 @@ export default function WorkspaceRoomPage() {
     : chat.messages;
   const isNewWorkspaceConversation = chat.messages.length === 0;
   const selectedAgentInfo = configuredAgent ? { ...(AGENTS.find((agent) => agent.id === selectedAgent) ?? AGENTS[0]), name: configuredAgent.name } : (AGENTS.find((agent) => agent.id === selectedAgent) ?? AGENTS[0]);
-  const workspaceRole = workspaceMembers.find((member) => member.id === user.id)?.role ?? "admin";
+  // Role comes from the server's effective access, never a client default,
+  // so Admin-only controls are not shown before access has loaded.
+  const workspaceRole: WorkspaceRole | null = access.role ?? workspaceMembers.find((member) => member.id === user.id)?.role ?? null;
   const canEdit = workspaceRole === "admin" || workspaceRole === "editor";
+  const canConnectTools = access.can("connectTools");
+  const canApproveActions = access.can("approveActions");
+  const canUseSelectedProvider = selectedAgent === "project" || access.can(selectedAgent as "github" | "slack" | "linear" | "notion" | "figma");
   const selectedAgentConnected = selectedAgent === "project" || integrations.some((integration) => integration.type === selectedAgent);
   const onboardingSteps = [
     { label: "Create your workspace", complete: true },
     { label: "Invite a teammate", complete: workspaceMembers.length > 1, action: workspaceRole === "admin" ? () => setShowInviteModal(true) : undefined },
-    { label: "Connect a tool", complete: integrations.length > 0, action: canEdit ? () => setShowConnectModal(true) : undefined },
+    { label: "Connect a tool", complete: integrations.length > 0, action: canConnectTools ? () => setShowConnectModal(true) : undefined },
     { label: "Ask an agent a question", complete: conversations.some((conversation) => conversation.id === selectedConversationId && chat.messages.length > 0) },
   ];
-  const notificationsToday = notifications.filter((notification) => new Date(notification.createdAt).toDateString() === new Date().toDateString());
-  const notificationsEarlier = notifications.filter((notification) => !notificationsToday.includes(notification));
+  const notificationsToday = visibleNotifications.filter((notification) => new Date(notification.createdAt).toDateString() === new Date().toDateString());
+  const notificationsEarlier = visibleNotifications.filter((notification) => !notificationsToday.includes(notification));
   const pendingActions = chat.pendingActions.filter((action) => action.status === "pending");
 
   function useStarterTemplate(prompt: string): void {
@@ -563,12 +580,12 @@ export default function WorkspaceRoomPage() {
             <div className="workspace-notification-wrap">
               <button type="button" title="Notifications" onClick={() => { setNotificationsOpen((open) => !open); setNotifications((current) => current.map((item) => ({ ...item, read: true }))); void markNotificationsRead(workspaceId); }} aria-label={`Notifications${unreadNotifications ? ` (${unreadNotifications} unread)` : ""}`}><BellGlyph />{unreadNotifications > 0 && <span className="workspace-notification-badge">{unreadNotifications > 9 ? "9+" : unreadNotifications}</span>}</button>
               {notificationsOpen && <section className="workspace-notification-panel" aria-label="Notifications">
-                <div><strong>Notifications</strong><button type="button" onClick={() => setNotifications([])}>Clear</button></div>
-                {notifications.length ? <>{notificationsToday.length > 0 && <NotificationGroup label="Today" notifications={notificationsToday} />}{notificationsEarlier.length > 0 && <NotificationGroup label="Earlier" notifications={notificationsEarlier} />}</> : <div className="workspace-notification-empty"><strong>You&apos;re all caught up</strong><span>Updates from teammates and approved actions will appear here.</span></div>}
+                <div><strong>Notifications</strong><button type="button" onClick={clearNotifications}>Clear</button></div>
+                {visibleNotifications.length ? <>{notificationsToday.length > 0 && <NotificationGroup label="Today" notifications={notificationsToday} />}{notificationsEarlier.length > 0 && <NotificationGroup label="Earlier" notifications={notificationsEarlier} />}</> : <div className="workspace-notification-empty"><strong>You&apos;re all caught up</strong><span>Updates from teammates and approved actions will appear here.</span></div>}
               </section>}
             </div>
             {workspaceRole === "admin" && <div className="workspace-permission-request-wrap"><button type="button" title="Permission requests" onClick={() => setPermissionRequestsOpen((open) => !open)} aria-label={`Permission requests${permissionRequests.length ? ` (${permissionRequests.length} pending)` : ""}`}><KeyGlyph />{permissionRequests.length > 0 && <span className="workspace-notification-badge">{permissionRequests.length > 9 ? "9+" : permissionRequests.length}</span>}</button>{permissionRequestsOpen && <section className="workspace-permission-request-panel" aria-label="Pending permission requests"><header><div><p>Requests</p><strong>Pending permissions</strong></div><span>{permissionRequests.length}</span></header>{permissionRequests.length ? permissionRequests.map((request) => <article key={request.id}><dl><div><dt>Requested by</dt><dd>{request.display_name} <small>@{request.username}</small></dd></div><div><dt>Capability</dt><dd>{permissionLabel(request.permission)}</dd></div><div><dt>Reason</dt><dd>{request.reason}</dd></div></dl><aside><button className="btn" onClick={() => void decidePermissionRequest(request, "approve")}>Approve</button><button className="btn secondary permission-reject" onClick={() => void decidePermissionRequest(request, "reject")}>Reject</button></aside></article>) : <p className="workspace-notification-empty">No pending permission requests.</p>}</section>}</div>}
-            {canEdit && <button type="button" title="Workspace integrations" onClick={() => setShowConnectModal(true)} aria-label="Add integration"><PlugGlyph /></button>}
+            {canConnectTools && <button type="button" title="Workspace integrations" onClick={() => setShowConnectModal(true)} aria-label="Add integration"><PlugGlyph /></button>}
           </div>
         </div>
         <div className="workspace-sidebar-scroll">
@@ -614,7 +631,7 @@ export default function WorkspaceRoomPage() {
             if (!label) return null;
             return <div className="workspace-tool-row" key={integration.id ?? integration.type} data-testid={`connected-${integration.type}`}>
               <Link className="workspace-tool" href={`/w/${workspaceId}/integrations`}><span className="channel-glyph"><ToolIcon tool={integration.type} /></span><span>{label}<small className="tool-connector">Connected by {integration.ownerUserId === user.id ? "You" : integration.connectedByName ?? "workspace member"}</small></span><small className="tool-health connected">Connected</small></Link>
-              {canEdit && integration.ownerUserId === user.id && <div className="workspace-tool-menu"><button type="button" className="workspace-tool-more" aria-label={`Manage ${integration.type}`} aria-expanded={toolMenu === integration.type} onClick={() => setToolMenu((current) => current === integration.type ? null : integration.type)}><MoreGlyph /></button>{toolMenu === integration.type && <div className="workspace-tool-popover">{integration.type === "github" && <button type="button" onClick={changeGithubConnection}>Change</button>}<button type="button" className="danger" onClick={() => void removeIntegration(integration)}>Disconnect</button></div>}</div>}
+              {canConnectTools && integration.ownerUserId === user.id && <div className="workspace-tool-menu"><button type="button" className="workspace-tool-more" aria-label={`Manage ${integration.type}`} aria-expanded={toolMenu === integration.type} onClick={() => setToolMenu((current) => current === integration.type ? null : integration.type)}><MoreGlyph /></button>{toolMenu === integration.type && <div className="workspace-tool-popover">{integration.type === "github" && <button type="button" onClick={changeGithubConnection}>Change</button>}<button type="button" className="danger" onClick={() => void removeIntegration(integration)}>Disconnect</button></div>}</div>}
             </div>;
           }) : null}
           <button className="workspace-empty-tool" onClick={() => setShowConnectModal(true)}>Connect your tools +</button>
@@ -685,6 +702,7 @@ export default function WorkspaceRoomPage() {
                 canEdit={canEdit}
                 chatOpen={chat.status === "open"}
                 onChoose={useStarterTemplate}
+                canConnect={canConnectTools}
                 onConnect={() => setShowConnectModal(true)}
               />
               <section className="workspace-onboarding" aria-label="Getting started">
@@ -740,11 +758,12 @@ export default function WorkspaceRoomPage() {
           <div ref={messagesEndRef} />
         </div>
 
+        {!canUseSelectedProvider && <AccessNotice workspaceId={workspaceId} access={access} permission={selectedAgent as "github" | "slack" | "linear" | "notion" | "figma"} message={`Your workspace role cannot use the ${selectedAgentInfo.name} provider in chat or workflows.`} />}
         {pendingActions.length > 0 && (
           <div className="pending-actions-list" data-testid="pending-actions-list">
             <div className="pending-actions-summary"><span>{pendingActions.length} approval request{pendingActions.length === 1 ? "" : "s"} awaiting review</span>{pendingActions.length > 1 && <button type="button" onClick={() => setShowAllPendingActions((open) => !open)}>{showAllPendingActions ? "Show latest" : `Review all (${pendingActions.length})`}</button>}</div>
             {(showAllPendingActions ? pendingActions : pendingActions.slice(0, 1)).map((a) => (
-                <PendingActionCard key={a.id} workspaceId={workspaceId} action={a} actorName={displayName} />
+                <PendingActionCard key={a.id} workspaceId={workspaceId} action={a} actorName={displayName} canApprove={canApproveActions} onRequestAccess={<AccessNotice workspaceId={workspaceId} access={access} permission="approveActions" message="You can review this request, but confirming external actions requires the “Approve actions” permission." />} />
               ))}
           </div>
         )}
@@ -769,7 +788,8 @@ export default function WorkspaceRoomPage() {
           canEdit={canEdit}
           chatOpen={chat.status === "open"}
           onChoose={useStarterTemplate}
-          onConnect={() => setShowConnectModal(true)}
+          canConnect={canConnectTools}
+                onConnect={() => setShowConnectModal(true)}
         />
         <form className="composer" onSubmit={handleSend}>
           <input
@@ -836,11 +856,13 @@ function AgentSelector({ selected, selectedName, customName, customAgents, selec
     {open && <div className={`agent-picker ${pickerPlacement}`} style={{ maxHeight: pickerMaxHeight }} role="menu"><div className="agent-picker-toolbar"><label><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search agents" aria-label="Search agents" /><SearchGlyph /></label></div><div className="agent-picker-columns"><section><p className="agent-picker-section">Built-in agents</p><div className="agent-picker-list">{matchingAgents.map((agent) => <button type="button" key={agent.id} className={!selectedCustomId && agent.id === selected ? "selected" : ""} onClick={() => onSelect(agent.id)}><span><AgentIcon agent={agent.id} /></span><strong>{agent.name}</strong><small>{agent.description}</small>{!selectedCustomId && agent.id === selected && <b>✓</b>}</button>)}{matchingAgents.length === 0 && <p>No built-in agents match.</p>}</div></section><section><p className="agent-picker-section">Your agents</p><div className="agent-picker-list">{matchingCustomAgents.map((agent) => <button type="button" key={agent.id} className={agent.id === selectedCustomId ? "selected" : ""} onClick={() => onSelectCustom(agent)}><span><CustomAgentLogo name={agent.name} /></span><strong>{agent.name}</strong><small>{agent.baseAgent} · version {agent.publishedVersion}</small>{agent.id === selectedCustomId && <b>✓</b>}</button>)}{matchingCustomAgents.length === 0 && <p>No published agents yet.</p>}</div></section></div></div>}
   </div>;
 }
-function StarterPrompts({ agent, agentName, connected, canEdit, chatOpen, onChoose, onConnect, compact = false }: {
+function StarterPrompts({ agent, agentName, connected, canEdit, canConnect, chatOpen, onChoose, onConnect, compact = false }: {
   agent: AgentKind;
   agentName: string;
   connected: boolean;
   canEdit: boolean;
+  // Connecting tools requires connectTools (Admins by default).
+  canConnect: boolean;
   chatOpen: boolean;
   onChoose: (prompt: string) => void;
   onConnect: () => void;
@@ -854,7 +876,7 @@ function StarterPrompts({ agent, agentName, connected, canEdit, chatOpen, onChoo
           <span>{template.prompt}</span>{template.requiresApproval && <small>Requires approval</small>}
         </button>
       )) : (
-        <button type="button" onClick={onConnect} disabled={!canEdit}><span>Connect {agentName} to get started</span></button>
+        <button type="button" onClick={onConnect} disabled={!canEdit || !canConnect} title={canConnect ? undefined : "Connecting tools requires the “Connect and manage tools” permission."}><span>{canConnect ? `Connect ${agentName} to get started` : `${agentName} isn't connected — ask an Admin or request tool access`}</span></button>
       )}
     </div>
   </section>;

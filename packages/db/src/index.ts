@@ -761,14 +761,14 @@ export async function deleteWorkspaceAgent(workspaceId: string, agentId: string)
   return result.rows[0] ? toWorkspaceAgent(result.rows[0]) : null;
 }
 
-type WorkflowInput = Pick<WorkspaceWorkflow, "name" | "description" | "instructions" | "agentKind" | "workspaceAgentId" | "conversationId" | "trigger" | "scheduleMinutes" | "enabled">;
+type WorkflowInput = Pick<WorkspaceWorkflow, "name" | "description" | "instructions" | "agentKind" | "workspaceAgentId" | "conversationId" | "trigger" | "scheduleMinutes" | "enabled"> & { requiresApproval?: boolean };
 
 function toWorkflow(row: Record<string, unknown>): WorkspaceWorkflow {
   return {
     id: String(row.id), workspaceId: String(row.workspace_id), name: String(row.name), description: String(row.description ?? ""), instructions: String(row.instructions ?? ""),
     agentKind: row.agent_kind as WorkspaceWorkflow["agentKind"], workspaceAgentId: row.workspace_agent_id ? String(row.workspace_agent_id) : null,
     conversationId: row.conversation_id ? String(row.conversation_id) : null, trigger: row.trigger as WorkflowTrigger,
-    scheduleMinutes: row.schedule_minutes === null ? null : Number(row.schedule_minutes), enabled: Boolean(row.enabled), ownerUserId: row.owner_user_id ? String(row.owner_user_id) : null,
+    scheduleMinutes: row.schedule_minutes === null ? null : Number(row.schedule_minutes), enabled: Boolean(row.enabled), requiresApproval: Boolean(row.requires_approval), ownerUserId: row.owner_user_id ? String(row.owner_user_id) : null,
     nextRunAt: row.next_run_at ? (row.next_run_at as Date).toISOString() : null, lastRunAt: row.last_run_at ? (row.last_run_at as Date).toISOString() : null,
     lastRunStatus: row.last_run_status as WorkflowRunStatus | null, lastRunError: row.last_run_error ? String(row.last_run_error) : null,
     createdAt: (row.created_at as Date).toISOString(), updatedAt: (row.updated_at as Date).toISOString(),
@@ -792,9 +792,9 @@ export async function getWorkspaceWorkflow(workspaceId: string, workflowId: stri
 export async function createWorkspaceWorkflow(workspaceId: string, ownerUserId: string, input: WorkflowInput): Promise<WorkspaceWorkflow> {
   const scheduleMinutes = input.trigger === "schedule" ? input.scheduleMinutes : null;
   const result = await getPool().query(
-    `INSERT INTO workspace_workflows (workspace_id,name,description,instructions,agent_kind,workspace_agent_id,conversation_id,trigger,schedule_minutes,enabled,owner_user_id,next_run_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-    [workspaceId, input.name.trim(), input.description.trim(), input.instructions.trim(), input.agentKind, input.workspaceAgentId, input.conversationId, input.trigger, scheduleMinutes, input.enabled, ownerUserId, workflowScheduleDate(input.trigger, scheduleMinutes)]
+    `INSERT INTO workspace_workflows (workspace_id,name,description,instructions,agent_kind,workspace_agent_id,conversation_id,trigger,schedule_minutes,enabled,owner_user_id,next_run_at,requires_approval)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+    [workspaceId, input.name.trim(), input.description.trim(), input.instructions.trim(), input.agentKind, input.workspaceAgentId, input.conversationId, input.trigger, scheduleMinutes, input.enabled, ownerUserId, workflowScheduleDate(input.trigger, scheduleMinutes), input.requiresApproval ?? false]
   );
   return toWorkflow(result.rows[0]);
 }
@@ -806,9 +806,9 @@ export async function updateWorkspaceWorkflow(workspaceId: string, workflowId: s
   const scheduleMinutes = merged.trigger === "schedule" ? merged.scheduleMinutes : null;
   const nextRun = !merged.enabled ? null : workflowScheduleDate(merged.trigger, scheduleMinutes);
   const result = await getPool().query(
-    `UPDATE workspace_workflows SET name=$3,description=$4,instructions=$5,agent_kind=$6,workspace_agent_id=$7,conversation_id=$8,trigger=$9,schedule_minutes=$10,enabled=$11,next_run_at=$12,updated_at=now()
+    `UPDATE workspace_workflows SET name=$3,description=$4,instructions=$5,agent_kind=$6,workspace_agent_id=$7,conversation_id=$8,trigger=$9,schedule_minutes=$10,enabled=$11,next_run_at=$12,requires_approval=$13,updated_at=now()
      WHERE workspace_id=$1 AND id=$2 RETURNING *`,
-    [workspaceId, workflowId, merged.name, merged.description, merged.instructions, merged.agentKind, merged.workspaceAgentId, merged.conversationId, merged.trigger, scheduleMinutes, merged.enabled, nextRun]
+    [workspaceId, workflowId, merged.name, merged.description, merged.instructions, merged.agentKind, merged.workspaceAgentId, merged.conversationId, merged.trigger, scheduleMinutes, merged.enabled, nextRun, merged.requiresApproval]
   );
   return result.rows[0] ? toWorkflow(result.rows[0]) : null;
 }
@@ -1082,27 +1082,55 @@ export async function finishWorkflowRun(workflowId: string, runId: string, statu
 }
 
 /** Number of failures in the active alert window, including the just-finished run. */
-export async function countRecentFailedWorkflowRuns(workspaceId: string, hours = 24): Promise<number> {
+export async function countRecentFailedWorkflowRuns(workspaceId: string, hours = 24, workflowId?: string): Promise<number> {
   const result = await getPool().query(
-    "SELECT count(*)::int AS count FROM workspace_workflow_runs WHERE workspace_id=$1 AND status='failed' AND completed_at >= now() - ($2::int * interval '1 hour')",
-    [workspaceId, hours]
+    "SELECT count(*)::int AS count FROM workspace_workflow_runs WHERE workspace_id=$1 AND ($3::uuid IS NULL OR workflow_id=$3) AND status='failed' AND completed_at >= now() - ($2::int * interval '1 hour')",
+    [workspaceId, hours, workflowId ?? null]
   );
   return Number(result.rows[0]?.count ?? 0);
 }
 
+/** Reads one of a member's small per-workspace settings, or null if unset. */
+export async function getUserWorkspacePreference(workspaceId: string, userId: string, key: string): Promise<unknown | null> {
+  const result = await getPool().query("SELECT value FROM user_workspace_preferences WHERE workspace_id=$1 AND user_id=$2 AND key=$3", [workspaceId, userId, key]);
+  return result.rows[0] ? result.rows[0].value : null;
+}
+
+/** Saves one of a member's small per-workspace settings. */
+export async function setUserWorkspacePreference(workspaceId: string, userId: string, key: string, value: unknown): Promise<void> {
+  await getPool().query(
+    "INSERT INTO user_workspace_preferences (workspace_id,user_id,key,value,updated_at) VALUES ($1,$2,$3,$4::jsonb,now()) ON CONFLICT (workspace_id,user_id,key) DO UPDATE SET value=EXCLUDED.value,updated_at=now()",
+    [workspaceId, userId, key, JSON.stringify(value)]
+  );
+}
+
 export async function getObservabilityRetentionPolicy(workspaceId: string): Promise<import("@mai-chat/shared-types").ObservabilityRetentionPolicy> {
-  const result = await getPool().query("SELECT workflow_run_retention_days,updated_at FROM workspace_observability_settings WHERE workspace_id=$1", [workspaceId]);
+  const result = await getPool().query("SELECT workflow_run_retention_days,failure_alert_threshold,updated_at FROM workspace_observability_settings WHERE workspace_id=$1", [workspaceId]);
   const row = result.rows[0];
-  return { workspaceId, retentionDays: (row?.workflow_run_retention_days ?? 30) as 7 | 30 | 90 | 365, updatedAt: row?.updated_at ? row.updated_at.toISOString() : null };
+  return { workspaceId, retentionDays: (row?.workflow_run_retention_days ?? 30) as 7 | 30 | 90 | 365, failureAlertThreshold: row?.failure_alert_threshold ?? defaultFailureAlertThreshold(), updatedAt: row?.updated_at ? row.updated_at.toISOString() : null };
+}
+
+function defaultFailureAlertThreshold(): number {
+  const configured = Number(process.env.WORKFLOW_FAILURE_ALERT_THRESHOLD ?? 3);
+  return Number.isFinite(configured) ? Math.max(1, Math.round(configured)) : 3;
+}
+
+/** Saves the Admin-set failure-alert threshold (1-20 failed runs in 24 hours). */
+export async function updateFailureAlertThreshold(workspaceId: string, threshold: number): Promise<import("@mai-chat/shared-types").ObservabilityRetentionPolicy> {
+  await getPool().query(
+    "INSERT INTO workspace_observability_settings (workspace_id,failure_alert_threshold) VALUES ($1,$2) ON CONFLICT (workspace_id) DO UPDATE SET failure_alert_threshold=EXCLUDED.failure_alert_threshold,updated_at=now()",
+    [workspaceId, threshold]
+  );
+  return getObservabilityRetentionPolicy(workspaceId);
 }
 
 export async function updateObservabilityRetentionPolicy(workspaceId: string, retentionDays: 7 | 30 | 90 | 365): Promise<import("@mai-chat/shared-types").ObservabilityRetentionPolicy> {
   const result = await getPool().query(
-    "INSERT INTO workspace_observability_settings (workspace_id,workflow_run_retention_days) VALUES ($1,$2) ON CONFLICT (workspace_id) DO UPDATE SET workflow_run_retention_days=EXCLUDED.workflow_run_retention_days,updated_at=now() RETURNING workflow_run_retention_days,updated_at",
+    "INSERT INTO workspace_observability_settings (workspace_id,workflow_run_retention_days) VALUES ($1,$2) ON CONFLICT (workspace_id) DO UPDATE SET workflow_run_retention_days=EXCLUDED.workflow_run_retention_days,updated_at=now() RETURNING workflow_run_retention_days,failure_alert_threshold,updated_at",
     [workspaceId, retentionDays]
   );
   const row = result.rows[0];
-  return { workspaceId, retentionDays: row.workflow_run_retention_days as 7 | 30 | 90 | 365, updatedAt: row.updated_at.toISOString() };
+  return { workspaceId, retentionDays: row.workflow_run_retention_days as 7 | 30 | 90 | 365, failureAlertThreshold: row.failure_alert_threshold ?? defaultFailureAlertThreshold(), updatedAt: row.updated_at.toISOString() };
 }
 
 /** Deletes expired workflow runs according to each workspace's saved policy. */

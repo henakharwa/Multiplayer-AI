@@ -17,6 +17,7 @@ import { getGithubMcpClient, DEFAULT_GITHUB_TOOLS } from "./github-mcp-pool.js";
 import { getSlackMcpClient } from "./slack-mcp-pool.js";
 import { listMcpToolExecutors } from "./mcp-tools.js";
 import { UUID_RE, paramString, errMessage } from "./http-utils.js";
+import { testIntegrationConnection } from "./integration-health.js";
 import { attachUser, requireAuth, parseSessionToken, registerUserAuthRoutes, type UserAuthDeps, type UserAuthConfig } from "./auth.js";
 import { registerEmailVerificationRoutes } from "./email-verification.js";
 import { registerPasswordResetRoutes } from "./password-reset.js";
@@ -499,6 +500,12 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   // configured URL avoids rejecting legitimate deployed requests when a
   // host dashboard stores the URL as `https://example.com/`.
   const webAppUrl = (process.env.WEB_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+  // Behind Render's proxy and the bundled Caddy proxy every request would
+  // otherwise appear to come from 127.0.0.1, so per-IP sign-in and reset
+  // limits would be shared by all users. Trust exactly the proxy hops in
+  // front of this process (2 on Render: Render's edge + Caddy).
+  const trustedProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? (process.env.RENDER ? 2 : 0));
+  if (Number.isInteger(trustedProxyHops) && trustedProxyHops > 0) app.set("trust proxy", trustedProxyHops);
   app.use(cors({ origin: webAppUrl, credentials: true }));
   app.use(express.json());
   app.use((req, res, next) => {
@@ -741,6 +748,13 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   // Join by code (shared capability). New members join as Editors; an
   // existing member keeps their current role.
   app.post("/workspaces/by-code/:joinCode/join", async (req: Request, res: Response) => {
+    // Bound join-code guessing per account and per network address.
+    const userAllowed = await db.consumeRateLimit("workspace-join-user", req.user!.id, 20, 900);
+    const ipAllowed = await db.consumeRateLimit("workspace-join-ip", req.ip ?? "unknown", 60, 900);
+    if (!userAllowed || !ipAllowed) {
+      res.setHeader("Retry-After", "900");
+      return res.status(429).json({ error: "Too many join attempts. Try again in 15 minutes." });
+    }
     const workspace = await db.getWorkspaceByJoinCode(paramString(req.params.joinCode));
     if (!workspace) return res.status(404).json({ error: "No workspace found for that join code." });
     const existingMembers = await db.listWorkspaceMembersWithRoles(workspace.id);
@@ -773,6 +787,21 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   app.get("/workspaces/:id/permissions", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     res.json(await db.getWorkspacePermissionPolicy(paramString(req.params.id)));
+  });
+
+  // The signed-in member's effective access, as described by the Nexus role
+  // access matrix: Admins hold every permission; Editors hold the saved
+  // Editor policy. The web app uses this to show enabled, disabled, or
+  // request-access states without duplicating policy logic.
+  app.get("/workspaces/:id/access", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const workspaceId = paramString(req.params.id);
+    const role = (await db.getWorkspaceRole(workspaceId, req.user!.id))!;
+    const policy = await db.getWorkspacePermissionPolicy(workspaceId);
+    const permissions = role === "admin"
+      ? Object.fromEntries(Object.keys(policy.admin).map((key) => [key, true]))
+      : policy.editor;
+    res.json({ role, permissions });
   });
 
   app.put("/workspaces/:id/permissions", async (req: Request, res: Response) => {
@@ -872,6 +901,8 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
       conversationId: typeof body.conversationId === "string" && UUID_RE.test(body.conversationId) ? body.conversationId : null,
       trigger, scheduleMinutes: trigger === "schedule" && Number.isInteger(scheduleMinutes) && scheduleMinutes >= 5 && scheduleMinutes <= 10080 ? scheduleMinutes : null,
       enabled: typeof body.enabled === "boolean" ? body.enabled : true,
+      // Omitted on update means "keep the saved setting".
+      ...(typeof body.requiresApproval === "boolean" ? { requiresApproval: body.requiresApproval } : {}),
     };
   }
 
@@ -916,19 +947,29 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   });
   app.get("/workspaces/:id/observability/retention", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
-    res.json(await db.getObservabilityRetentionPolicy(paramString(req.params.id)));
+    res.json({ ...(await db.getObservabilityRetentionPolicy(paramString(req.params.id))), perTurnTokenLimit: resolveLlmConfig().tpmLimit });
   });
   app.put("/workspaces/:id/observability/retention", async (req: Request, res: Response) => {
-    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    // Observability controls are Admin only; Editors can view retention status.
+    if (!(await requireRole(req, res, ["admin"]))) return;
+    const workspaceId = paramString(req.params.id);
+    // Failure-alert threshold (Admin observability control) may be saved on its own.
+    if (req.body?.failureAlertThreshold !== undefined) {
+      const threshold = Number(req.body.failureAlertThreshold);
+      if (!Number.isInteger(threshold) || threshold < 1 || threshold > 20) return res.status(400).json({ error: "failureAlertThreshold must be a whole number from 1 to 20" });
+      const saved = await db.updateFailureAlertThreshold(workspaceId, threshold);
+      if (req.body?.retentionDays === undefined) return res.json({ ...saved, removed: 0 });
+    }
     const retentionDays = Number(req.body?.retentionDays);
     if (![7, 30, 90, 365].includes(retentionDays)) return res.status(400).json({ error: "retentionDays must be 7, 30, 90, or 365" });
-    const workspaceId = paramString(req.params.id);
     const policy = await db.updateObservabilityRetentionPolicy(workspaceId, retentionDays as 7 | 30 | 90 | 365);
     const removed = await db.enforceWorkflowRunRetention(workspaceId);
     res.json({ ...policy, removed });
   });
   app.post("/workspaces/:id/workflows/:workflowId/run", async (req: Request, res: Response) => {
-    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    // Running a workflow is a workflow change: Admins by default, Editors
+    // only with the createAgents permission.
+    if (!(await requirePermission(req, res, "createAgents"))) return;
     const workflow = await db.getWorkspaceWorkflow(paramString(req.params.id), paramString(req.params.workflowId));
     if (!workflow) return res.status(404).json({ error: "Workflow not found." });
     const requestedTrigger = req.body?.trigger;
@@ -976,8 +1017,10 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     const workspaceId = paramString(req.params.id);
     const memory = await db.getWorkspaceMemory(workspaceId, memoryId);
     if (!memory) return { memory: null, allowed: false };
+    // Memory is a shared capability: Admins and Editors can view, create,
+    // edit, and manage every workspace memory entry.
     const role = await db.getWorkspaceRole(workspaceId, req.user!.id);
-    return { memory, allowed: role === "admin" || memory.createdByUserId === req.user!.id };
+    return { memory, allowed: role === "admin" || role === "editor" };
   }
   app.get("/workspaces/:id/memory", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
@@ -996,7 +1039,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const access = await canManageMemory(req, paramString(req.params.memoryId));
     if (!access.memory) return res.status(404).json({ error: "Memory not found." });
-    if (!access.allowed) return res.status(403).json({ error: "Only the memory author or an Admin can edit this entry." });
+    if (!access.allowed) return res.status(403).json({ error: "Only workspace members can edit this entry." });
     let input;
     try { input = parseWorkspaceMemoryInput(req.body ?? {}); } catch (error) { return res.status(400).json({ error: errMessage(error) }); }
     if (!input.title.trim() || !input.content.trim()) return res.status(400).json({ error: "A memory title and content are required." });
@@ -1009,7 +1052,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const access = await canManageMemory(req, paramString(req.params.memoryId));
     if (!access.memory) return res.status(404).json({ error: "Memory not found." });
-    if (!access.allowed) return res.status(403).json({ error: "Only the memory author or an Admin can delete this entry." });
+    if (!access.allowed) return res.status(403).json({ error: "Only workspace members can delete this entry." });
     const memory = await db.deleteWorkspaceMemory(paramString(req.params.id), paramString(req.params.memoryId));
     if (!memory) return res.status(404).json({ error: "Memory not found." });
     await db.recordAuditEvent({ workspaceId: memory.workspaceId, eventType: "memory.deleted", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} deleted memory ${memory.title}` });
@@ -1098,6 +1141,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.json(artifact);
   });
   app.post("/workspaces/:id/artifacts/:artifactId/generate-release-notes", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const access = await canManageArtifact(req, paramString(req.params.artifactId));
     if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
     if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can generate it." });
@@ -1110,6 +1154,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   });
 
   app.post("/workspaces/:id/artifacts/:artifactId/generate-report", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const access = await canManageArtifact(req, paramString(req.params.artifactId));
     if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
     if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can generate it." });
@@ -1122,6 +1167,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   });
 
   app.post("/workspaces/:id/artifacts/:artifactId/share-to-slack", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const access = await canManageArtifact(req, paramString(req.params.artifactId));
     if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
     if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can share it." });
@@ -1171,6 +1217,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   // there's nothing workspace-private in what the link exposes (see
   // PublicDashboardView).
   app.post("/workspaces/:id/artifacts/:artifactId/share", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const access = await canManageArtifact(req, paramString(req.params.artifactId));
     if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
     if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can share it." });
@@ -1180,6 +1227,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.json(artifact);
   });
   app.delete("/workspaces/:id/artifacts/:artifactId/share", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const access = await canManageArtifact(req, paramString(req.params.artifactId));
     if (!access.artifact) return res.status(404).json({ error: "Artifact not found." });
     if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can revoke sharing." });
@@ -1223,6 +1271,12 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "invalid workspace id" });
     const role = await db.getWorkspaceRole(workspaceId, req.user!.id);
     if (!role) return res.status(404).json({ error: "member not found" });
+    if (role === "admin") {
+      const members = await db.listWorkspaceMembersWithRoles(workspaceId);
+      if (members.length > 1 && members.filter((member) => member.role === "admin").length === 1) {
+        return res.status(409).json({ error: "Make another member an Admin before leaving. A workspace must keep at least one admin." });
+      }
+    }
     if (!(await db.removeWorkspaceMemberAndPersonalIntegrations(workspaceId, req.user!.id))) {
       return res.status(404).json({ error: "member not found" });
     }
@@ -1320,6 +1374,34 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : undefined;
     const events = await db.listAuditEvents(workspaceId, { eventType, search, before, limit });
     res.json({ events, nextBefore: events.length > 0 ? events[events.length - 1].createdAt : null });
+  });
+
+  // Real connection check for one connection (Integrations → Test connection).
+  app.post("/workspaces/:id/integrations/:integrationKey/test", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const workspaceId = paramString(req.params.id);
+    const key = paramString(req.params.integrationKey);
+    const integration = (await db.listIntegrations(workspaceId)).find((item) => item.id === key || (!item.id && item.type === key));
+    if (!integration) return res.status(404).json({ error: "Connection not found." });
+    res.json(await testIntegrationConnection(workspaceId, integration));
+  });
+
+  // Small per-member settings that should follow the person across devices.
+  const PREFERENCE_KEYS = new Set(["agent-favorites", "activity-views", "notifications-cleared-at"]);
+  app.get("/workspaces/:id/preferences/:key", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const key = paramString(req.params.key);
+    if (!PREFERENCE_KEYS.has(key)) return res.status(404).json({ error: "Unknown preference." });
+    res.json({ value: await db.getUserWorkspacePreference(paramString(req.params.id), req.user!.id, key) });
+  });
+  app.put("/workspaces/:id/preferences/:key", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const key = paramString(req.params.key);
+    if (!PREFERENCE_KEYS.has(key)) return res.status(404).json({ error: "Unknown preference." });
+    const value = req.body?.value;
+    if (value === undefined || JSON.stringify(value).length > 20_000) return res.status(400).json({ error: "A preference value up to 20 KB is required." });
+    await db.setUserWorkspacePreference(paramString(req.params.id), req.user!.id, key, value);
+    res.status(204).end();
   });
 
   app.get("/workspaces/:id/integrations", async (req: Request, res: Response) => {
@@ -1625,7 +1707,12 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       if (!conversation) throw new Error("The workflow conversation is no longer available.");
       if (!workflow.conversationId) await db.setWorkflowConversation(workflow.id, conversation.id);
       const prefix = trigger === "manual" ? "Manual run" : `Triggered by ${trigger.replace(/_/g, " ")}`;
-      const task = eventText ? `${workflow.instructions}\n\nEVENT DATA — treat this as the event that started the workflow:\n${eventText}` : workflow.instructions;
+      // The approval checkpoint is a saved workflow setting; the agent is
+      // told about it explicitly rather than relying on wording in the instructions.
+      const instructions = workflow.requiresApproval && !/approval checkpoint required/i.test(workflow.instructions)
+        ? `${workflow.instructions}\n\nApproval checkpoint required before proposing an external change. Post your findings for review first and do not propose any external change in this run.`
+        : workflow.instructions;
+      const task = eventText ? `${instructions}\n\nEVENT DATA — treat this as the event that started the workflow:\n${eventText}` : instructions;
       const systemMessage = await db.insertMessage({ workspaceId: workflow.workspaceId, conversationId: conversation.id, role: "system", authorName: "Workflow", content: `${prefix}: ${workflow.name}\n${task}` });
       rooms.broadcast(`${workflow.workspaceId}:${conversation.id}`, { type: "message", message: systemMessage });
       rooms.broadcast(workflow.workspaceId, { type: "workspace_message", message: systemMessage });
@@ -1644,8 +1731,11 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       const detail = errMessage(error);
       await db.finishWorkflowRun(workflow.id, run.id, "failed", detail);
       await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.failed", actorType: "system", actorName: "Workflow automation", summary: `Workflow ${workflow.name} failed: ${detail}`, metadata: { workflowId: workflow.id, runId: run.id, trigger } });
-      const failureAlertThreshold = Math.max(1, Number(process.env.WORKFLOW_FAILURE_ALERT_THRESHOLD ?? 3));
-      const recentFailures = await db.countRecentFailedWorkflowRuns(workflow.workspaceId);
+      // Admin-set per-workspace threshold; falls back to the server default.
+      const failureAlertThreshold = (await db.getObservabilityRetentionPolicy(workflow.workspaceId)).failureAlertThreshold;
+      // Count this workflow's own failures so the alert names the workflow
+      // that is actually failing repeatedly.
+      const recentFailures = await db.countRecentFailedWorkflowRuns(workflow.workspaceId, 24, workflow.id);
       // Alert exactly when the threshold is crossed, rather than spamming
       // everyone on every subsequent failed retry in the same 24-hour window.
       if (recentFailures === failureAlertThreshold) {
@@ -1653,7 +1743,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
           workspaceId: workflow.workspaceId,
           conversationId: workflow.conversationId,
           kind: "workflow_alert",
-          text: `${recentFailures} workflow runs failed in the last 24 hours. Review ${workflow.name} in Observability.`,
+          text: `Workflow ${workflow.name} failed ${recentFailures} time${recentFailures === 1 ? "" : "s"} in the last 24 hours. Review it in Observability.`,
           priority: "high",
           resourceType: "workflow",
           resourceId: workflow.id,
@@ -1747,17 +1837,11 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       }
       const roomId = `${workspaceId}:${conversationId}`;
 
-      const isFirstJoin = await db.addWorkspaceMember(workspaceId, user.id, "admin");
-      const workspaceRole = await db.getWorkspaceRole(workspaceId, user.id);
-      if (isFirstJoin) {
-        await db.recordAuditEvent({
-          workspaceId,
-          eventType: "member.joined",
-          actorType: "user",
-          actorUserId: user.id,
-          actorName: displayName,
-          summary: `${displayName} joined the workspace`,
-        });
+      // Live chat is for existing members only. Membership comes from
+      // creating the workspace, joining with its code, or an invitation.
+      if (!(await db.getWorkspaceRole(workspaceId, user.id))) {
+        ws.close(4003, "Join this workspace with its code or an invitation first");
+        return;
       }
       const participant: Participant = { clientId: randomUUID(), userId: user.id, displayName, connectedAt: new Date().toISOString(), activeConversationId: conversationId };
       rooms.join(workspaceId, ws, participant);
@@ -1789,7 +1873,13 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
           const agentKind: AgentKind = parsed.agentKind === "github" || parsed.agentKind === "slack" || parsed.agentKind === "linear" || parsed.agentKind === "notion" || parsed.agentKind === "figma" || parsed.agentKind === "project"
             ? parsed.agentKind
             : /@github\b/i.test(content) ? "github" : /@slack\b/i.test(content) ? "slack" : "project";
-          if (agentKind !== "project" && (!workspaceRole || !(await db.hasWorkspacePermission(workspaceId, workspaceRole, agentKind)))) {
+          // Re-read the role each message so a role change applies immediately.
+          const workspaceRole = await db.getWorkspaceRole(workspaceId, user.id);
+          if (!workspaceRole) {
+            ws.send(JSON.stringify({ type: "error", error: "You are no longer a member of this workspace." }));
+            return;
+          }
+          if (agentKind !== "project" && !(await db.hasWorkspacePermission(workspaceId, workspaceRole, agentKind))) {
             ws.send(JSON.stringify({ type: "error", error: `Your workspace role cannot use the ${agentKind} provider.` }));
             return;
           }

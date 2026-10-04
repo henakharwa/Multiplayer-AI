@@ -463,6 +463,17 @@ CREATE TABLE IF NOT EXISTS workspace_workflows (
 );
 CREATE INDEX IF NOT EXISTS workspace_workflows_due_idx ON workspace_workflows (enabled, trigger, next_run_at);
 CREATE INDEX IF NOT EXISTS workspace_workflows_workspace_idx ON workspace_workflows (workspace_id, updated_at DESC);
+-- Approval checkpoint is a saved setting, not a phrase in the instructions.
+-- The first time the column is added, carry over workflows whose
+-- instructions already asked for a checkpoint.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'workspace_workflows' AND column_name = 'requires_approval') THEN
+    ALTER TABLE workspace_workflows ADD COLUMN requires_approval BOOLEAN NOT NULL DEFAULT false;
+    UPDATE workspace_workflows SET requires_approval = true
+      WHERE instructions ~* '(approval checkpoint|required approval|pending approval)';
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS workspace_workflow_runs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -490,6 +501,10 @@ CREATE TABLE IF NOT EXISTS workspace_observability_settings (
   workflow_run_retention_days INTEGER NOT NULL DEFAULT 30 CHECK (workflow_run_retention_days IN (7, 30, 90, 365)),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Admin-set failure-alert threshold (failed runs in 24 hours). NULL keeps
+-- the server default (WORKFLOW_FAILURE_ALERT_THRESHOLD, or 3).
+ALTER TABLE workspace_observability_settings ADD COLUMN IF NOT EXISTS failure_alert_threshold INTEGER
+  CHECK (failure_alert_threshold IS NULL OR failure_alert_threshold BETWEEN 1 AND 20);
 
 -- Shared execution records. Tasks may come from a conversation, workflow,
 -- or teammate and remain visible to the full workspace until completed.
@@ -592,3 +607,14 @@ CREATE TABLE IF NOT EXISTS workspace_artifact_versions (
 CREATE INDEX IF NOT EXISTS workspace_artifact_versions_artifact_idx ON workspace_artifact_versions (artifact_id, version DESC);
 ALTER TABLE workspace_artifacts ADD COLUMN IF NOT EXISTS dashboard_data JSONB;
 ALTER TABLE workspace_artifact_versions ADD COLUMN IF NOT EXISTS dashboard_data JSONB;
+
+-- Small per-member settings (agent favorites, saved Activity views) kept
+-- on the server so they follow the person across browsers and devices.
+CREATE TABLE IF NOT EXISTS user_workspace_preferences (
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (workspace_id, user_id, key)
+);

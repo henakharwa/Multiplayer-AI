@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import type { GithubRepoSummary, IntegrationConfig, WorkspaceAgent, WorkspacePermissionPolicy, WorkspacePermissions, WorkspaceRole } from "@mai-chat/shared-types";
-import { connectGithub, connectRemoteMcp, githubOAuthStartUrl, slackOAuthStartUrl, listIntegrations, listWorkspaceAgents, getWorkspacePermissionPolicy, updateWorkspacePermissionPolicy, listWorkspaceMembers, requestWorkspacePermission, listPermissionRequests, resolvePermissionRequest, type PermissionRequest, ApiError } from "../../../../lib/api";
+import { connectGithub, connectRemoteMcp, githubOAuthStartUrl, slackOAuthStartUrl, listIntegrations, listWorkspaceAgents, getWorkspacePermissionPolicy, updateWorkspacePermissionPolicy, requestWorkspacePermission, listPermissionRequests, resolvePermissionRequest, testIntegration, type PermissionRequest, ApiError } from "../../../../lib/api";
 import { useWorkspaceUser } from "../../../_components/WorkspaceAuth";
 import GithubRepoPickerModal from "../../../_components/GithubRepoPickerModal";
+import { AccessNotice } from "../../../_components/AccessNotice";
+import { useWorkspaceAccess } from "../../../../lib/useWorkspaceAccess";
 
 const PERMISSIONS: Array<[keyof WorkspacePermissions, string]> = [["connectTools", "Connect and manage tools"], ["createAgents", "Create agents"], ["publishAgents", "Publish agents"], ["approveActions", "Approve actions"], ["github", "Use GitHub"], ["slack", "Use Slack"], ["linear", "Use Linear"], ["notion", "Use Notion"], ["figma", "Use Figma"]];
 
@@ -14,7 +16,11 @@ export default function IntegrationsPage() {
   const params = useParams<{ id: string }>();
   const workspaceId = params.id;
   const user = useWorkspaceUser();
-  const [workspaceRole, setWorkspaceRole] = useState<WorkspaceRole>("editor");
+  const access = useWorkspaceAccess(workspaceId);
+  const workspaceRole: WorkspaceRole = access.role ?? "editor";
+  // Viewing providers and status is shared; connecting, updating, and
+  // disconnecting require connectTools (Admins by default).
+  const canConnect = access.can("connectTools");
   const [requests, setRequests] = useState<PermissionRequest[]>([]);
   const [requestedPermission, setRequestedPermission] = useState<keyof WorkspacePermissions | null>(null);
   const [requestReason, setRequestReason] = useState("");
@@ -54,11 +60,11 @@ export default function IntegrationsPage() {
   useEffect(() => {
     refresh();
     getWorkspacePermissionPolicy(workspaceId).then(setPolicy).catch(() => setPolicy(null));
-    listWorkspaceMembers(workspaceId).then((members) => setWorkspaceRole(members.find((member) => member.id === user.id)?.role ?? "editor")).catch(() => {});
-    listPermissionRequests(workspaceId).then(setRequests).catch(() => {});
+
+    if (access.isAdmin) listPermissionRequests(workspaceId).then(setRequests).catch(() => {});
     listWorkspaceAgents(workspaceId).then(setAgents).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, user.id]);
+  }, [workspaceId, user.id, access.isAdmin]);
 
   function setPermission(role: "admin" | "editor", permission: keyof WorkspacePermissions, value: boolean) {
     setPolicy((current) => current ? { ...current, [role]: { ...current[role], [permission]: value } } : current);
@@ -85,7 +91,7 @@ export default function IntegrationsPage() {
   const capabilities = (type: IntegrationConfig["type"]) => ({ github: ["Read issues and pull requests", "Review checks", "Propose changes for approval"], slack: ["Search team conversations", "Draft replies", "Post after approval"], linear: ["Read projects and issues", "Propose task updates"], notion: ["Search pages and databases", "Draft workspace pages"], figma: ["Read design context", "Summarize review feedback"] })[type];
   const setupSteps = (integration: IntegrationConfig) => integration.type === "github" ? ["Account connected", integration.repo ? "Repository selected" : "Choose a repository", "Verify read access"] : integration.type === "slack" ? ["Workspace connected", "Choose relevant channels", "Verify read access"] : ["Connection added", "Choose source scope", "Verify read access"];
   const usingAgents = (type: IntegrationConfig["type"]) => agents.filter((agent) => agent.status === "published" && (agent.baseAgent === type || agent.approvedProviders.includes(type))).map((agent) => agent.name);
-  async function diagnose(integration: IntegrationConfig) { setDiagnostics((current) => ({ ...current, [integration.id ?? integration.type]: "Checking connection…" })); await new Promise((resolve) => window.setTimeout(resolve, 350)); const issue = integration.type === "github" && !integration.repo ? "Needs setup: choose a repository before GitHub requests can run." : "Connection verified: credentials are configured and this source is available to workspace agents."; setDiagnostics((current) => ({ ...current, [integration.id ?? integration.type]: issue })); }
+  async function diagnose(integration: IntegrationConfig) { const key = integration.id ?? integration.type; setDiagnostics((current) => ({ ...current, [key]: "Checking connection…" })); let message: string; try { const health = await testIntegration(workspaceId, key); message = `${health.status === "ok" ? "Connection verified" : health.status === "needs_setup" ? "Needs setup" : "Connection failed"}: ${health.message}`; } catch (error) { message = `Connection failed: ${error instanceof ApiError ? error.message : "could not reach the chat server."}`; } setDiagnostics((current) => ({ ...current, [key]: message })); }
   async function connectRemote(provider: "linear" | "notion" | "figma") { const setup = remoteSetup[provider]; setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], busy: true, error: "" } })); try { await connectRemoteMcp(workspaceId, provider, { endpoint: setup.endpoint, token: setup.token }); setRemoteSetup((current) => ({ ...current, [provider]: { endpoint: "", token: "", busy: false, error: "" } })); await refresh(); } catch (reason) { setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], busy: false, error: reason instanceof Error ? reason.message : "Could not connect this provider." } })); } }
 
   async function handleGithubSubmit(e: React.FormEvent) {
@@ -144,6 +150,7 @@ export default function IntegrationsPage() {
         </>}        {policyError && <p className="error-text">{policyError}</p>}
       </section>}
 
+      {activeTab === "connected" && <AccessNotice workspaceId={workspaceId} access={access} permission="connectTools" message="Connecting, updating, or disconnecting GitHub, Slack, Linear, Notion, or Figma requires the “Connect and manage tools” permission. You can still view providers and connection status." />}
       {activeTab === "connected" && <section className="integration-tool-box"><div id="github-integration" className="integration-panel integration-panel-featured">
         <h2>
           <span className="channel-icon" aria-hidden style={{ marginRight: 10 }}>
@@ -163,6 +170,7 @@ export default function IntegrationsPage() {
           className="btn"
           type="button"
           data-testid="github-oauth-btn"
+          disabled={!canConnect}
           onClick={() => {
             window.location.href = githubOAuthStartUrl(workspaceId);
           }}
@@ -176,6 +184,7 @@ export default function IntegrationsPage() {
             type="button"
             style={{ marginTop: 10 }}
             data-testid="github-choose-repo-btn"
+            disabled={!canConnect}
             onClick={() => setShowRepoPicker(true)}
           >
             {githubConnected.repo ? "Change repository" : "Choose a repository"}
@@ -207,6 +216,7 @@ export default function IntegrationsPage() {
           className="btn"
           type="button"
           data-testid="slack-oauth-btn"
+          disabled={!canConnect}
           onClick={() => {
             window.location.href = slackOAuthStartUrl(workspaceId);
           }}
@@ -215,7 +225,7 @@ export default function IntegrationsPage() {
         </button></div>
       </div>
 
-      <>{(["linear", "notion", "figma"] as const).map((provider) => { const setup = remoteSetup[provider]; const connected = integrations.find((item) => item.type === provider); const open = remoteSetupOpen === provider; return <article className="integration-panel remote-integration-card" key={provider}><div className="remote-provider-heading"><span className={`channel-icon provider-icon provider-icon-${provider}`} aria-hidden>{provider === "linear" ? <svg viewBox="0 0 24 24"><path d="m5 7 4-4 10 10-4 4zM3 13l4-4 10 10-4 4zM11 21l4-4 4 4z"/></svg> : provider === "notion" ? <svg viewBox="0 0 24 24"><path d="M5 4 18 3l1 17-13 1z" fill="none" stroke="currentColor" strokeWidth="1.7"/><path d="M8 17V8l7 8V7" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg> : <svg viewBox="0 0 24 24"><circle cx="9" cy="5" r="4" fill="#f24e1e"/><circle cx="9" cy="12" r="4" fill="#a259ff"/><circle cx="9" cy="19" r="4" fill="#0acf83"/><circle cx="15" cy="5" r="4" fill="#ff7262"/><circle cx="15" cy="12" r="4" fill="#1abcfe"/></svg>}</span><div><strong>{provider[0].toUpperCase() + provider.slice(1)}</strong><small className={`connection-status ${connected ? "connected" : "disconnected"}`}><i aria-hidden />{connected ? "Connected" : "Not connected"}</small></div></div><p>{provider === "linear" ? "Use projects and issues in chat." : provider === "notion" ? "Use team pages and databases in chat." : "Use design files in chat."}</p><div className="integration-actions"><button className="btn" type="button" onClick={() => setRemoteSetupOpen(open ? null : provider)}>{connected ? "Manage connection" : `Connect ${provider[0].toUpperCase() + provider.slice(1)}`}</button></div>{open && <form className="remote-advanced-form" onSubmit={(event) => { event.preventDefault(); void connectRemote(provider); }}><label>HTTPS MCP endpoint<input type="url" value={setup.endpoint} onChange={(event) => setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], endpoint: event.target.value } }))} placeholder="https://mcp.example.com" required/></label><label>Access token<input type="password" value={setup.token} onChange={(event) => setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], token: event.target.value } }))} placeholder="Provider token" required/></label><button className="btn" disabled={setup.busy}>{setup.busy ? "Connecting…" : connected ? "Update connection" : "Save connection"}</button>{setup.error && <p className="error-text">{setup.error}</p>}</form>}</article>; })}</>
+      <>{(["linear", "notion", "figma"] as const).map((provider) => { const setup = remoteSetup[provider]; const connected = integrations.find((item) => item.type === provider); const open = remoteSetupOpen === provider; return <article className="integration-panel remote-integration-card" key={provider}><div className="remote-provider-heading"><span className={`channel-icon provider-icon provider-icon-${provider}`} aria-hidden>{provider === "linear" ? <svg viewBox="0 0 24 24"><path d="m5 7 4-4 10 10-4 4zM3 13l4-4 10 10-4 4zM11 21l4-4 4 4z"/></svg> : provider === "notion" ? <svg viewBox="0 0 24 24"><path d="M5 4 18 3l1 17-13 1z" fill="none" stroke="currentColor" strokeWidth="1.7"/><path d="M8 17V8l7 8V7" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg> : <svg viewBox="0 0 24 24"><circle cx="9" cy="5" r="4" fill="#f24e1e"/><circle cx="9" cy="12" r="4" fill="#a259ff"/><circle cx="9" cy="19" r="4" fill="#0acf83"/><circle cx="15" cy="5" r="4" fill="#ff7262"/><circle cx="15" cy="12" r="4" fill="#1abcfe"/></svg>}</span><div><strong>{provider[0].toUpperCase() + provider.slice(1)}</strong><small className={`connection-status ${connected ? "connected" : "disconnected"}`}><i aria-hidden />{connected ? "Connected" : "Not connected"}</small></div></div><p>{provider === "linear" ? "Use projects and issues in chat." : provider === "notion" ? "Use team pages and databases in chat." : "Use design files in chat."}</p><div className="integration-actions"><button className="btn" type="button" disabled={!canConnect} onClick={() => setRemoteSetupOpen(open ? null : provider)}>{connected ? "Manage connection" : `Connect ${provider[0].toUpperCase() + provider.slice(1)}`}</button></div>{open && canConnect && <form className="remote-advanced-form" onSubmit={(event) => { event.preventDefault(); void connectRemote(provider); }}><label>HTTPS MCP endpoint<input type="url" value={setup.endpoint} onChange={(event) => setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], endpoint: event.target.value } }))} placeholder="https://mcp.example.com" required/></label><label>Access token<input type="password" value={setup.token} onChange={(event) => setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], token: event.target.value } }))} placeholder="Provider token" required/></label><button className="btn" disabled={setup.busy}>{setup.busy ? "Connecting…" : connected ? "Update connection" : "Save connection"}</button>{setup.error && <p className="error-text">{setup.error}</p>}</form>}</article>; })}</>
 
       {!loading && integrations.length === 0 && <p style={{ color: "var(--text-dim)", fontSize: 13 }}>No integrations connected yet.</p>}</section>}
 
