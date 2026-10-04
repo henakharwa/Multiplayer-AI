@@ -7,12 +7,19 @@
 // page, but that stopped being an option once Slack tools moved to
 // Slack's own official MCP server, which only accepts a token minted by
 // this exact OAuth flow (see slack-oauth.ts's own comment).
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError, checkToolConnectionPermission, githubOAuthStartUrl, providerOAuthStartUrl, slackOAuthStartUrl } from "../../lib/api";
 
 export default function ConnectChannelModal({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<string | null>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    closeButton.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
   const providers = [
     { id: "github", name: "GitHub" },
     { id: "slack", name: "Slack" },
@@ -40,14 +47,14 @@ export default function ConnectChannelModal({ workspaceId, onClose }: { workspac
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="card channel-menu" onClick={(e) => e.stopPropagation()}>
+    <div className="overlay" onClick={onClose} role="presentation">
+      <div className="card channel-menu" role="dialog" aria-modal="true" aria-labelledby="connect-channel-title" onClick={(e) => e.stopPropagation()}>
         <p className="brand">Add a channel</p>
-        <h1 className="title" style={{ marginBottom: 16 }}>
+        <h1 id="connect-channel-title" className="title" style={{ marginBottom: 16 }}>
           Connect a collaboration tool
         </h1>
 
-        {providers.map((provider) => <button className="channel-option" key={provider.id} disabled={connecting !== null} data-testid={provider.id === "github" || provider.id === "slack" ? `connect-${provider.id}-option` : undefined} onClick={() => void connect(provider.id)}>
+        {providers.map((provider) => <button type="button" className="channel-option" key={provider.id} disabled={connecting !== null} data-testid={provider.id === "github" || provider.id === "slack" ? `connect-${provider.id}-option` : undefined} onClick={() => void connect(provider.id)}>
           <span className="channel-icon" aria-hidden><ProviderIcon provider={provider.id} /></span>
           <span className="channel-option-text"><span className="channel-option-title">{provider.name}</span><span className="channel-option-hint">Sign in with your {provider.name} account</span></span>
           <span className="channel-option-arrow" aria-hidden>{connecting === provider.id ? "…" : "→"}</span>
@@ -55,7 +62,7 @@ export default function ConnectChannelModal({ workspaceId, onClose }: { workspac
 
         {error && <p className="error-text" role="alert">{error}</p>}
 
-        <button className="btn secondary" style={{ marginTop: 18 }} onClick={onClose} data-testid="connect-channel-cancel">
+        <button ref={closeButton} type="button" className="btn secondary" style={{ marginTop: 18 }} onClick={onClose} data-testid="connect-channel-cancel">
           Cancel
         </button>
       </div>

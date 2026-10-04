@@ -41,5 +41,6 @@ describe("artifact sharing helpers", () => {
     expect(markup).toContain("Review");
     expect(markup).toContain("Release readiness");
     expect(markup).toContain("characters of content ready");
+    expect(markup).toContain('aria-current="step"');
   });
 });

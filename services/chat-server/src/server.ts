@@ -1658,8 +1658,10 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
   };
   let retentionScheduler: NodeJS.Timeout | undefined;
   let notificationScheduler: NodeJS.Timeout | undefined;
-  const enforceRetention = () => void db.enforceWorkflowRunRetention().catch((error) => console.error("workflow retention failed", error));
-  const deliverNotificationJobs = () => void Promise.all([db.escalateUnreadDecisionNotifications(), db.createDailyNotificationDigests()]).catch((error) => console.error("notification scheduler failed", error));
+  const enforceRetention = () => void db.runWithAdvisoryLock("workflow-run-retention", () => db.enforceWorkflowRunRetention()).catch((error) => console.error("workflow retention failed", error));
+  const deliverNotificationJobs = () => void db.runWithAdvisoryLock("notification-delivery", async () => {
+    await Promise.all([db.escalateUnreadDecisionNotifications(), db.createDailyNotificationDigests()]);
+  }).catch((error) => console.error("notification scheduler failed", error));
   server.on("listening", () => { startWorkflowScheduler(); enforceRetention(); deliverNotificationJobs(); retentionScheduler = setInterval(enforceRetention, 24 * 60 * 60 * 1000); notificationScheduler = setInterval(deliverNotificationJobs, 5 * 60 * 1000); });
   server.on("close", () => { if (workflowScheduler) clearInterval(workflowScheduler); if (retentionScheduler) clearInterval(retentionScheduler); if (notificationScheduler) clearInterval(notificationScheduler); workflowScheduler = undefined; retentionScheduler = undefined; notificationScheduler = undefined; });
 

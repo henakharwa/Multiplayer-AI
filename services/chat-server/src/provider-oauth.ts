@@ -59,7 +59,14 @@ export function registerProviderOAuthRoutes(app: Express): void {
     const headers: Record<string, string> = { "content-type": kind === "notion" ? "application/json" : "application/x-www-form-urlencoded" };
     if (kind === "notion" || kind === "figma") headers.authorization = `Basic ${Buffer.from(`${oauth.clientId}:${oauth.clientSecret}`).toString("base64")}`;
     const requestBody = kind === "notion" ? JSON.stringify(Object.fromEntries(body)) : body.toString();
-    const response = await fetch(info.token, { method: "POST", headers, body: requestBody, signal: AbortSignal.timeout(15_000) }); const result = await response.json().catch(() => ({})) as { access_token?: string; error_description?: string; error?: string; workspace_name?: string };
+    let response: Awaited<ReturnType<typeof fetch>>;
+    try {
+      response = await fetch(info.token, { method: "POST", headers, body: requestBody, signal: AbortSignal.timeout(15_000) });
+    } catch (error) {
+      const message = error instanceof Error && error.name === "TimeoutError" ? "The provider took too long to respond. Please try again." : "The provider could not be reached. Please try again.";
+      return res.redirect(back(kind, pending.workspaceId, "error", message));
+    }
+    const result = await response.json().catch(() => ({})) as { access_token?: string; error_description?: string; error?: string; workspace_name?: string };
     if (!response.ok || !result.access_token) return res.redirect(back(kind, pending.workspaceId, "error", result.error_description ?? result.error ?? "Account login failed."));
     await db.upsertRemoteMcpIntegration({ workspaceId: pending.workspaceId, type: kind, endpoint: info.endpoint, token: result.access_token, accountName: await connectedAccountName(kind, result.access_token, result) });
     res.redirect(back(kind, pending.workspaceId, "connected"));

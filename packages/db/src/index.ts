@@ -42,6 +42,22 @@ import { encryptToken, decryptToken, hashSessionToken } from "./crypto.js";
 export { getPool, closePool } from "./pool.js";
 export { encryptToken, decryptToken, hashSessionToken } from "./crypto.js";
 
+/**
+ * Runs a maintenance task only when this server instance owns its database
+ * advisory lock. It keeps in-process timers safe when the service scales to
+ * more than one instance without adding a separate queue dependency.
+ */
+export async function runWithAdvisoryLock<T>(key: string, task: () => Promise<T>): Promise<T | undefined> {
+  const pool = getPool();
+  const acquired = await pool.query("SELECT pg_try_advisory_lock(hashtext($1)) AS locked", [key]);
+  if (!acquired.rows[0]?.locked) return undefined;
+  try {
+    return await task();
+  } finally {
+    await pool.query("SELECT pg_advisory_unlock(hashtext($1))", [key]);
+  }
+}
+
 export async function saveOAuthPendingState(state: string, flow: string, payload: Record<string, unknown>, expiresAt: Date): Promise<void> {
   await getPool().query("DELETE FROM oauth_pending_states WHERE expires_at <= now()");
   await getPool().query("INSERT INTO oauth_pending_states (state,flow,payload,expires_at) VALUES ($1,$2,$3,$4)", [state, flow, JSON.stringify(payload), expiresAt]);

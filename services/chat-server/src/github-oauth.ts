@@ -46,6 +46,7 @@ async function defaultExchangeCodeForToken(
   code: string,
   config: GithubOAuthConfig
 ): Promise<{ accessToken: string } | { error: string }> {
+  try {
   const res = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
@@ -65,6 +66,9 @@ async function defaultExchangeCodeForToken(
     return { error: body.error_description ?? body.error ?? `GitHub token exchange failed (HTTP ${res.status})` };
   }
   return { accessToken: body.access_token };
+  } catch (error) {
+    return { error: error instanceof Error && error.name === "TimeoutError" ? "GitHub took too long to respond. Please try again." : "GitHub could not be reached. Please try again." };
+  }
 }
 
 export const defaultGithubOAuthDeps: GithubOAuthDeps = {

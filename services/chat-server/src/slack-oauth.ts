@@ -92,6 +92,7 @@ async function defaultExchangeCodeForToken(
   code: string,
   config: SlackOAuthConfig
 ): Promise<{ accessToken: string; teamName?: string } | { error: string }> {
+  try {
   const body = new URLSearchParams({
     client_id: config.clientId,
     client_secret: config.clientSecret,
@@ -139,6 +140,9 @@ async function defaultExchangeCodeForToken(
     };
   }
   return { accessToken, teamName: parsed.team?.name };
+  } catch (error) {
+    return { error: error instanceof Error && error.name === "TimeoutError" ? "Slack took too long to respond. Please try again." : "Slack could not be reached. Please try again." };
+  }
 }
 
 export const defaultSlackOAuthDeps: SlackOAuthDeps = {
