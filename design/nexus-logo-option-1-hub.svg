@@ -1,0 +1,8 @@
+<svg width="920" height="360" viewBox="0 0 920 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="920" height="360" rx="28" fill="#F5F8FF"/>
+  <path d="M180 108L252 180L180 252M180 108L108 180L180 252" stroke="#2F5FED" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="180" cy="180" r="30" fill="#7C5CFF"/><circle cx="180" cy="180" r="12" fill="white"/>
+  <text x="312" y="169" fill="#16213A" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="700" letter-spacing="-3">Nexus</text>
+  <text x="316" y="215" fill="#60708C" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="600" letter-spacing="2">CONNECTED WORKSPACE</text>
+  <text x="58" y="322" fill="#60708C" font-family="Arial, Helvetica, sans-serif" font-size="17">Option 1 · Connection hub</text>
+</svg>

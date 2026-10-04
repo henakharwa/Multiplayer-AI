@@ -1,0 +1,9 @@
+<svg width="920" height="360" viewBox="0 0 920 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="920" height="360" rx="28" fill="#F7F8FC"/>
+  <path d="M103 119C142 89 172 92 203 124C230 152 243 155 262 141" stroke="#2F5FED" stroke-width="20" stroke-linecap="round"/>
+  <path d="M98 235C136 268 174 271 204 236C228 208 243 205 263 220" stroke="#7C5CFF" stroke-width="20" stroke-linecap="round"/>
+  <circle cx="94" cy="119" r="20" fill="#17244A"/><circle cx="94" cy="235" r="20" fill="#17244A"/><circle cx="267" cy="180" r="29" fill="#2F5FED"/><path d="M254 180L265 191L283 168" stroke="white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="330" y="169" fill="#172030" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="700" letter-spacing="-3">Nexus</text>
+  <text x="334" y="215" fill="#60708C" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="600" letter-spacing="2">CLEAR PATHS TO DECISIONS</text>
+  <text x="58" y="322" fill="#60708C" font-family="Arial, Helvetica, sans-serif" font-size="17">Option 4 · Routed approval path</text>
+</svg>

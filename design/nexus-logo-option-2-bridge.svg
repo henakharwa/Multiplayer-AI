@@ -1,0 +1,9 @@
+<svg width="920" height="360" viewBox="0 0 920 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="920" height="360" rx="28" fill="#F7F7FC"/>
+  <rect x="100" y="100" width="104" height="104" rx="28" transform="rotate(45 100 100)" fill="#2F5FED"/>
+  <rect x="156" y="156" width="104" height="104" rx="28" transform="rotate(45 156 156)" fill="#7C5CFF" fill-opacity=".94"/>
+  <path d="M180 142L218 180L180 218L142 180L180 142Z" fill="white"/>
+  <text x="312" y="169" fill="#161925" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="700" letter-spacing="-3">Nexus</text>
+  <text x="316" y="215" fill="#6C7080" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="600" letter-spacing="2">ONE PLACE TO MOVE WORK</text>
+  <text x="58" y="322" fill="#6C7080" font-family="Arial, Helvetica, sans-serif" font-size="17">Option 2 · Interlocking bridge</text>
+</svg>
