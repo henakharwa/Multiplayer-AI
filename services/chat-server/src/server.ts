@@ -894,8 +894,9 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const retentionDays = Number(req.body?.retentionDays);
     if (![7, 30, 90, 365].includes(retentionDays)) return res.status(400).json({ error: "retentionDays must be 7, 30, 90, or 365" });
-    const policy = await db.updateObservabilityRetentionPolicy(paramString(req.params.id), retentionDays as 7 | 30 | 90 | 365);
-    const removed = await db.enforceWorkflowRunRetention();
+    const workspaceId = paramString(req.params.id);
+    const policy = await db.updateObservabilityRetentionPolicy(workspaceId, retentionDays as 7 | 30 | 90 | 365);
+    const removed = await db.enforceWorkflowRunRetention(workspaceId);
     res.json({ ...policy, removed });
   });
   app.post("/workspaces/:id/workflows/:workflowId/run", async (req: Request, res: Response) => {

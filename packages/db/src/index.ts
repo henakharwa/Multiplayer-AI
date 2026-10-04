@@ -552,7 +552,8 @@ export async function createDailyNotificationDigests(): Promise<number> {
   return result.rowCount ?? 0;
 }
 
-export async function listNotifications(userId: string, limit = 30): Promise<WorkspaceNotification[]> {
+export async function listNotifications(userId: string, limit?: number): Promise<WorkspaceNotification[]> {
+  const limitClause = limit === undefined ? "" : " LIMIT $2";
   const result = await getPool().query(
     `SELECT n.id, n.workspace_id, n.conversation_id, n.kind, n.text, n.priority, n.group_key, n.resource_type, n.resource_id, n.created_at, n.read_at
      FROM workspace_notifications n
@@ -568,8 +569,8 @@ export async function listNotifications(userId: string, limit = 30): Promise<Wor
            END
          )
        )
-     ) ORDER BY n.created_at DESC LIMIT $2`,
-    [userId, limit]
+     ) ORDER BY n.created_at DESC${limitClause}`,
+    limit === undefined ? [userId] : [userId, limit]
   );
   return result.rows.map((row) => ({ id: row.id, workspaceId: row.workspace_id, conversationId: row.conversation_id, kind: row.kind, text: row.text, priority: row.kind === "workflow_alert" ? "high" : row.priority, groupKey: row.group_key, resourceType: row.resource_type, resourceId: row.resource_id, createdAt: row.created_at.toISOString(), readAt: row.read_at ? row.read_at.toISOString() : null }));
 }
@@ -1048,15 +1049,16 @@ export async function updateObservabilityRetentionPolicy(workspaceId: string, re
 }
 
 /** Deletes expired workflow runs according to each workspace's saved policy. */
-export async function enforceWorkflowRunRetention(): Promise<number> {
+export async function enforceWorkflowRunRetention(workspaceId?: string): Promise<number> {
   const result = await getPool().query(
-    "DELETE FROM workspace_workflow_runs runs WHERE runs.started_at < now() - (COALESCE((SELECT settings.workflow_run_retention_days FROM workspace_observability_settings settings WHERE settings.workspace_id=runs.workspace_id), 30) * interval '1 day')"
+    "DELETE FROM workspace_workflow_runs runs WHERE ($1::uuid IS NULL OR runs.workspace_id=$1) AND runs.started_at < now() - (COALESCE((SELECT settings.workflow_run_retention_days FROM workspace_observability_settings settings WHERE settings.workspace_id=runs.workspace_id), 30) * interval '1 day')",
+    [workspaceId ?? null]
   );
   return result.rowCount ?? 0;
 }
 
 export async function listWorkflowRuns(workspaceId: string, workflowId: string): Promise<WorkflowRun[]> {
-  const result = await getPool().query("SELECT r.* FROM workspace_workflow_runs r WHERE r.workspace_id=$1 AND r.workflow_id=$2 ORDER BY r.started_at DESC LIMIT 30", [workspaceId, workflowId]);
+  const result = await getPool().query("SELECT r.* FROM workspace_workflow_runs r WHERE r.workspace_id=$1 AND r.workflow_id=$2 ORDER BY r.started_at DESC", [workspaceId, workflowId]);
   return result.rows.map(toWorkflowRun);
 }
 
