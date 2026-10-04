@@ -101,7 +101,7 @@ async function defaultExchangeCodeForToken(
   const res = await fetch(SLACK_TOKEN_URL, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
+    body: body.toString(), signal: AbortSignal.timeout(15_000),
   });
   // Slack's Web API convention (every api.slack.com/methods/* endpoint,
   // oauth.v2.access included) is to always return HTTP 200 with an `ok`

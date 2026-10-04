@@ -54,7 +54,7 @@ async function defaultExchangeCodeForToken(
       client_secret: config.clientSecret,
       code,
       redirect_uri: config.redirectUri,
-    }),
+    }), signal: AbortSignal.timeout(15_000),
   });
   const body = (await res.json().catch(() => ({}))) as {
     access_token?: string;

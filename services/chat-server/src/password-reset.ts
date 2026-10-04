@@ -12,21 +12,14 @@ export function registerPasswordResetRoutes(app: Express, config: UserAuthConfig
   app.use("/auth/forgot-password", (_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
   app.use("/auth/reset-password", (_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
 
-  const attempts = new Map<string, { count: number; expiresAt: number }>();
-  function tooMany(key: string, max: number): boolean {
-    const now = Date.now();
-    for (const [k, v] of attempts) if (v.expiresAt <= now) attempts.delete(k);
-    const entry = attempts.get(key) ?? { count: 0, expiresAt: now + 15 * 60 * 1000 };
-    entry.count++; attempts.set(key, entry);
-    return entry.count > max;
-  }
-
   app.post("/auth/forgot-password", async (req: Request, res: Response) => {
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
     // Same generic response every time this handler returns -- an
     // attacker probing emails should learn nothing from the reply.
     const generic = { message: "If an account exists for that email, we've sent a password reset link." };
-    if (tooMany(`ip:${req.ip}`, 10) || (email && tooMany(`email:${email}`, 5))) {
+    const ipAllowed = await db.consumeRateLimit("password-reset-ip", req.ip ?? "unknown", 10, 900);
+    const emailAllowed = !email || await db.consumeRateLimit("password-reset-email", email, 5, 900);
+    if (!ipAllowed || !emailAllowed) {
       res.setHeader("Retry-After", "900");
       return res.status(429).json(generic);
     }

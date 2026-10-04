@@ -332,6 +332,21 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
   used_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx ON password_reset_tokens (user_id);
+CREATE TABLE IF NOT EXISTS oauth_pending_states (
+  state TEXT PRIMARY KEY,
+  flow TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS oauth_pending_states_expiry_idx ON oauth_pending_states (expires_at);
+CREATE TABLE IF NOT EXISTS auth_rate_limits (
+  scope TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  window_ends_at TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (scope, subject)
+);
 
 -- Attributes a proposed action to whoever's chat message triggered the
 -- agent turn that produced it -- lets the audit trail below answer "who
