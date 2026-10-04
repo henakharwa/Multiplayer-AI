@@ -2143,7 +2143,16 @@ textarea {
 .pending-actions-list{flex:0 1 auto;max-height:min(280px,34vh);overflow-y:auto;overscroll-behavior:contain}.pending-actions-summary{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;background:var(--bg);color:#94631f;font-size:12px;font-weight:700}.pending-actions-summary button{border:0;background:transparent;color:#315fea;font:inherit;font-size:11px;font-weight:700;cursor:pointer}.pending-actions-list .pending-action{margin-bottom:2px}
 .artifact-sharing{display:grid;gap:10px;margin-top:20px;padding:14px;border:1px solid #d9e2ff;border-radius:11px;background:#f7f9ff}.artifact-sharing h3{margin:0;font-size:14px}.artifact-sharing>div{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.artifact-sharing input{flex:1 1 230px;margin:0!important;font-size:12px}.artifact-sharing .secondary-button{padding:7px 10px;font-size:12px}
 /* Your workspaces: role badge, copy code, empty state */
-.home-workspaces { grid-column: 1 / -1; }
+/* Signed in: Your workspaces, Start, and Join sit side by side as equal cards */
+.home-panels.home-panels-signed-in { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 1100px; }
+.home-panels-signed-in .home-workspaces { grid-column: auto; padding: 26px; }
+.home-panels-signed-in .home-workspaces-header { flex-wrap: wrap; }
+.home-panels-signed-in .home-workspaces .panel-hint { margin-bottom: 14px; }
+.home-panels-signed-in .home-workspace-list { max-height: 260px; overflow-y: auto; padding-right: 2px; }
+.home-panels-signed-in .home-workspace-list article { grid-template-columns: 1fr; gap: 10px; }
+.home-panels-signed-in .home-workspace-open { width: 100%; }
+@media (max-width: 980px) { .home-panels.home-panels-signed-in { grid-template-columns: 1fr 1fr; max-width: 720px; } .home-panels-signed-in .home-workspaces { grid-column: 1 / -1; } }
+@media (max-width: 680px) { .home-panels.home-panels-signed-in { grid-template-columns: 1fr; } }
 .home-workspace-role { margin-left: 6px; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-style: normal; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; vertical-align: middle; background: var(--bg-subtle); color: var(--text-dim); }
 .home-workspace-role.admin { background: var(--accent-soft); color: var(--accent); }
 .home-workspace-copy, .home-workspace-retry { margin-left: 6px; padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-dim); font-size: 11px; cursor: pointer; }
