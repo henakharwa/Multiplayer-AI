@@ -1127,37 +1127,14 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.commented", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} commented on artifact ${artifact.title}` }); res.status(201).json(comment);
   });
 
-  // In-memory only -- who's currently looking at a given dashboard.
-  // Scoped to this one server instance/process, same tradeoff as
-  // RoomRegistry's chat presence: ephemeral, not persisted, reset on
-  // restart. Keyed by "workspaceId:artifactId" -> userId -> last heartbeat.
-  const dashboardViewers = new Map<string, Map<string, { name: string; lastSeenAt: number }>>();
-  const PRESENCE_TTL_MS = 20_000;
-  function activeViewers(key: string, excludeUserId?: string): { userId: string; name: string }[] {
-    const viewers = dashboardViewers.get(key);
-    if (!viewers) return [];
-    const cutoff = Date.now() - PRESENCE_TTL_MS;
-    for (const [userId, entry] of viewers) {
-      if (entry.lastSeenAt < cutoff) viewers.delete(userId);
-    }
-    return Array.from(viewers.entries()).filter(([userId]) => userId !== excludeUserId).map(([userId, entry]) => ({ userId, name: entry.name }));
-  }
-
-  // A lightweight heartbeat, not a WebSocket -- the artifacts page isn't
-  // otherwise connected live, and a dashboard's data already only changes
-  // on an explicit refresh, so short polling is enough to show "who else
-  // is looking at this right now" without adding a second realtime
-  // transport just for this one page.
+  // A database-backed heartbeat lets all server instances report the same
+  // active dashboard viewers. Entries naturally expire after 20 seconds.
   app.post("/workspaces/:id/artifacts/:artifactId/presence", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const workspaceId = paramString(req.params.id);
     const artifactId = paramString(req.params.artifactId);
     if (!(await db.getWorkspaceArtifact(workspaceId, artifactId))) return res.status(404).json({ error: "Artifact not found." });
-    const key = `${workspaceId}:${artifactId}`;
-    let viewers = dashboardViewers.get(key);
-    if (!viewers) { viewers = new Map(); dashboardViewers.set(key, viewers); }
-    viewers.set(req.user!.id, { name: req.user!.displayName, lastSeenAt: Date.now() });
-    res.json({ viewers: activeViewers(key, req.user!.id) });
+    res.json({ viewers: await db.heartbeatArtifactPresence(workspaceId, artifactId, req.user!.id) });
   });
 
   // Generates (or, with DELETE, revokes) a public, unauthenticated

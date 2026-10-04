@@ -527,6 +527,19 @@ CREATE TABLE IF NOT EXISTS workspace_artifacts (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Dashboard viewers are a short-lived, database-backed heartbeat. Keeping
+-- them here lets every application instance report the same active viewers.
+CREATE TABLE IF NOT EXISTS workspace_artifact_presence (
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  artifact_id UUID NOT NULL REFERENCES workspace_artifacts(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (artifact_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS workspace_artifact_presence_active_idx
+  ON workspace_artifact_presence (workspace_id, artifact_id, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS workspace_artifact_presence_expiry_idx
+  ON workspace_artifact_presence (last_seen_at);
 CREATE INDEX IF NOT EXISTS workspace_artifacts_workspace_updated_idx ON workspace_artifacts (workspace_id, updated_at DESC);
 -- Set when a member generates a public read-only link for a published
 -- dashboard artifact (see POST .../share in server.ts); NULL means no

@@ -900,6 +900,27 @@ export async function getWorkspaceArtifact(workspaceId: string, artifactId: stri
   const result = await getPool().query(`${artifactSelect} WHERE a.workspace_id=$1 AND a.id=$2`, [workspaceId, artifactId]);
   return result.rows[0] ? toWorkspaceArtifact(result.rows[0]) : null;
 }
+
+/** Records a dashboard-view heartbeat shared by every server instance. */
+export async function heartbeatArtifactPresence(workspaceId: string, artifactId: string, userId: string): Promise<{ userId: string; name: string }[]> {
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO workspace_artifact_presence (workspace_id, artifact_id, user_id, last_seen_at)
+     VALUES ($1,$2,$3,now())
+     ON CONFLICT (artifact_id,user_id) DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at`,
+    [workspaceId, artifactId, userId]
+  );
+  await pool.query("DELETE FROM workspace_artifact_presence WHERE last_seen_at < now() - interval '20 seconds'");
+  const result = await pool.query(
+    `SELECT presence.user_id, users.display_name
+     FROM workspace_artifact_presence presence
+     JOIN users ON users.id=presence.user_id
+     WHERE presence.workspace_id=$1 AND presence.artifact_id=$2 AND presence.user_id<>$3
+     ORDER BY presence.last_seen_at DESC`,
+    [workspaceId, artifactId, userId]
+  );
+  return result.rows.map((row) => ({ userId: String(row.user_id), name: String(row.display_name) }));
+}
 export async function createWorkspaceArtifact(workspaceId: string, createdByUserId: string, input: ArtifactInput): Promise<WorkspaceArtifact> {
   const result = await getPool().query(`INSERT INTO workspace_artifacts (workspace_id,type,status,title,summary,content,dashboard_data,owner_user_id,created_by_user_id,release_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`, [workspaceId,input.type,input.status,input.title.trim(),input.summary.trim(),input.content.trim(),input.dashboardData ?? null,input.ownerUserId,createdByUserId,input.releaseVersion ?? null]);
   const artifact = (await getWorkspaceArtifact(workspaceId, String(result.rows[0].id)))!;
