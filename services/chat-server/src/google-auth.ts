@@ -34,11 +34,9 @@ export const defaultGoogleAuthDeps: GoogleAuthDeps = {
 };
 
 export function registerGoogleAuthRoutes(app: Express, authConfig: UserAuthConfig, deps: GoogleAuthDeps = defaultGoogleAuthDeps): void {
-  const states = new Map<string, { returnTo: string; browserToken: string; verifier: string; expiresAt: number }>();
   const ttl = 10 * 60 * 1000;
   const cookieOptions = { httpOnly: true, sameSite: "lax" as const, secure: authConfig.secureCookie, path: "/auth/login/google" };
-  function cleanup() { for (const [key, value] of states) if (value.expiresAt <= Date.now()) states.delete(key); }
-  app.get("/auth/login/google/start", (req, res) => {
+  app.get("/auth/login/google/start", async (req, res) => {
     const config = authConfig.google;
     const returnTo = safeReturnTo(req.query.returnTo);
     if (!config?.clientId || !config.clientSecret) {
@@ -46,11 +44,10 @@ export function registerGoogleAuthRoutes(app: Express, authConfig: UserAuthConfi
       url.searchParams.set("loginError", "Google sign-in isn't configured yet. Use email or GitHub for now.");
       return res.redirect(url.toString());
     }
-    cleanup();
     const state = randomBytes(32).toString("base64url");
     const browserToken = randomBytes(32).toString("base64url");
     const verifier = randomBytes(32).toString("base64url");
-    states.set(state, { returnTo, browserToken, verifier, expiresAt: Date.now() + ttl });
+    await db.saveOAuthPendingState(state, "google-login", { returnTo, browserToken, verifier }, new Date(Date.now() + ttl));
     res.cookie("mai_google_state", browserToken, { ...cookieOptions, maxAge: ttl });
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     url.search = new URLSearchParams({ client_id: config.clientId, redirect_uri: config.redirectUri,
@@ -59,10 +56,8 @@ export function registerGoogleAuthRoutes(app: Express, authConfig: UserAuthConfi
     res.redirect(url.toString());
   });
   app.get("/auth/login/google/callback", async (req, res) => {
-    cleanup();
     const state = typeof req.query.state === "string" ? req.query.state : "";
-    const pending = states.get(state);
-    states.delete(state);
+    const pending = await db.consumeOAuthPendingState<{ returnTo: string; browserToken: string; verifier: string }>(state, "google-login");
     const browserToken = req.headers.cookie?.split(";").map(v => v.trim()).find(v => v.startsWith("mai_google_state="))?.slice("mai_google_state=".length);
     res.clearCookie("mai_google_state", cookieOptions);
     function fail(message: string) {

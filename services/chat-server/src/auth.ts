@@ -121,18 +121,7 @@ export const defaultUserAuthDeps: UserAuthDeps = {
   fetchGithubUser: defaultFetchGithubUser,
 };
 
-// One-time-use, short-lived state tokens -- same CSRF-protection pattern
-// as github-oauth.ts/slack-oauth.ts's pendingStates, just keyed to a
-// returnTo path instead of a workspaceId, since signing in isn't scoped
-// to one workspace.
 const STATE_TTL_MS = 10 * 60 * 1000;
-const pendingStates = new Map<string, { returnTo: string; expiresAt: number; browserToken: string }>();
-
-function cleanupExpiredStates(now = Date.now()): void {
-  for (const [state, entry] of pendingStates) {
-    if (entry.expiresAt < now) pendingStates.delete(state);
-  }
-}
 
 // Only ever a same-origin relative path (validated below) -- never an
 // absolute URL, which would turn this into an open redirect.
@@ -225,17 +214,16 @@ export function registerUserAuthRoutes(
   app.get("/auth/providers", (_req, res) => res.json({ email: true, github: !!(config.clientId && config.clientSecret), google: !!(config.google?.clientId && config.google.clientSecret) }));
   registerEmailAuthRoutes(app, config, mailer);
   registerGoogleAuthRoutes(app, config, deps.google);
-  app.get("/auth/login/github/start", (req: Request, res: Response) => {
+  app.get("/auth/login/github/start", async (req: Request, res: Response) => {
     if (!config.clientId || !config.clientSecret) {
       return res
         .status(503)
         .json({ error: "Sign-in with GitHub isn't configured on this server (GITHUB_OAUTH_CLIENT_ID/GITHUB_OAUTH_CLIENT_SECRET are not set)." });
     }
-    cleanupExpiredStates();
     const state = `login:${randomUUID()}`;
     const returnTo = safeReturnTo(req.query.returnTo);
     const browserToken = randomUUID();
-    pendingStates.set(state, { returnTo, browserToken, expiresAt: Date.now() + STATE_TTL_MS });
+    await db.saveOAuthPendingState(state, "github-login", { returnTo, browserToken }, new Date(Date.now() + STATE_TTL_MS));
     res.cookie("mai_login_state", browserToken, { httpOnly: true, sameSite: "lax", secure: config.secureCookie, maxAge: STATE_TTL_MS, path: "/auth" });
 
     const authorizeUrl = new URL("https://github.com/login/oauth/authorize");
@@ -254,9 +242,7 @@ export function registerUserAuthRoutes(
     const code = typeof req.query.code === "string" ? req.query.code : "";
     const oauthError = typeof req.query.error === "string" ? req.query.error : "";
 
-    cleanupExpiredStates();
-    const pending = pendingStates.get(state);
-    if (pending) pendingStates.delete(state); // single-use whether this succeeds or not
+    const pending = await db.consumeOAuthPendingState<{ returnTo: string; browserToken: string }>(state, "github-login");
     const browserToken = req.headers.cookie?.split(";").map(v => v.trim()).find(v => v.startsWith("mai_login_state="))?.slice("mai_login_state=".length);
     res.clearCookie("mai_login_state", { path: "/auth", httpOnly: true, sameSite: "lax", secure: config.secureCookie });
 
@@ -302,4 +288,4 @@ export function registerUserAuthRoutes(
 }
 
 // Exposed for tests only.
-export const __testing = { pendingStates, cleanupExpiredStates, SESSION_COOKIE_NAME, parseSessionToken };
+export const __testing = { SESSION_COOKIE_NAME, parseSessionToken };

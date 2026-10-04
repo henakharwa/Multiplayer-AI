@@ -605,8 +605,10 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   app.get("/notifications", requireAuth, async (req: Request, res: Response) => {
     const workspaceId = typeof req.query.workspaceId === "string" ? req.query.workspaceId : null;
     if (workspaceId && UUID_RE.test(workspaceId)) await db.ensurePendingActionNotifications(workspaceId);
-    const notifications = await db.listNotifications(req.user!.id);
-    res.json(workspaceId ? notifications.filter((notification) => notification.workspaceId === workspaceId) : notifications);
+    const parsedLimit = Number(req.query.limit);
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : 50;
+    const before = typeof req.query.before === "string" && !Number.isNaN(Date.parse(req.query.before)) ? req.query.before : undefined;
+    res.json(await db.listNotifications(req.user!.id, { workspaceId: workspaceId && UUID_RE.test(workspaceId) ? workspaceId : undefined, limit, before }));
   });
 
   app.post("/notifications/read", requireAuth, async (req: Request, res: Response) => {
@@ -884,7 +886,10 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   });
   app.get("/workspaces/:id/workflows/:workflowId/runs", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
-    res.json(await db.listWorkflowRuns(paramString(req.params.id), paramString(req.params.workflowId)));
+    const parsedLimit = Number(req.query.limit);
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : 50;
+    const before = typeof req.query.before === "string" && !Number.isNaN(Date.parse(req.query.before)) ? req.query.before : undefined;
+    res.json(await db.listWorkflowRuns(paramString(req.params.id), paramString(req.params.workflowId), { limit, before }));
   });
   app.get("/workspaces/:id/observability/retention", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;

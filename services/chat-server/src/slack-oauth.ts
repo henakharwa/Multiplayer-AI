@@ -145,18 +145,7 @@ export const defaultSlackOAuthDeps: SlackOAuthDeps = {
   exchangeCodeForToken: defaultExchangeCodeForToken,
 };
 
-// One-time-use, short-lived state tokens tying a Slack redirect back to
-// the workspace that started it (also our CSRF protection) -- identical
-// in-memory, single-process design to github-oauth.ts's pendingStates,
-// for the same reasons given there.
 const STATE_TTL_MS = 10 * 60 * 1000;
-const pendingStates = new Map<string, { workspaceId: string; userId: string; expiresAt: number }>();
-
-function cleanupExpiredStates(now = Date.now()): void {
-  for (const [state, entry] of pendingStates) {
-    if (entry.expiresAt < now) pendingStates.delete(state);
-  }
-}
 
 function redirectTarget(
   config: SlackOAuthConfig,
@@ -184,9 +173,8 @@ export function registerSlackOAuthRoutes(app: Express, config: SlackOAuthConfig,
         .json({ error: "Slack login isn't configured on this server (SLACK_OAUTH_CLIENT_ID/SLACK_OAUTH_CLIENT_SECRET are not set)." });
     }
 
-    cleanupExpiredStates();
     const state = randomUUID();
-    pendingStates.set(state, { workspaceId, userId: req.user!.id, expiresAt: Date.now() + STATE_TTL_MS });
+    await db.saveOAuthPendingState(state, "slack-integration", { workspaceId, userId: req.user!.id }, new Date(Date.now() + STATE_TTL_MS));
 
     const authorizeUrl = new URL(SLACK_AUTHORIZE_URL);
     authorizeUrl.searchParams.set("client_id", config.clientId);
@@ -209,9 +197,7 @@ export function registerSlackOAuthRoutes(app: Express, config: SlackOAuthConfig,
     const code = typeof req.query.code === "string" ? req.query.code : "";
     const oauthError = typeof req.query.error === "string" ? req.query.error : "";
 
-    cleanupExpiredStates();
-    const pending = pendingStates.get(state);
-    if (pending) pendingStates.delete(state); // single-use whether this succeeds or not
+    const pending = await db.consumeOAuthPendingState<{ workspaceId: string; userId: string }>(state, "slack-integration");
 
     if (oauthError) {
       return res.redirect(redirectTarget(config, pending?.workspaceId, "error", `Slack said: ${oauthError}`));
@@ -250,7 +236,3 @@ export function registerSlackOAuthRoutes(app: Express, config: SlackOAuthConfig,
     res.redirect(redirectTarget(config, pending.workspaceId, "connected"));
   });
 }
-
-// Exposed for tests only -- lets a test assert on/clear pending-state
-// behavior deterministically instead of racing a real 10-minute TTL.
-export const __testing = { pendingStates, cleanupExpiredStates };

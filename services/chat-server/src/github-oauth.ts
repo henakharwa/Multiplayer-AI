@@ -72,23 +72,7 @@ export const defaultGithubOAuthDeps: GithubOAuthDeps = {
   listRepositoriesForToken: defaultListRepositoriesForToken,
 };
 
-// One-time-use, short-lived state tokens tying a GitHub redirect back to
-// the workspace that started it (also our CSRF protection -- a callback
-// with an unrecognized/expired state is refused). In-memory only: fine for
-// this single-process dev server, matching this project's other
-// deliberately-simple Phase 1 choices. A server restart between clicking
-// "Connect GitHub" and finishing the consent screen loses the pending
-// state -- the user just clicks Connect GitHub again. Not a durability
-// problem worth a database table for a link that's meant to be used
-// within minutes.
 const STATE_TTL_MS = 10 * 60 * 1000;
-const pendingStates = new Map<string, { workspaceId: string; userId: string; expiresAt: number }>();
-
-function cleanupExpiredStates(now = Date.now()): void {
-  for (const [state, entry] of pendingStates) {
-    if (entry.expiresAt < now) pendingStates.delete(state);
-  }
-}
 
 function redirectTarget(
   config: GithubOAuthConfig,
@@ -116,9 +100,8 @@ export function registerGithubOAuthRoutes(app: Express, config: GithubOAuthConfi
         .json({ error: "GitHub login isn't configured on this server (GITHUB_OAUTH_CLIENT_ID/GITHUB_OAUTH_CLIENT_SECRET are not set)." });
     }
 
-    cleanupExpiredStates();
     const state = randomUUID();
-    pendingStates.set(state, { workspaceId, userId: req.user!.id, expiresAt: Date.now() + STATE_TTL_MS });
+    await db.saveOAuthPendingState(state, "github-integration", { workspaceId, userId: req.user!.id }, new Date(Date.now() + STATE_TTL_MS));
 
     const authorizeUrl = new URL("https://github.com/login/oauth/authorize");
     authorizeUrl.searchParams.set("client_id", config.clientId);
@@ -133,9 +116,7 @@ export function registerGithubOAuthRoutes(app: Express, config: GithubOAuthConfi
     const code = typeof req.query.code === "string" ? req.query.code : "";
     const oauthError = typeof req.query.error === "string" ? req.query.error : "";
 
-    cleanupExpiredStates();
-    const pending = pendingStates.get(state);
-    if (pending) pendingStates.delete(state); // single-use whether this succeeds or not
+    const pending = await db.consumeOAuthPendingState<{ workspaceId: string; userId: string }>(state, "github-integration");
 
     if (oauthError) {
       return res.redirect(redirectTarget(config, pending?.workspaceId, "error", `GitHub said: ${oauthError}`));
@@ -187,7 +168,3 @@ export function registerGithubOAuthRoutes(app: Express, config: GithubOAuthConfi
     }
   });
 }
-
-// Exposed for tests only -- lets a test assert on/clear pending-state
-// behavior deterministically instead of racing a real 10-minute TTL.
-export const __testing = { pendingStates, cleanupExpiredStates };

@@ -43,14 +43,17 @@ export { getPool, closePool } from "./pool.js";
 export { encryptToken, decryptToken, hashSessionToken } from "./crypto.js";
 
 export async function saveOAuthPendingState(state: string, flow: string, payload: Record<string, unknown>, expiresAt: Date): Promise<void> {
+  await getPool().query("DELETE FROM oauth_pending_states WHERE expires_at <= now()");
   await getPool().query("INSERT INTO oauth_pending_states (state,flow,payload,expires_at) VALUES ($1,$2,$3,$4)", [state, flow, JSON.stringify(payload), expiresAt]);
 }
 export async function consumeOAuthPendingState<T extends Record<string, unknown>>(state: string, flow: string): Promise<T | null> {
+  await getPool().query("DELETE FROM oauth_pending_states WHERE state=$1 AND expires_at <= now()", [state]);
   const result = await getPool().query("DELETE FROM oauth_pending_states WHERE state=$1 AND flow=$2 AND expires_at > now() RETURNING payload", [state, flow]);
   return result.rows[0]?.payload as T | undefined ?? null;
 }
 export async function consumeRateLimit(scope: string, subject: string, maxAttempts: number, windowSeconds: number): Promise<boolean> {
-  const result = await getPool().query(`INSERT INTO auth_rate_limits (scope,subject,attempts,window_ends_at) VALUES ($1,$2,1,now()+($4 * interval '1 second')) ON CONFLICT (scope,subject) DO UPDATE SET attempts=CASE WHEN auth_rate_limits.window_ends_at <= now() THEN 1 ELSE auth_rate_limits.attempts+1 END, window_ends_at=CASE WHEN auth_rate_limits.window_ends_at <= now() THEN now()+($4 * interval '1 second') ELSE auth_rate_limits.window_ends_at END RETURNING attempts,window_ends_at`, [scope, subject, maxAttempts, windowSeconds]);
+  await getPool().query("DELETE FROM auth_rate_limits WHERE window_ends_at <= now()");
+  const result = await getPool().query(`INSERT INTO auth_rate_limits (scope,subject,attempts,window_ends_at) VALUES ($1,$2,1,now()+($3 * interval '1 second')) ON CONFLICT (scope,subject) DO UPDATE SET attempts=CASE WHEN auth_rate_limits.window_ends_at <= now() THEN 1 ELSE auth_rate_limits.attempts+1 END, window_ends_at=CASE WHEN auth_rate_limits.window_ends_at <= now() THEN now()+($3 * interval '1 second') ELSE auth_rate_limits.window_ends_at END RETURNING attempts,window_ends_at`, [scope, subject, windowSeconds]);
   return Number(result.rows[0].attempts) <= maxAttempts;
 }
 
@@ -564,13 +567,18 @@ export async function createDailyNotificationDigests(): Promise<number> {
   return result.rowCount ?? 0;
 }
 
-export async function listNotifications(userId: string, limit?: number): Promise<WorkspaceNotification[]> {
-  const limitClause = limit === undefined ? "" : " LIMIT $2";
+export async function listNotifications(userId: string, options: { workspaceId?: string; limit?: number; before?: string } = {}): Promise<WorkspaceNotification[]> {
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+  const clauses = ["n.user_id = $1"];
+  const values: unknown[] = [userId];
+  if (options.workspaceId) { values.push(options.workspaceId); clauses.push(`n.workspace_id = $${values.length}`); }
+  if (options.before) { values.push(options.before); clauses.push(`n.created_at < $${values.length}`); }
+  values.push(limit);
   const result = await getPool().query(
     `SELECT n.id, n.workspace_id, n.conversation_id, n.kind, n.text, n.priority, n.group_key, n.resource_type, n.resource_id, n.created_at, n.read_at
      FROM workspace_notifications n
      LEFT JOIN workspace_notification_preferences p ON p.workspace_id=n.workspace_id AND p.user_id=n.user_id
-     WHERE n.user_id = $1 AND (
+     WHERE ${clauses.join(" AND ")} AND (
        n.priority = 'high' OR n.kind = 'workflow_alert' OR (
          COALESCE(p.browser_enabled, true) AND (
            NOT COALESCE(p.quiet_hours_enabled, false) OR
@@ -581,8 +589,8 @@ export async function listNotifications(userId: string, limit?: number): Promise
            END
          )
        )
-     ) ORDER BY n.created_at DESC${limitClause}`,
-    limit === undefined ? [userId] : [userId, limit]
+     ) ORDER BY n.created_at DESC LIMIT $${values.length}`,
+    values
   );
   return result.rows.map((row) => ({ id: row.id, workspaceId: row.workspace_id, conversationId: row.conversation_id, kind: row.kind, text: row.text, priority: row.kind === "workflow_alert" ? "high" : row.priority, groupKey: row.group_key, resourceType: row.resource_type, resourceId: row.resource_id, createdAt: row.created_at.toISOString(), readAt: row.read_at ? row.read_at.toISOString() : null }));
 }
@@ -1090,8 +1098,12 @@ export async function enforceWorkflowRunRetention(workspaceId?: string): Promise
   return result.rowCount ?? 0;
 }
 
-export async function listWorkflowRuns(workspaceId: string, workflowId: string): Promise<WorkflowRun[]> {
-  const result = await getPool().query("SELECT r.* FROM workspace_workflow_runs r WHERE r.workspace_id=$1 AND r.workflow_id=$2 ORDER BY r.started_at DESC", [workspaceId, workflowId]);
+export async function listWorkflowRuns(workspaceId: string, workflowId: string, options: { limit?: number; before?: string } = {}): Promise<WorkflowRun[]> {
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+  const result = await getPool().query(
+    "SELECT r.* FROM workspace_workflow_runs r WHERE r.workspace_id=$1 AND r.workflow_id=$2 AND ($3::timestamptz IS NULL OR r.started_at < $3) ORDER BY r.started_at DESC LIMIT $4",
+    [workspaceId, workflowId, options.before ?? null, limit]
+  );
   return result.rows.map(toWorkflowRun);
 }
 
