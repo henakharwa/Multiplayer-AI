@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { acceptWorkspaceInvitation, createWorkspace, getWorkspaceByJoinCode, listMyWorkspaces, ApiError } from "../lib/api";
-import type { Workspace } from "@mai-chat/shared-types";
+import { acceptWorkspaceInvitation, createWorkspace, joinWorkspaceByCode, listMyWorkspaces, ApiError } from "../lib/api";
+import type { Workspace, WorkspaceMembership } from "@mai-chat/shared-types";
 import BrandMark from "./_components/Logo";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { logout } from "../lib/api";
@@ -20,7 +20,10 @@ export default function HomePage() {
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [existingWorkspace, setExistingWorkspace] = useState<Workspace | null>(null);
-  const [myWorkspaces, setMyWorkspaces] = useState<Workspace[]>([]);
+  const [myWorkspaces, setMyWorkspaces] = useState<WorkspaceMembership[]>([]);
+  const [workspacesState, setWorkspacesState] = useState<"loading" | "ready" | "error">("loading");
+  const [workspacesVersion, setWorkspacesVersion] = useState(0);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [inviteToken, setInviteToken] = useState("");
   const inviteHandled = useRef(false);
 
@@ -59,8 +62,13 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!auth.user) { setMyWorkspaces([]); return; }
-    listMyWorkspaces().then(setMyWorkspaces).catch(() => setMyWorkspaces([]));
-  }, [auth.user]);
+    setWorkspacesState("loading");
+    listMyWorkspaces().then((list) => { setMyWorkspaces(list); setWorkspacesState("ready"); }).catch(() => { setMyWorkspaces([]); setWorkspacesState("error"); });
+  }, [auth.user, workspacesVersion]);
+
+  async function copyJoinCode(code: string) {
+    try { await navigator.clipboard.writeText(code); setCopiedCode(code); window.setTimeout(() => setCopiedCode((current) => current === code ? null : current), 1500); } catch { /* clipboard unavailable; the code stays visible */ }
+  }
 
   const returnParams = new URLSearchParams();
   if (name) returnParams.set("workspaceName", name);
@@ -86,6 +94,18 @@ export default function HomePage() {
     }
   }
 
+  // Opening a workspace that already exists joins it first (as an Editor
+  // for new members) so the workspace page loads with real access.
+  async function openExistingWorkspace(workspace: Workspace) {
+    setError(null);
+    try {
+      const joined = workspace.joinCode ? await joinWorkspaceByCode(workspace.joinCode) : workspace;
+      router.push(`/w/${joined.id}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not reach the chat server.");
+    }
+  }
+
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault();
     if (!joinCode.trim()) return;
@@ -93,7 +113,7 @@ export default function HomePage() {
     setJoining(true);
     setError(null);
     try {
-      const workspace = await getWorkspaceByJoinCode(joinCode.trim());
+      const workspace = await joinWorkspaceByCode(joinCode.trim());
       router.push(`/w/${workspace.id}`);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) { auth.refresh(); setAuthMode("signin"); }
@@ -163,7 +183,7 @@ export default function HomePage() {
                 {creating ? "Creating…" : "Create workspace"}
               </button>
             </form>
-            {existingWorkspace && <section className="home-existing-workspace" aria-live="polite"><strong>{existingWorkspace.name} already exists</strong><span>Join code: <code>{existingWorkspace.joinCode}</code></span><button className="btn secondary" type="button" onClick={() => router.push(`/w/${existingWorkspace.id}`)}>Open workspace</button></section>}
+            {existingWorkspace && <section className="home-existing-workspace" aria-live="polite"><strong>{existingWorkspace.name} already exists</strong><span>Join code: <code>{existingWorkspace.joinCode}</code></span><button className="btn secondary" type="button" onClick={() => void openExistingWorkspace(existingWorkspace)}>Open workspace</button></section>}
           </div>}
 
           {auth.user && <div className="home-panel">
@@ -198,7 +218,7 @@ export default function HomePage() {
             </form>
           </div>}
 
-          {auth.user && myWorkspaces.length > 0 && <section className="home-panel home-workspaces"><div className="home-workspaces-header"><div><p>Your workspaces</p><h2>Pick up where your team left off</h2></div><span>{myWorkspaces.length} {myWorkspaces.length === 1 ? "workspace" : "workspaces"}</span></div><p className="panel-hint">Open a workspace you&apos;re already part of, or use a join code to enter another one.</p><div className="home-workspace-list">{myWorkspaces.map((workspace) => <article key={workspace.id}><div className="home-workspace-details"><strong>{workspace.name}</strong><span>Join code: <code>{workspace.joinCode}</code></span></div><button className="btn secondary home-workspace-open" type="button" onClick={() => router.push(`/w/${workspace.id}`)}>Open</button></article>)}</div></section>}
+          {auth.user && <section className="home-panel home-workspaces" data-testid="my-workspaces"><div className="home-workspaces-header"><div><p>Your workspaces</p><h2>Pick up where your team left off</h2></div><span>{myWorkspaces.length} {myWorkspaces.length === 1 ? "workspace" : "workspaces"}</span></div><p className="panel-hint">Every workspace you belong to, as an Admin or an Editor. Share a join code to bring teammates in.</p>{workspacesState === "loading" ? <p className="panel-hint">Loading your workspaces…</p> : workspacesState === "error" ? <p className="error-text">Could not load your workspaces. <button type="button" className="home-workspace-retry" onClick={() => setWorkspacesVersion((value) => value + 1)}>Try again</button></p> : myWorkspaces.length === 0 ? <p className="home-workspace-empty">You are not part of any workspace yet. Create one or join with a code.</p> : <div className="home-workspace-list">{myWorkspaces.map((workspace) => <article key={workspace.id}><div className="home-workspace-details"><strong>{workspace.name} <em className={`home-workspace-role ${workspace.role}`}>{workspace.role === "admin" ? "Admin" : "Editor"}</em></strong><span>Join code: <code>{workspace.joinCode}</code> <button type="button" className="home-workspace-copy" onClick={() => void copyJoinCode(workspace.joinCode)} aria-label={`Copy join code for ${workspace.name}`}>{copiedCode === workspace.joinCode ? "Copied" : "Copy"}</button></span></div><button className="btn secondary home-workspace-open" type="button" onClick={() => router.push(`/w/${workspace.id}`)}>Open workspace</button></article>)}</div>}</section>}
         </div>
 
         {error && (

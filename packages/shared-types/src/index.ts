@@ -12,6 +12,11 @@ export interface Workspace {
 
 export type WorkspaceRole = "admin" | "editor";
 
+/** A workspace the signed-in user belongs to, with their role in it. */
+export interface WorkspaceMembership extends Workspace {
+  role: WorkspaceRole;
+}
+
 export interface WorkspaceMember extends User {
   role: WorkspaceRole;
   joinedAt: string;

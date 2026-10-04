@@ -36,13 +36,18 @@ export async function createWorkspace(name: string): Promise<Workspace> {
   return (await parseJsonOrThrow(res)) as Workspace;
 }
 
-export async function listMyWorkspaces(): Promise<Workspace[]> {
+export async function listMyWorkspaces(): Promise<import("@mai-chat/shared-types").WorkspaceMembership[]> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces`);
-  return (await parseJsonOrThrow(res)) as Workspace[];
+  return (await parseJsonOrThrow(res)) as import("@mai-chat/shared-types").WorkspaceMembership[];
 }
 
 export async function getWorkspaceByJoinCode(joinCode: string): Promise<Workspace> {
   const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/by-code/${encodeURIComponent(joinCode)}`);
+  return (await parseJsonOrThrow(res)) as Workspace;
+}
+
+export async function joinWorkspaceByCode(joinCode: string): Promise<Workspace> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/by-code/${encodeURIComponent(joinCode)}/join`, { method: "POST" });
   return (await parseJsonOrThrow(res)) as Workspace;
 }
 

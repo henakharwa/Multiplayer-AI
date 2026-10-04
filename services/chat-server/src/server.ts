@@ -728,6 +728,19 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     res.json(workspace);
   });
 
+  // Join by code (shared capability). New members join as Editors; an
+  // existing member keeps their current role.
+  app.post("/workspaces/by-code/:joinCode/join", async (req: Request, res: Response) => {
+    const workspace = await db.getWorkspaceByJoinCode(paramString(req.params.joinCode));
+    if (!workspace) return res.status(404).json({ error: "No workspace found for that join code." });
+    const existingMembers = await db.listWorkspaceMembersWithRoles(workspace.id);
+    const joined = await db.addWorkspaceMember(workspace.id, req.user!.id, existingMembers.length === 0 ? "admin" : "editor");
+    if (joined) {
+      await db.recordAuditEvent({ workspaceId: workspace.id, eventType: "member.joined", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} joined the workspace` });
+    }
+    res.json(workspace);
+  });
+
   app.get("/workspaces", async (req: Request, res: Response) => {
     res.json(await db.listWorkspacesForUser(req.user!.id));
   });

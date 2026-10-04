@@ -288,7 +288,7 @@ export default function WorkspaceRoomPage() {
         if (!cancelled) setWorkspace(ws);
       })
       .catch((err) => {
-        if (!cancelled) setLoadError(err instanceof ApiError && err.status === 404 ? "Workspace not found." : "Could not reach the chat server.");
+        if (!cancelled) setLoadError(err instanceof ApiError && err.status === 404 ? "Workspace not found." : err instanceof ApiError && err.status === 403 ? "You are not a member of this workspace. Join it with its join code or ask an Admin for an invitation." : err instanceof ApiError && err.status === 401 ? "Your session has expired. Sign in again." : "Could not reach the chat server.");
       });
     listIntegrations(workspaceId)
       .then((list) => {
