@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import type { AuditEvent, IntegrationConfig, WorkflowRun, WorkspaceWorkflow } from "@mai-chat/shared-types";
 import { AccessNotice } from "../../../_components/AccessNotice";
 import { useWorkspaceAccess } from "../../../../lib/useWorkspaceAccess";
-import { getObservabilityRetentionPolicy, listAuditEvents, listIntegrations, listWorkflowRuns, listWorkspaceWorkflows, updateFailureAlertThreshold, updateObservabilityRetentionPolicy } from "../../../../lib/api";
+import { describeError, getObservabilityRetentionPolicy, listAuditEvents, listIntegrations, listWorkflowRuns, listWorkspaceWorkflows, updateFailureAlertThreshold, updateObservabilityRetentionPolicy } from "../../../../lib/api";
 
 type RunWithWorkflow = WorkflowRun & { workflowName: string };
 const providers = ["github", "slack", "linear", "notion", "figma"] as const;
@@ -47,8 +47,8 @@ export default function ObservabilityPage() {
   }, [workspaceId]);
 
   // The failure-alert threshold is a workspace setting saved by Admins and used by server alert delivery.
-  async function saveControls(next: { failureThreshold?: number }) { if (next.failureThreshold === undefined) return; try { const policy = await updateFailureAlertThreshold(workspaceId, next.failureThreshold); setFailureThreshold(policy.failureAlertThreshold); setRetentionNotice("Failure-alert threshold saved."); } catch (reason) { setRetentionNotice(reason instanceof Error ? reason.message : "Could not save the failure-alert threshold."); } }
-  async function saveRetention(value: 7 | 30 | 90 | 365) { try { const policy = await updateObservabilityRetentionPolicy(workspaceId, value); setRetentionDays(policy.retentionDays); setRetentionNotice(policy.removed ? `Removed ${policy.removed} expired workflow run${policy.removed === 1 ? "" : "s"}.` : "Retention policy saved; expired runs are removed daily."); } catch (reason) { setRetentionNotice(reason instanceof Error ? reason.message : "Could not save retention policy."); } }
+  async function saveControls(next: { failureThreshold?: number }) { if (next.failureThreshold === undefined) return; try { const policy = await updateFailureAlertThreshold(workspaceId, next.failureThreshold); setFailureThreshold(policy.failureAlertThreshold); setRetentionNotice("Failure-alert threshold saved."); } catch (reason) { setRetentionNotice(describeError(reason, "Could not save the failure-alert threshold.")); } }
+  async function saveRetention(value: 7 | 30 | 90 | 365) { try { const policy = await updateObservabilityRetentionPolicy(workspaceId, value); setRetentionDays(policy.retentionDays); setRetentionNotice(policy.removed ? `Removed ${policy.removed} expired workflow run${policy.removed === 1 ? "" : "s"}.` : "Retention policy saved; expired runs are removed daily."); } catch (reason) { setRetentionNotice(describeError(reason, "Could not save retention policy.")); } }
   const filtered = useMemo(() => { const hours = range === "24h" ? 24 : range === "7d" ? 168 : range === "30d" ? 720 : Infinity; const cutoff = Date.now() - hours * 3600000; return { runs: runs.filter((run) => new Date(run.startedAt).getTime() >= cutoff), events: events.filter((event) => new Date(event.createdAt).getTime() >= cutoff) }; }, [events, range, runs]);
   const metrics = useMemo(() => {
     const completed = filtered.runs.filter((run) => run.status !== "running");

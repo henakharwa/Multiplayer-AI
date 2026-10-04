@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useDialog } from "../../../_components/DialogProvider";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { Conversation, WorkspaceAgent, WorkspaceWorkflow, WorkflowRun, WorkflowTrigger } from "@mai-chat/shared-types";
 import { AccessNotice } from "../../../_components/AccessNotice";
 import { useWorkspaceAccess } from "../../../../lib/useWorkspaceAccess";
-import { ApiError, createWorkspaceWorkflow, deleteWorkspaceWorkflow, listConversations, listWorkflowRuns, listWorkspaceAgents, listWorkspaceWorkflows, runWorkspaceWorkflow, updateWorkspaceWorkflow, type WorkflowInput } from "../../../../lib/api";
+import { describeError, createWorkspaceWorkflow, deleteWorkspaceWorkflow, listConversations, listWorkflowRuns, listWorkspaceAgents, listWorkspaceWorkflows, runWorkspaceWorkflow, updateWorkspaceWorkflow, type WorkflowInput } from "../../../../lib/api";
 
 const triggers: Array<{ value: WorkflowTrigger; label: string; help: string }> = [
   { value: "manual", label: "Manual", help: "Run when a teammate starts it." },
@@ -46,14 +47,16 @@ export default function WorkflowsPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused" | "attention">("all");
   const [showTestLab, setShowTestLab] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [builderStep, setBuilderStep] = useState<"identity" | "execution" | "delivery" | "governance" | "review">("identity");
 
   const access = useWorkspaceAccess(workspaceId);
+  const dialog = useDialog();
   // Create, edit, delete, enable, schedule, and run: Admins by default,
   // Editors with the createAgents permission. Viewing is shared.
   const canChange = access.can("createAgents");
   const refresh = async () => setWorkflows(await listWorkspaceWorkflows(workspaceId));
-  useEffect(() => { void Promise.all([refresh(), listWorkspaceAgents(workspaceId).then(setAgents), listConversations(workspaceId).then(setConversations)]).catch((err: Error) => setError(err.message)); }, [workspaceId]);
+  useEffect(() => { void Promise.all([refresh(), listWorkspaceAgents(workspaceId).then(setAgents), listConversations(workspaceId).then(setConversations)]).catch((err: unknown) => setError(describeError(err, "Could not load workflows."))).finally(() => setLoading(false)); }, [workspaceId]);
   async function select(workflow: WorkspaceWorkflow) {
     setSelected(workflow); setBuilderStep("identity"); setError(""); setNotice("");
     // The checkpoint used to be stored as a sentence in the instructions; it is now a saved setting, so drop that legacy sentence from the editor.
@@ -65,16 +68,16 @@ export default function WorkflowsPage() {
     try {
       const workflow = selected ? await updateWorkspaceWorkflow(workspaceId, selected.id, draft) : await createWorkspaceWorkflow(workspaceId, draft);
       await refresh(); await select(workflow); setNotice(selected ? "Workflow updated." : "Workflow created.");
-    } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save workflow."); } finally { setSaving(false); }
+    } catch (err) { setError(describeError(err, "Could not save workflow.")); } finally { setSaving(false); }
   }
   async function run(trigger: "manual" | "github_issue" | "github_status" | "slack_mention" = "manual", sampleEvent?: string) {
     if (!selected) return; setSaving(true); setError("");
     try { await runWorkspaceWorkflow(workspaceId, selected.id, trigger, sampleEvent?.trim() || (trigger === "manual" ? undefined : (testEventText.trim() || testEventDefaults[trigger]))); setNotice("Workflow started. Its response will appear in the selected conversation."); setTimeout(() => { void listWorkflowRuns(workspaceId, selected.id).then(setRuns); void refresh(); }, 800); }
-    catch (err) { setError(err instanceof Error ? err.message : "Could not run workflow."); } finally { setSaving(false); }
+    catch (err) { setError(describeError(err, "Could not run workflow.")); } finally { setSaving(false); }
   }
   async function remove() {
-    if (!selected || !window.confirm(`Delete ${selected.name}? This cannot be undone.`)) return;
-    setSaving(true); try { await deleteWorkspaceWorkflow(workspaceId, selected.id); setSelected(null); setDraft(empty); setRuns([]); await refresh(); } catch (err) { setError(err instanceof Error ? err.message : "Could not delete workflow."); } finally { setSaving(false); }
+    if (!selected || !(await dialog.confirm({ title: `Delete ${selected.name}?`, message: "Its schedule and run history will be removed. This cannot be undone.", confirmLabel: "Delete workflow", danger: true }))) return;
+    setSaving(true); try { await deleteWorkspaceWorkflow(workspaceId, selected.id); setSelected(null); setDraft(empty); setRuns([]); await refresh(); } catch (err) { setError(describeError(err, "Could not delete workflow.")); } finally { setSaving(false); }
   }
   const publishedAgents = agents.filter((agent) => agent.status === "published");
   const triggerHelp = triggers.find((item) => item.value === draft.trigger)?.help;
@@ -100,7 +103,7 @@ export default function WorkflowsPage() {
     <div className="workflow-layout">
       <section className="workflow-list"><div className="section-heading"><h2>Workflows</h2><button disabled={!canChange} onClick={() => { setSelected(null); setDraft(empty); setRuns([]); setError(""); setNotice(""); }}>New workflow</button></div>
         <div className="workflow-search"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search workflows" aria-label="Search workflows" /><div>{(["all", "active", "paused", "attention"] as const).map((filter) => <button type="button" className={statusFilter === filter ? "active" : ""} key={filter} onClick={() => setStatusFilter(filter)}>{filter}</button>)}</div></div>
-        {visibleWorkflows.length ? visibleWorkflows.map((workflow) => <button key={workflow.id} className={`workflow-card ${selected?.id === workflow.id ? "selected" : ""}`} onClick={() => void select(workflow)}><span className={`workflow-status ${workflow.enabled ? "enabled" : "paused"}`}>{workflow.lastRunStatus === "failed" ? "Needs attention" : workflow.enabled ? "Active" : "Paused"}</span><strong>{workflow.name}</strong><small>{labelForTrigger(workflow.trigger)} · {workflow.nextRunAt ? `Next ${formatDate(workflow.nextRunAt)}` : formatDate(workflow.lastRunAt)}</small><div className="workflow-card-icons"><SpecialistIcon kind={workflow.agentKind} />{workflow.workspaceAgentId && <span>AI</span>}</div></button>) : <p className="muted">No workflows match these filters.</p>}
+        {visibleWorkflows.length ? visibleWorkflows.map((workflow) => <button key={workflow.id} className={`workflow-card ${selected?.id === workflow.id ? "selected" : ""}`} onClick={() => void select(workflow)}><span className={`workflow-status ${workflow.enabled ? "enabled" : "paused"}`}>{workflow.lastRunStatus === "failed" ? "Needs attention" : workflow.enabled ? "Active" : "Paused"}</span><strong>{workflow.name}</strong><small>{labelForTrigger(workflow.trigger)} · {workflow.nextRunAt ? `Next ${formatDate(workflow.nextRunAt)}` : formatDate(workflow.lastRunAt)}</small><div className="workflow-card-icons"><SpecialistIcon kind={workflow.agentKind} />{workflow.workspaceAgentId && <span>AI</span>}</div></button>) : loading ? <div className="list-loading" role="status" aria-label="Loading workflows"><span/><span/><span/></div> : <p className="muted">{workflows.length ? "No workflows match these filters." : "No workflows yet. Start from a template or create one."}</p>}
       </section>
       <section className="workflow-form"><div className="section-heading"><div><p className="eyebrow">{selected ? "WORKFLOW DETAILS" : "NEW AUTOMATION"}</p><h2>{selected ? selected.name : "New workflow"}</h2></div>{selected && <div className="workflow-heading-actions"><button className="secondary-button workflow-run-button" disabled={saving || !canChange} onClick={() => void run()}>Run now</button><button type="button" className="secondary-button" onClick={() => setShowTestLab((value) => !value)}>{showTestLab ? "Close test mode" : "Test mode"}</button></div>}</div>
         <section className="workflow-canvas" aria-label="Workflow execution path"><div className="workflow-node trigger"><span>TRIGGER</span><strong>{labelForTrigger(draft.trigger)}</strong><small>{draft.trigger === "schedule" ? `Every ${draft.scheduleMinutes ?? 60} minutes` : "Starts the run"}</small></div><i>→</i><div className="workflow-node agent"><span>AGENT</span><strong>{draft.workspaceAgentId ? "Custom agent" : `${draft.agentKind[0].toUpperCase() + draft.agentKind.slice(1)} specialist`}</strong><small>Uses approved context</small></div><i>→</i><div className={`workflow-node approval ${approvalRequired ? "required" : ""}`}><span>APPROVAL</span><strong>{approvalRequired ? "Checkpoint required" : "Governed automatically"}</strong><small>{approvalRequired ? "Waits for review" : "External changes become proposals"}</small></div><i>→</i><div className="workflow-node output"><span>OUTPUT</span><strong>Workspace chat</strong><small>{draft.conversationId ? "Selected conversation" : "Dedicated conversation"}</small></div></section>

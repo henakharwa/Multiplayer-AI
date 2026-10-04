@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useDialog } from "../../../_components/DialogProvider";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import type { AuditEvent, AuditEventType, WorkspaceArtifact, WorkspaceMemory, WorkspaceTask } from "@mai-chat/shared-types";
-import { getWorkspacePreference, setWorkspacePreference, listAuditEvents, listWorkspaceArtifacts, listWorkspaceMemory, listWorkspaceTasks, ApiError } from "../../../../lib/api";
+import { describeError, getWorkspacePreference, setWorkspacePreference, listAuditEvents, listWorkspaceArtifacts, listWorkspaceMemory, listWorkspaceTasks } from "../../../../lib/api";
 
 // Matches the AuditEventType union in packages/shared-types -- add a new
 // kind there and in services/chat-server/src/actions.ts / server.ts
@@ -59,6 +60,7 @@ export default function AuditPage() {
   const [type, setType] = useState<AuditEventType | "">("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const dialog = useDialog();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [tasks, setTasks] = useState<WorkspaceTask[]>([]); const [memories, setMemories] = useState<WorkspaceMemory[]>([]); const [artifacts, setArtifacts] = useState<WorkspaceArtifact[]>([]);
   const [live, setLive] = useState(true);
@@ -89,7 +91,7 @@ export default function AuditPage() {
         })
         .catch((err) => {
           if (cancelled) return;
-          setError(err instanceof ApiError ? err.message : "Could not reach the chat server.");
+          setError(describeError(err, "Could not load activity."));
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -136,7 +138,7 @@ export default function AuditPage() {
   const grouped = useMemo(() => pagedEvents.reduce<Record<string, AuditEvent[]>>((groups, event) => { const day = new Date(event.createdAt); const today = new Date(); const yesterday = new Date(); yesterday.setDate(today.getDate() - 1); const key = day.toDateString() === today.toDateString() ? "Today" : day.toDateString() === yesterday.toDateString() ? "Yesterday" : Date.now() - day.getTime() < 604800000 ? "This week" : "Earlier"; (groups[key] ??= []).push(event); return groups; }, {}), [pagedEvents]);
   useEffect(() => { setPage(1); }, [search, type, actor, agentFilter, workflowFilter, outcome, range]);
   const actors = [...new Set(events.map((event) => event.actorName).filter(Boolean))]; const iconFor = (event: AuditEvent) => event.eventType.startsWith("workflow") ? "↻" : event.eventType.startsWith("artifact") ? "▤" : event.eventType.startsWith("agent") ? "✦" : event.eventType.startsWith("memory") ? "▣" : event.eventType.startsWith("action") ? "✓" : event.eventType.startsWith("integration") ? "⌁" : "•";
-  function saveView() { const name = window.prompt("Name this activity view"); if (!name) return; const next = [...savedViews, { name, search, type, actor, outcome, range }]; setSavedViews(next); void setWorkspacePreference(workspaceId, "activity-views", next).catch(() => setError("Could not save this view.")); }
+  async function saveView() { const name = await dialog.prompt({ title: "Save this activity view", message: "Saves the current search and filters so you can reapply them in one click.", label: "View name", placeholder: "e.g. Failed actions this week", confirmLabel: "Save view", maxLength: 60 }); if (!name) return; const next = [...savedViews, { name, search, type, actor, outcome, range }]; setSavedViews(next); void setWorkspacePreference(workspaceId, "activity-views", next).catch(() => setError("Could not save this view.")); }
   function exportCsv() { const rows = [["Time", "Type", "Actor", "Activity"], ...filteredEvents.map((event) => [event.createdAt, EVENT_TYPE_LABELS[event.eventType], event.actorName || event.actorType, event.summary])]; const blob = new Blob(["\ufeff", rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "workspace-activity.csv"; anchor.style.display = "none"; document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 0); }
 
   return (

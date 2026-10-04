@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { acceptWorkspaceInvitation, createWorkspace, joinWorkspaceByCode, listMyWorkspaces, ApiError } from "../lib/api";
+import { describeError, acceptWorkspaceInvitation, createWorkspace, joinWorkspaceByCode, listMyWorkspaces, ApiError } from "../lib/api";
 import type { Workspace, WorkspaceMembership } from "@mai-chat/shared-types";
 import BrandMark from "./_components/Logo";
 import { useCurrentUser } from "../lib/useCurrentUser";
@@ -57,7 +57,7 @@ export default function HomePage() {
     inviteHandled.current = true;
     acceptWorkspaceInvitation(inviteToken)
       .then(({ workspaceId }) => router.replace(`/w/${workspaceId}`))
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not accept this invitation."));
+      .catch((err) => setError(describeError(err, "Could not accept this invitation.")));
   }, [auth.user, inviteToken, router]);
 
   useEffect(() => {
@@ -89,7 +89,7 @@ export default function HomePage() {
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) { auth.refresh(); setAuthMode("signin"); }
       if (err instanceof ApiError && err.status === 409 && err.workspace) setExistingWorkspace(err.workspace);
-      setError(err instanceof ApiError ? err.message : "Could not create the workspace. Is the chat server running?");
+      setError(describeError(err, "Could not create the workspace. Is the chat server running?"));
       setCreating(false);
     }
   }
@@ -102,7 +102,7 @@ export default function HomePage() {
       const joined = workspace.joinCode ? await joinWorkspaceByCode(workspace.joinCode) : workspace;
       router.push(`/w/${joined.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not reach the chat server.");
+      setError(describeError(err, "Something went wrong. Try again."));
     }
   }
 
@@ -117,7 +117,7 @@ export default function HomePage() {
       router.push(`/w/${workspace.id}`);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) { auth.refresh(); setAuthMode("signin"); }
-      setError(err instanceof ApiError && err.status === 404 ? "No workspace found for that join code." : "Could not reach the chat server.");
+      setError(describeError(err, "Could not join this workspace."));
       setJoining(false);
     }
   }

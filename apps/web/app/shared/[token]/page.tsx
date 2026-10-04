@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import type { PublicArtifactView } from "@mai-chat/shared-types";
-import { ApiError, getPublicArtifact } from "../../../lib/api";
+import { describeError, getPublicArtifact } from "../../../lib/api";
 
 // Public, unauthenticated view for a Plan / Report / Task list artifact's
 // share link (see artifacts/page.tsx's "Create public link" and server.ts's
@@ -29,7 +29,7 @@ export default function PublicArtifactPage() {
     let cancelled = false;
     getPublicArtifact(token)
       .then((result) => { if (!cancelled) setView(result); })
-      .catch((err) => { if (!cancelled) setError(err instanceof ApiError ? err.message : "Could not load this artifact."); });
+      .catch((err) => { if (!cancelled) setError(describeError(err, "Could not load this artifact.")); });
     return () => { cancelled = true; };
   }, [token]);
 

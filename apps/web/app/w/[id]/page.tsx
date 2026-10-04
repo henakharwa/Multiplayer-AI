@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useDialog } from "../../_components/DialogProvider";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Conversation, GithubRepoSummary, IntegrationConfig, Workspace, WorkspaceAgent, WorkspaceMember, WorkspaceRole } from "@mai-chat/shared-types";
-import { getWorkspacePreference, setWorkspacePreference, createConversation, deleteConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, removeWorkspaceMember, leaveWorkspace, listWorkspaceInvitations, revokeWorkspaceInvitation, disconnectIntegration, githubOAuthStartUrl, sendWorkspaceInvitation, updateConversation, listWorkspaceAgents, listPermissionRequests, resolvePermissionRequest, type PermissionRequest, ApiError } from "../../../lib/api";
+import { describeError, getWorkspacePreference, setWorkspacePreference, createConversation, deleteConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, removeWorkspaceMember, leaveWorkspace, listWorkspaceInvitations, revokeWorkspaceInvitation, disconnectIntegration, githubOAuthStartUrl, sendWorkspaceInvitation, updateConversation, listWorkspaceAgents, listPermissionRequests, resolvePermissionRequest, type PermissionRequest, ApiError } from "../../../lib/api";
 import { useWorkspaceChat } from "../../../lib/useWorkspaceChat";
 import { colorForName, initialsForName } from "../../../lib/avatar";
 import ConnectChannelModal from "../../_components/ConnectChannelModal";
@@ -156,6 +157,7 @@ export default function WorkspaceRoomPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const user = useWorkspaceUser();
   const access = useWorkspaceAccess(workspaceId);
+  const dialog = useDialog();
   const displayName = user.displayName;
   const greetingName = (displayName || user.username || "there").trim().split(/\s+/)[0] || "there";
 
@@ -212,7 +214,7 @@ export default function WorkspaceRoomPage() {
 
   async function decidePermissionRequest(request: PermissionRequest, decision: "approve" | "reject") {
     try { await resolvePermissionRequest(workspaceId, request.id, decision); setPermissionRequests((items) => items.filter((item) => item.id !== request.id)); }
-    catch (error) { setLoadError(error instanceof Error ? error.message : "Could not update the permission request."); }
+    catch (error) { setLoadError(describeError(error, "Could not update the permission request.")); }
   }
 
   // Lands here right after the GitHub or Slack OAuth redirect
@@ -268,19 +270,19 @@ export default function WorkspaceRoomPage() {
       await disconnectIntegration(workspaceId, integration);
       setIntegrations((current) => current.filter((item) => item.id !== integration.id));
     } catch (err) {
-      setGithubNotice({ kind: "error", text: err instanceof Error ? err.message : "Could not disconnect this tool." });
+      setGithubNotice({ kind: "error", text: describeError(err, "Could not disconnect this tool.") });
     } finally {
       setToolMenu(null);
     }
   }
 
   async function leaveCurrentWorkspace() {
-    if (!window.confirm("Leave this workspace? Your personal connected tools will be removed.")) return;
+    if (!(await dialog.confirm({ title: "Leave this workspace?", message: "Your personal connected tools will be removed. You can rejoin later with the join code or a new invitation.", confirmLabel: "Leave workspace", danger: true }))) return;
     try {
       await leaveWorkspace(workspaceId);
       router.replace("/");
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Could not leave the workspace.");
+      setLoadError(describeError(err, "Could not leave the workspace."));
     }
   }
 
@@ -291,7 +293,7 @@ export default function WorkspaceRoomPage() {
         if (!cancelled) setWorkspace(ws);
       })
       .catch((err) => {
-        if (!cancelled) setLoadError(err instanceof ApiError && err.status === 404 ? "Workspace not found." : err instanceof ApiError && err.status === 403 ? "You are not a member of this workspace. Join it with its join code or ask an Admin for an invitation." : err instanceof ApiError && err.status === 401 ? "Your session has expired. Sign in again." : "Could not reach the chat server.");
+        if (!cancelled) setLoadError(err instanceof ApiError && err.status === 404 ? "Workspace not found." : err instanceof ApiError && err.status === 403 ? "You are not a member of this workspace. Join it with its join code or ask an Admin for an invitation." : describeError(err, "Could not load this workspace."));
       });
     listIntegrations(workspaceId)
       .then((list) => {
@@ -419,7 +421,7 @@ export default function WorkspaceRoomPage() {
   }
 
   async function removeConversation(conversation: Conversation): Promise<void> {
-    if (!window.confirm(`Delete “${conversation.title}”? This permanently removes its messages and pending approvals.`)) return;
+    if (!(await dialog.confirm({ title: `Delete “${conversation.title}”?`, message: "This permanently removes its messages and pending approvals.", confirmLabel: "Delete conversation", danger: true }))) return;
     try {
       const remaining = await deleteConversation(workspaceId, conversation.id);
       setConversations(remaining);
@@ -427,7 +429,7 @@ export default function WorkspaceRoomPage() {
       const nextConversation = remaining.find((item) => item.id !== conversation.id) ?? remaining[0];
       if (nextConversation) selectConversation(nextConversation.id);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Could not delete this conversation.");
+      setLoadError(describeError(err, "Could not delete this conversation."));
     }
   }
 
@@ -437,12 +439,12 @@ export default function WorkspaceRoomPage() {
       setConversations((current) => current.map((item) => item.id === updated.id ? updated : item));
       setConversationMenu(null);
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "Could not update this conversation.");
+      setLoadError(describeError(error, "Could not update this conversation."));
     }
   }
 
-  function renameConversation(conversation: Conversation): void {
-    const title = window.prompt("Rename conversation", conversation.title)?.trim();
+  async function renameConversation(conversation: Conversation): Promise<void> {
+    const title = (await dialog.prompt({ title: "Rename conversation", label: "Conversation name", defaultValue: conversation.title, confirmLabel: "Rename", maxLength: 120 }))?.trim();
     if (title && title !== conversation.title) void changeConversation(conversation, { title });
   }
 
@@ -485,7 +487,7 @@ export default function WorkspaceRoomPage() {
       setInviteState({ sending: false, message: `Invitation sent to ${invitation.email} as ${invitation.role}.`, error: null });
       setInviteEmail("");
     } catch (error) {
-      setInviteState({ sending: false, message: null, error: error instanceof ApiError ? error.message : "Could not send the invitation." });
+      setInviteState({ sending: false, message: null, error: describeError(error, "Could not send the invitation.") });
     }
   }
 
@@ -897,22 +899,23 @@ function CustomAgentLogo({ name }: { name: string }) {
 function AccessManager({ workspaceId, members, onClose, onChanged }: { workspaceId: string; members: WorkspaceMember[]; onClose: () => void; onChanged: (members: WorkspaceMember[]) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [invitations, setInvitations] = useState<Array<{ id: string; email: string; role: WorkspaceRole; expiresAt: string }>>([]);
+  const dialog = useDialog();
   useEffect(() => { listWorkspaceInvitations(workspaceId).then(setInvitations).catch(() => {}); }, [workspaceId]);
   async function changeRole(member: WorkspaceMember, role: WorkspaceRole) {
     try {
       await updateWorkspaceMemberRole(workspaceId, member.id, role);
       onChanged(members.map((item) => item.id === member.id ? { ...item, role } : item));
-    } catch (err) { setError(err instanceof Error ? err.message : "Could not change role."); }
+    } catch (err) { setError(describeError(err, "Could not change role.")); }
   }
   async function removeMember(member: WorkspaceMember) {
-    if (!window.confirm(`Remove ${member.displayName} from this workspace?`)) return;
-    try { await removeWorkspaceMember(workspaceId, member.id); onChanged(members.filter((item) => item.id !== member.id)); } catch (err) { setError(err instanceof Error ? err.message : "Could not remove member."); }
+    if (!(await dialog.confirm({ title: `Remove ${member.displayName}?`, message: "They lose access to this workspace and their personal tool connections are removed.", confirmLabel: "Remove member", danger: true }))) return;
+    try { await removeWorkspaceMember(workspaceId, member.id); onChanged(members.filter((item) => item.id !== member.id)); } catch (err) { setError(describeError(err, "Could not remove member.")); }
   }
   async function revokeInvitation(invitationId: string) {
-    try { await revokeWorkspaceInvitation(workspaceId, invitationId); setInvitations((current) => current.filter((item) => item.id !== invitationId)); } catch (err) { setError(err instanceof Error ? err.message : "Could not revoke invitation."); }
+    try { await revokeWorkspaceInvitation(workspaceId, invitationId); setInvitations((current) => current.filter((item) => item.id !== invitationId)); } catch (err) { setError(describeError(err, "Could not revoke invitation.")); }
   }
   async function resendInvitation(invite: { id: string; email: string; role: WorkspaceRole }) {
-    try { await sendWorkspaceInvitation(workspaceId, { email: invite.email, role: invite.role }); await revokeWorkspaceInvitation(workspaceId, invite.id); setInvitations(await listWorkspaceInvitations(workspaceId)); } catch (err) { setError(err instanceof Error ? err.message : "Could not resend invitation."); }
+    try { await sendWorkspaceInvitation(workspaceId, { email: invite.email, role: invite.role }); await revokeWorkspaceInvitation(workspaceId, invite.id); setInvitations(await listWorkspaceInvitations(workspaceId)); } catch (err) { setError(describeError(err, "Could not resend invitation.")); }
   }
   return <div className="access-modal-backdrop" role="presentation"><section className="access-modal" role="dialog" aria-modal="true" aria-label="Manage workspace access"><header><div><p>Workspace access</p><h2>Members and roles</h2></div><button onClick={onClose} aria-label="Close"><CloseGlyph /></button></header><p className="access-modal-intro">Admins manage access and approve write actions. Editors can connect tools and work with agents.</p>{error && <p className="error-text">{error}</p>}<div className="access-member-list">{members.map((member) => <div className="access-member" key={member.id}><span className="avatar" style={{ background: colorForName(member.displayName) }}>{initialsForName(member.displayName)}</span><strong>{member.displayName}<small>{member.email ?? member.username}</small></strong><select value={member.role} onChange={(event) => void changeRole(member, event.target.value as WorkspaceRole)} aria-label={`Role for ${member.displayName}`}><option value="admin">Admin</option><option value="editor">Editor</option></select><button className="access-remove" type="button" onClick={() => void removeMember(member)}>Remove</button></div>)}</div><section className="access-invitations"><h3>Pending invitations</h3>{invitations.length ? invitations.map((invite) => <div key={invite.id}><span><strong>{invite.email}</strong><small>{invite.role} · expires {new Date(invite.expiresAt).toLocaleDateString()}</small></span><aside><button type="button" onClick={() => void resendInvitation(invite)}>Resend</button><button type="button" onClick={() => void revokeInvitation(invite.id)}>Revoke</button></aside></div>) : <p>No pending invitations.</p>}</section></section></div>;
 }

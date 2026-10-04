@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import BrandMark from "../_components/Logo";
-import { verifyEmail, ApiError } from "../../lib/api";
+import { describeError, verifyEmail } from "../../lib/api";
 
 function VerifyEmailPageInner() {
   const params = useSearchParams();
@@ -24,7 +24,7 @@ function VerifyEmailPageInner() {
       .catch((error) => {
         if (cancelled) return;
         setStatus("error");
-        setMessage(error instanceof ApiError ? error.message : "Couldn't verify your email right now. Please try again.");
+        setMessage(describeError(error, "Couldn't verify your email right now. Please try again."));
       });
     return () => { cancelled = true; };
   }, [token]);

@@ -6,7 +6,7 @@
 // pick the one this workspace's agent should read from.
 import { useEffect, useMemo, useState } from "react";
 import type { GithubRepoSummary } from "@mai-chat/shared-types";
-import { listGithubRepos, selectGithubRepo, ApiError } from "../../lib/api";
+import { describeError, listGithubRepos, selectGithubRepo } from "../../lib/api";
 
 export default function GithubRepoPickerModal({
   workspaceId,
@@ -30,7 +30,7 @@ export default function GithubRepoPickerModal({
         if (!cancelled) setRepos(list);
       })
       .catch((err) => {
-        if (!cancelled) setLoadError(err instanceof ApiError ? err.message : "Could not reach the chat server.");
+        if (!cancelled) setLoadError(describeError(err, "Could not load your repositories."));
       });
     return () => {
       cancelled = true;
@@ -51,7 +51,7 @@ export default function GithubRepoPickerModal({
       await selectGithubRepo(workspaceId, { owner: repo.owner, repo: repo.name });
       onSelected(repo);
     } catch (err) {
-      setSelectError(err instanceof ApiError ? err.message : "Could not reach the chat server.");
+      setSelectError(describeError(err, "Could not select this repository."));
     } finally {
       setSelecting(null);
     }

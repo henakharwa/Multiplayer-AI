@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import type { PublicDashboardView } from "@mai-chat/shared-types";
-import { ApiError, getPublicDashboard } from "../../../lib/api";
+import { describeError, getPublicDashboard } from "../../../lib/api";
 import { DashboardCanvas } from "../../_components/DashboardCanvas";
 
 // Public, unauthenticated view for a dashboard's share link (see
@@ -20,7 +20,7 @@ export default function PublicDashboardPage() {
     let cancelled = false;
     getPublicDashboard(token)
       .then((result) => { if (!cancelled) setView(result); })
-      .catch((err) => { if (!cancelled) setError(err instanceof ApiError ? err.message : "Could not load this dashboard."); });
+      .catch((err) => { if (!cancelled) setError(describeError(err, "Could not load this dashboard.")); });
     return () => { cancelled = true; };
   }, [token]);
 

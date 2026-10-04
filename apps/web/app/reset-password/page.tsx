@@ -4,7 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import BrandMark from "../_components/Logo";
-import { resetPassword, ApiError } from "../../lib/api";
+import { describeError, resetPassword } from "../../lib/api";
 
 function ResetPasswordPageInner() {
   const params = useSearchParams();
@@ -24,7 +24,7 @@ function ResetPasswordPageInner() {
       setDone(true);
       setTimeout(() => router.push("/"), 1500);
     } catch (error) {
-      setError(error instanceof ApiError ? error.message : "Couldn't reset your password right now. Please try again.");
+      setError(describeError(error, "Couldn't reset your password right now. Please try again."));
       setBusy(false);
     }
   }

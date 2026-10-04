@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useDialog } from "../../../_components/DialogProvider";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { WorkspaceArtifact, WorkspaceArtifactComment, WorkspaceArtifactDashboard, WorkspaceArtifactVersion, WorkspaceMember } from "@mai-chat/shared-types";
-import { ApiError, createWorkspaceArtifact, createWorkspaceArtifactComment, deleteWorkspaceArtifact, generateAssistedArtifactDraft, generateReleaseNotes, generateReport, listWorkspaceArtifactComments, listWorkspaceArtifactVersions, listWorkspaceArtifacts, listWorkspaceMembers, notifyDashboardHealthChange, pingDashboardPresence, refreshWorkspaceDashboard, restoreWorkspaceArtifactVersion, revokeWorkspaceArtifactShare, shareArtifactToSlack, shareWorkspaceArtifact, updateWorkspaceArtifact, type WorkspaceArtifactInput } from "../../../../lib/api";
+import { describeError, createWorkspaceArtifact, createWorkspaceArtifactComment, deleteWorkspaceArtifact, generateAssistedArtifactDraft, generateReleaseNotes, generateReport, listWorkspaceArtifactComments, listWorkspaceArtifactVersions, listWorkspaceArtifacts, listWorkspaceMembers, notifyDashboardHealthChange, pingDashboardPresence, refreshWorkspaceDashboard, restoreWorkspaceArtifactVersion, revokeWorkspaceArtifactShare, shareArtifactToSlack, shareWorkspaceArtifact, updateWorkspaceArtifact, type WorkspaceArtifactInput } from "../../../../lib/api";
 import { DashboardCanvas } from "../../../_components/DashboardCanvas";
 import { PlanVisual } from "../../../_components/PlanVisual";
 import { ReportVisual } from "../../../_components/ReportVisual";
@@ -69,14 +70,14 @@ export default function ArtifactsPage() {
   const [viewers, setViewers] = useState<{ userId: string; name: string }[]>([]);
   const [assistantPrompt, setAssistantPrompt] = useState(""); const [taskListEditing, setTaskListEditing] = useState(false); const [releaseEditing, setReleaseEditing] = useState(false); const [reportEditing, setReportEditing] = useState(false); const [planEditing, setPlanEditing] = useState(false);
   const [slackChannel, setSlackChannel] = useState("");
-  const user = useWorkspaceUser(); const access = useWorkspaceAccess(workspaceId);
+  const user = useWorkspaceUser(); const access = useWorkspaceAccess(workspaceId); const dialog = useDialog();
   // Every member can create, comment on, and review artifacts. Editing,
   // publishing, versions, and the public link of an existing artifact belong
   // to its author; Admins can manage any artifact (Artifact administration).
   const canManageSelected = !selected || access.isAdmin || selected.createdByUserId === user.id;
   const blockUnmanaged = () => { if (canManageSelected) return false; setError("Only the artifact author or an Admin can change this artifact."); return true; };
   const refresh = async () => setArtifacts(await listWorkspaceArtifacts(workspaceId));
-  useEffect(() => { void Promise.all([refresh(), listWorkspaceMembers(workspaceId)]).then(([, team]) => setMembers(team)).catch((err: Error) => setError(err.message)); }, [workspaceId]);
+  useEffect(() => { void Promise.all([refresh(), listWorkspaceMembers(workspaceId)]).then(([, team]) => setMembers(team)).catch((err: unknown) => setError(describeError(err, "Could not load this page."))); }, [workspaceId]);
 
   // Live presence: "who else is looking at this dashboard right now" --
   // a lightweight heartbeat (services/chat-server's POST .../presence),
@@ -93,17 +94,17 @@ export default function ArtifactsPage() {
   }, [workspaceId, selected]);
 
   async function select(item: WorkspaceArtifact) { setPlanEditing(false); setReportEditing(false); setReleaseEditing(false); setTaskListEditing(false); setBuilderStep("setup"); setSelected(item); setDraft({ type: item.type, status: item.status, title: item.title, summary: item.summary, content: item.content, dashboardData: item.dashboardData, ownerUserId: item.ownerUserId, releaseVersion: item.releaseVersion }); const [artifactComments, artifactVersions] = await Promise.all([listWorkspaceArtifactComments(workspaceId, item.id), listWorkspaceArtifactVersions(workspaceId, item.id)]); setComments(artifactComments); setVersions(artifactVersions); setError(""); setNotice(""); }
-  async function save() { if (blockUnmanaged()) return; setSaving(true); setError(""); try { const saved = selected ? await updateWorkspaceArtifact(workspaceId, selected.id, draft) : await createWorkspaceArtifact(workspaceId, draft); await refresh(); await select(saved); setPlanEditing(false); setReportEditing(false); setReleaseEditing(false); setTaskListEditing(false); setNotice(selected ? "Artifact updated." : "Artifact saved for the workspace."); } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save artifact."); } finally { setSaving(false); } }
-  async function remove() { if (blockUnmanaged()) return; if (!selected || !window.confirm(`Delete ${selected.title}?`)) return; setSaving(true); try { await deleteWorkspaceArtifact(workspaceId, selected.id); setSelected(null); setDraft(empty); setComments([]); await refresh(); } catch (err) { setError(err instanceof Error ? err.message : "Could not delete artifact."); } finally { setSaving(false); } }
+  async function save() { if (blockUnmanaged()) return; setSaving(true); setError(""); try { const saved = selected ? await updateWorkspaceArtifact(workspaceId, selected.id, draft) : await createWorkspaceArtifact(workspaceId, draft); await refresh(); await select(saved); setPlanEditing(false); setReportEditing(false); setReleaseEditing(false); setTaskListEditing(false); setNotice(selected ? "Artifact updated." : "Artifact saved for the workspace."); } catch (err) { setError(describeError(err, "Could not save artifact.")); } finally { setSaving(false); } }
+  async function remove() { if (blockUnmanaged()) return; if (!selected || !(await dialog.confirm({ title: `Delete ${selected.title}?`, message: "The artifact, its versions, comments, and any public link will be removed. This cannot be undone.", confirmLabel: "Delete artifact", danger: true }))) return; setSaving(true); try { await deleteWorkspaceArtifact(workspaceId, selected.id); setSelected(null); setDraft(empty); setComments([]); await refresh(); } catch (err) { setError(describeError(err, "Could not delete artifact.")); } finally { setSaving(false); } }
   const visibleArtifacts = artifacts.filter((item) => filter === "all" || item.type === filter);
   function useTemplate(template: typeof templates[number]) { setSelected(null); setComments([]); setDraft({ ...empty, type: template.type, title: "", summary: "", content: template.type === "dashboard" ? template.content : "", dashboardData: template.type === "dashboard" ? newDashboard() : null, releaseVersion: null }); setError(""); setNotice(""); }
-  async function restore(version: WorkspaceArtifactVersion) { if (blockUnmanaged()) return; if (!selected || !window.confirm(`Restore version ${version.version}?`)) return; try { const restored = await restoreWorkspaceArtifactVersion(workspaceId, selected.id, version.id); await refresh(); await select(restored); setNotice(`Restored version ${version.version}.`); } catch (err) { setError(err instanceof Error ? err.message : "Could not restore version."); } }
-  async function publishArtifact() { if (blockUnmanaged()) return; setSaving(true); setError(""); try { const created = selected ?? await createWorkspaceArtifact(workspaceId, { ...draft, status: "draft" }); const published = await updateWorkspaceArtifact(workspaceId, created.id, { ...draft, status: "published" }); await refresh(); await select(published); setPlanEditing(false); setReportEditing(false); setReleaseEditing(false); setTaskListEditing(false); setNotice(`${labels[draft.type]} published.`); } catch (err) { setError(err instanceof Error ? err.message : "Could not publish artifact."); } finally { setSaving(false); } }
+  async function restore(version: WorkspaceArtifactVersion) { if (blockUnmanaged()) return; if (!selected || !(await dialog.confirm({ title: `Restore version ${version.version}?`, message: "The current content is kept as a new version, so you can switch back later.", confirmLabel: "Restore version" }))) return; try { const restored = await restoreWorkspaceArtifactVersion(workspaceId, selected.id, version.id); await refresh(); await select(restored); setNotice(`Restored version ${version.version}.`); } catch (err) { setError(describeError(err, "Could not restore version.")); } }
+  async function publishArtifact() { if (blockUnmanaged()) return; setSaving(true); setError(""); try { const created = selected ?? await createWorkspaceArtifact(workspaceId, { ...draft, status: "draft" }); const published = await updateWorkspaceArtifact(workspaceId, created.id, { ...draft, status: "published" }); await refresh(); await select(published); setPlanEditing(false); setReportEditing(false); setReleaseEditing(false); setTaskListEditing(false); setNotice(`${labels[draft.type]} published.`); } catch (err) { setError(describeError(err, "Could not publish artifact.")); } finally { setSaving(false); } }
   function publicUrl(artifact: WorkspaceArtifact) { return `${window.location.origin}${publicArtifactPath(artifact.type, artifact.shareToken ?? "")}`; }
-  async function createPublicLink() { if (blockUnmanaged()) return; if (!selected) return; setSaving(true); setError(""); try { const shared = await shareWorkspaceArtifact(workspaceId, selected.id); await refresh(); await select(shared); setNotice("Public link created. Anyone with the link can view this published artifact."); } catch (err) { setError(err instanceof Error ? err.message : "Could not create a public link."); } finally { setSaving(false); } }
-  async function revokePublicLink() { if (blockUnmanaged()) return; if (!selected) return; setSaving(true); setError(""); try { const shared = await revokeWorkspaceArtifactShare(workspaceId, selected.id); await refresh(); await select(shared); setNotice("Public link revoked."); } catch (err) { setError(err instanceof Error ? err.message : "Could not revoke the public link."); } finally { setSaving(false); } }
+  async function createPublicLink() { if (blockUnmanaged()) return; if (!selected) return; setSaving(true); setError(""); try { const shared = await shareWorkspaceArtifact(workspaceId, selected.id); await refresh(); await select(shared); setNotice("Public link created. Anyone with the link can view this published artifact."); } catch (err) { setError(describeError(err, "Could not create a public link.")); } finally { setSaving(false); } }
+  async function revokePublicLink() { if (blockUnmanaged()) return; if (!selected) return; setSaving(true); setError(""); try { const shared = await revokeWorkspaceArtifactShare(workspaceId, selected.id); await refresh(); await select(shared); setNotice("Public link revoked."); } catch (err) { setError(describeError(err, "Could not revoke the public link.")); } finally { setSaving(false); } }
   async function copyPublicLink() { if (!selected?.shareToken) return; try { await navigator.clipboard.writeText(publicUrl(selected)); setNotice("Public link copied."); } catch { setError("Could not copy the public link. Copy it from the browser address bar instead."); } }
-  async function sendToSlack() { if (blockUnmanaged()) return; const channel = normalizeSlackChannel(slackChannel); if (!selected || !channel) { setError("Enter a Slack channel before sharing."); return; } setSaving(true); setError(""); try { await shareArtifactToSlack(workspaceId, selected.id, channel); setNotice(`Shared ${selected.title} to #${channel}.`); } catch (err) { setError(err instanceof Error ? err.message : "Could not share this artifact to Slack."); } finally { setSaving(false); } }
+  async function sendToSlack() { if (blockUnmanaged()) return; const channel = normalizeSlackChannel(slackChannel); if (!selected || !channel) { setError("Enter a Slack channel before sharing."); return; } setSaving(true); setError(""); try { await shareArtifactToSlack(workspaceId, selected.id, channel); setNotice(`Shared ${selected.title} to #${channel}.`); } catch (err) { setError(describeError(err, "Could not share this artifact to Slack.")); } finally { setSaving(false); } }
   function moveBuilder(direction: "back" | "next") { if (direction === "back") { setBuilderStep((step) => step === "review" ? "compose" : "setup"); return; } if (builderStep === "setup" && !draft.title.trim()) { setError("Add a title before continuing to Compose."); return; } if (builderStep === "setup") { setBuilderStep("compose"); setError(""); return; } if (builderStep === "compose" && !draft.content.trim()) { setError("Add notes or generate a draft before continuing to Review."); return; } setBuilderStep("review"); setError(""); }
   async function refreshDashboard() { if (blockUnmanaged()) return;
     if (!selected) return;
@@ -119,7 +120,7 @@ export default function ArtifactsPage() {
       if (previousHealth && nextHealth && previousHealth !== nextHealth) {
         void notifyDashboardHealthChange(workspaceId, selected.id, previousHealth, nextHealth);
       }
-    } catch (err) { setError(err instanceof Error ? err.message : "Could not refresh dashboard."); } finally { setSaving(false); }
+    } catch (err) { setError(describeError(err, "Could not refresh dashboard.")); } finally { setSaving(false); }
   }
   async function generateAssistedDraft() { if (blockUnmanaged()) return;
     if (!draft.title.trim()) { setError("Add a title before creating an AI-assisted draft."); return; }
@@ -132,13 +133,13 @@ export default function ArtifactsPage() {
       const generated = await generateAssistedArtifactDraft(workspaceId, target.id, assistantPrompt);
       await refresh(); await select(generated); setAssistantPrompt("");
       setNotice("Created an AI-assisted draft grounded in workspace context. Review and edit it before publishing.");
-    } catch (err) { setError(err instanceof Error ? err.message : "Could not create an assisted draft."); } finally { setSaving(false); }
+    } catch (err) { setError(describeError(err, "Could not create an assisted draft.")); } finally { setSaving(false); }
   }
   async function generateFromGithub() { if (blockUnmanaged()) return;
     if (!selected) return;
     setSaving(true);
     try { const generated = await generateReleaseNotes(workspaceId, selected.id); await refresh(); await select(generated); setNotice("Drafted from GitHub activity -- review before publishing."); }
-    catch (err) { setError(err instanceof Error ? err.message : "Could not generate release notes."); } finally { setSaving(false); }
+    catch (err) { setError(describeError(err, "Could not generate release notes.")); } finally { setSaving(false); }
   }
   async function generateAiReportVisual() { if (blockUnmanaged()) return;
     if (!selected) { setError("Save the report before generating an AI visual source."); return; }
@@ -146,14 +147,14 @@ export default function ArtifactsPage() {
     try {
       const generated = await generateAssistedArtifactDraft(workspaceId, selected.id, "Create a comprehensive, visual-ready report source. Use every relevant detail from the report title, summary, notes, workspace memory, connected tools, and recent workspace activity. Preserve factual detail. Organize it with clear headings for highlights, progress, risks, decisions, metrics, and next steps so every report view can use the complete information.");
       await refresh(); await select(generated); setNotice("AI generated a complete visual-ready report source from your report inputs and workspace context.");
-    } catch (err) { setError(err instanceof Error ? err.message : "Could not generate the AI report visual source."); } finally { setSaving(false); }
+    } catch (err) { setError(describeError(err, "Could not generate the AI report visual source.")); } finally { setSaving(false); }
   }  async function generateFromAuditTrail() { if (blockUnmanaged()) return;
     if (!selected) return;
     setSaving(true);
     try { const generated = await generateReport(workspaceId, selected.id); await refresh(); await select(generated); setNotice("Drafted from this workspace's activity -- review before publishing."); }
-    catch (err) { setError(err instanceof Error ? err.message : "Could not generate report."); } finally { setSaving(false); }
+    catch (err) { setError(describeError(err, "Could not generate report.")); } finally { setSaving(false); }
   }
-  async function addComment() { if (!selected || !comment.trim()) return; try { const created = await createWorkspaceArtifactComment(workspaceId, selected.id, comment); setComments((items) => [...items, created]); setComment(""); } catch (err) { setError(err instanceof Error ? err.message : "Could not add comment."); } }  function addSuggestedBlock(content: string) {
+  async function addComment() { if (!selected || !comment.trim()) return; try { const created = await createWorkspaceArtifactComment(workspaceId, selected.id, comment); setComments((items) => [...items, created]); setComment(""); } catch (err) { setError(describeError(err, "Could not add comment.")); } }  function addSuggestedBlock(content: string) {
     setDraft((current) => ({ ...current, content: current.content.trim() ? `${current.content.trim()}\n\n${content}` : content }));
     setNotice("Added a structured block. Fill in its details below.");
   }

@@ -8,7 +8,7 @@
 // Slack's own official MCP server, which only accepts a token minted by
 // this exact OAuth flow (see slack-oauth.ts's own comment).
 import { useEffect, useRef, useState } from "react";
-import { ApiError, checkToolConnectionPermission, githubOAuthStartUrl, providerOAuthStartUrl, slackOAuthStartUrl } from "../../lib/api";
+import { describeError, checkToolConnectionPermission, githubOAuthStartUrl, providerOAuthStartUrl, slackOAuthStartUrl } from "../../lib/api";
 
 export default function ConnectChannelModal({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +41,7 @@ export default function ConnectChannelModal({ workspaceId, onClose }: { workspac
         ? slackOAuthStartUrl(workspaceId)
         : providerOAuthStartUrl(workspaceId, provider);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "You do not have permission to connect this tool.");
+      setError(describeError(err, "Could not start the connection. Try again."));
       setConnecting(null);
     }
   }

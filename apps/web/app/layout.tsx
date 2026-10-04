@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { DialogProvider } from "./_components/DialogProvider";
 
 export const metadata: Metadata = {
   title: "Nexus",
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning><DialogProvider>{children}</DialogProvider></body>
     </html>
   );
 }

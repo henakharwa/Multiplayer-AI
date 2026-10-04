@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import type { GithubRepoSummary, IntegrationConfig, WorkspaceAgent, WorkspacePermissionPolicy, WorkspacePermissions, WorkspaceRole } from "@mai-chat/shared-types";
-import { connectGithub, connectRemoteMcp, githubOAuthStartUrl, slackOAuthStartUrl, listIntegrations, listWorkspaceAgents, getWorkspacePermissionPolicy, updateWorkspacePermissionPolicy, requestWorkspacePermission, listPermissionRequests, resolvePermissionRequest, testIntegration, type PermissionRequest, ApiError } from "../../../../lib/api";
+import { describeError, connectGithub, connectRemoteMcp, githubOAuthStartUrl, slackOAuthStartUrl, listIntegrations, listWorkspaceAgents, getWorkspacePermissionPolicy, updateWorkspacePermissionPolicy, requestWorkspacePermission, listPermissionRequests, resolvePermissionRequest, testIntegration, type PermissionRequest } from "../../../../lib/api";
 import { useWorkspaceUser } from "../../../_components/WorkspaceAuth";
 import GithubRepoPickerModal from "../../../_components/GithubRepoPickerModal";
 import { AccessNotice } from "../../../_components/AccessNotice";
@@ -74,12 +74,12 @@ export default function IntegrationsPage() {
     if (!policy) return;
     setPolicyBusy(true); setPolicyError(null);
     try { setPolicy(await updateWorkspacePermissionPolicy(workspaceId, policy)); }
-    catch (error) { setPolicyError(error instanceof ApiError ? error.message : "Could not save workspace permissions."); }
+    catch (error) { setPolicyError(describeError(error, "Could not save workspace permissions.")); }
     finally { setPolicyBusy(false); }
   }
 
-  async function submitPermissionRequest() { if (!requestedPermission || !requestReason.trim()) return; setRequestBusy(true); setPolicyError(null); try { await requestWorkspacePermission(workspaceId, requestedPermission, requestReason.trim()); setRequestedPermission(null); setRequestReason(""); } catch (error) { setPolicyError(error instanceof ApiError ? error.message : "Could not send your request."); } finally { setRequestBusy(false); } }
-  async function decidePermissionRequest(request: PermissionRequest, decision: "approve" | "reject") { try { await resolvePermissionRequest(workspaceId, request.id, decision); setRequests((items) => items.filter((item) => item.id !== request.id)); } catch (error) { setPolicyError(error instanceof ApiError ? error.message : "Could not update the request."); } }
+  async function submitPermissionRequest() { if (!requestedPermission || !requestReason.trim()) return; setRequestBusy(true); setPolicyError(null); try { await requestWorkspacePermission(workspaceId, requestedPermission, requestReason.trim()); setRequestedPermission(null); setRequestReason(""); } catch (error) { setPolicyError(describeError(error, "Could not send your request.")); } finally { setRequestBusy(false); } }
+  async function decidePermissionRequest(request: PermissionRequest, decision: "approve" | "reject") { try { await resolvePermissionRequest(workspaceId, request.id, decision); setRequests((items) => items.filter((item) => item.id !== request.id)); } catch (error) { setPolicyError(describeError(error, "Could not update the request.")); } }
 
   const githubConnections = integrations.filter((i): i is Extract<IntegrationConfig, { type: "github" }> => i.type === "github");
   const githubConnected = githubConnections.find((integration) => integration.ownerUserId === user.id);
@@ -91,8 +91,8 @@ export default function IntegrationsPage() {
   const capabilities = (type: IntegrationConfig["type"]) => ({ github: ["Read issues and pull requests", "Review checks", "Propose changes for approval"], slack: ["Search team conversations", "Draft replies", "Post after approval"], linear: ["Read projects and issues", "Propose task updates"], notion: ["Search pages and databases", "Draft workspace pages"], figma: ["Read design context", "Summarize review feedback"] })[type];
   const setupSteps = (integration: IntegrationConfig) => integration.type === "github" ? ["Account connected", integration.repo ? "Repository selected" : "Choose a repository", "Verify read access"] : integration.type === "slack" ? ["Workspace connected", "Choose relevant channels", "Verify read access"] : ["Connection added", "Choose source scope", "Verify read access"];
   const usingAgents = (type: IntegrationConfig["type"]) => agents.filter((agent) => agent.status === "published" && (agent.baseAgent === type || agent.approvedProviders.includes(type))).map((agent) => agent.name);
-  async function diagnose(integration: IntegrationConfig) { const key = integration.id ?? integration.type; setDiagnostics((current) => ({ ...current, [key]: "Checking connection…" })); let message: string; try { const health = await testIntegration(workspaceId, key); message = `${health.status === "ok" ? "Connection verified" : health.status === "needs_setup" ? "Needs setup" : "Connection failed"}: ${health.message}`; } catch (error) { message = `Connection failed: ${error instanceof ApiError ? error.message : "could not reach the chat server."}`; } setDiagnostics((current) => ({ ...current, [key]: message })); }
-  async function connectRemote(provider: "linear" | "notion" | "figma") { const setup = remoteSetup[provider]; setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], busy: true, error: "" } })); try { await connectRemoteMcp(workspaceId, provider, { endpoint: setup.endpoint, token: setup.token }); setRemoteSetup((current) => ({ ...current, [provider]: { endpoint: "", token: "", busy: false, error: "" } })); await refresh(); } catch (reason) { setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], busy: false, error: reason instanceof Error ? reason.message : "Could not connect this provider." } })); } }
+  async function diagnose(integration: IntegrationConfig) { const key = integration.id ?? integration.type; setDiagnostics((current) => ({ ...current, [key]: "Checking connection…" })); let message: string; try { const health = await testIntegration(workspaceId, key); message = `${health.status === "ok" ? "Connection verified" : health.status === "needs_setup" ? "Needs setup" : "Connection failed"}: ${health.message}`; } catch (error) { message = `Connection failed: ${describeError(error, "could not reach the chat server.")}`; } setDiagnostics((current) => ({ ...current, [key]: message })); }
+  async function connectRemote(provider: "linear" | "notion" | "figma") { const setup = remoteSetup[provider]; setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], busy: true, error: "" } })); try { await connectRemoteMcp(workspaceId, provider, { endpoint: setup.endpoint, token: setup.token }); setRemoteSetup((current) => ({ ...current, [provider]: { endpoint: "", token: "", busy: false, error: "" } })); await refresh(); } catch (reason) { setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], busy: false, error: describeError(reason, "Could not connect this provider.") } })); } }
 
   async function handleGithubSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -105,7 +105,7 @@ export default function IntegrationsPage() {
       setGithubToken("");
       await refresh();
     } catch (err) {
-      setGithubError(err instanceof ApiError ? err.message : "Could not reach the chat server.");
+      setGithubError(describeError(err, "Could not connect GitHub."));
     } finally {
       setGithubBusy(false);
     }

@@ -15,6 +15,26 @@ export class ApiError extends Error {
   }
 }
 
+// One place that turns any failure into a message a person can act on:
+// the server's own explanation when it gave one, a status-specific
+// sentence when it didn't, and a real "can't reach the server" only for
+// actual network failures.
+const GENERIC_SERVER_MESSAGES = /^(request failed \(\d+\)|sign in required|not signed in|not found|invalid [a-z ]+ id|unauthorized)$/i;
+export function describeError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    if (error.message && !GENERIC_SERVER_MESSAGES.test(error.message.trim())) return error.message;
+    if (error.status === 401) return "Your session has expired. Sign in again to continue.";
+    if (error.status === 403) return "You don't have permission to do this in this workspace.";
+    if (error.status === 404) return "This item no longer exists or was removed.";
+    if (error.status === 429) return "Too many requests. Wait a moment and try again.";
+    if (error.status >= 500) return "The server ran into a problem. Try again in a moment.";
+    return fallback;
+  }
+  if (error instanceof TypeError) return "Could not reach the chat server. Check your connection and try again.";
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
 async function parseJsonOrThrow(res: Response): Promise<unknown> {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {

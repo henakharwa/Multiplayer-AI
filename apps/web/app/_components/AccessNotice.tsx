@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ApiError, requestWorkspacePermission } from "../../lib/api";
+import { describeError, requestWorkspacePermission } from "../../lib/api";
 import { PERMISSION_LABELS, type WorkspaceAccessState, type WorkspacePermission } from "../../lib/useWorkspaceAccess";
 
 // Shown where a conditional capability is unavailable. Editors can request
@@ -26,7 +26,7 @@ export function AccessNotice({ workspaceId, access, permission, adminOnly, messa
     if (!permission || !reason.trim()) return;
     setBusy(true); setStatus(null);
     try { await requestWorkspacePermission(workspaceId, permission, reason.trim()); setStatus({ ok: true, text: "Request sent to workspace Admins." }); setOpen(false); setReason(""); }
-    catch (error) { setStatus({ ok: false, text: error instanceof ApiError ? error.message : "Could not send your request." }); }
+    catch (error) { setStatus({ ok: false, text: describeError(error, "Could not send your request.") }); }
     finally { setBusy(false); }
   }
   return <div className="access-notice" role="note">

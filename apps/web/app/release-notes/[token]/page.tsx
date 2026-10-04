@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import type { PublicReleaseNotesView } from "@mai-chat/shared-types";
-import { ApiError, getPublicReleaseNotes } from "../../../lib/api";
+import { describeError, getPublicReleaseNotes } from "../../../lib/api";
 
 // Public, unauthenticated view for a Release Notes artifact's share link
 // (see artifacts/page.tsx's "Create public link" and server.ts's GET
@@ -18,7 +18,7 @@ export default function PublicReleaseNotesPage() {
     let cancelled = false;
     getPublicReleaseNotes(token)
       .then((result) => { if (!cancelled) setView(result); })
-      .catch((err) => { if (!cancelled) setError(err instanceof ApiError ? err.message : "Could not load these release notes."); });
+      .catch((err) => { if (!cancelled) setError(describeError(err, "Could not load these release notes.")); });
     return () => { cancelled = true; };
   }, [token]);
 

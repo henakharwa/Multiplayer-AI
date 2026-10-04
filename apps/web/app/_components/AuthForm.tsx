@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { authenticateWithEmail, getAuthProviders, loginWithGithubUrl, loginWithGoogleUrl, requestPasswordReset } from "../../lib/api";
+import { describeError, authenticateWithEmail, getAuthProviders, loginWithGithubUrl, loginWithGoogleUrl, requestPasswordReset } from "../../lib/api";
 
 export default function AuthForm({ initialMode = "signin", returnTo = "/", initialError }: {
   initialMode?: "signin" | "signup"; returnTo?: string; initialError?: string | null;
@@ -35,7 +35,7 @@ export default function AuthForm({ initialMode = "signin", returnTo = "/", initi
       await authenticateWithEmail(signup ? "signup" : "signin", { email: email.trim(), password, ...(signup ? { displayName: displayName.trim() } : {}) });
       window.location.assign(returnTo.startsWith("/") && !returnTo.startsWith("//") && !returnTo.includes("\\") ? returnTo : "/");
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Sign-in failed. Please try again.");
+      setError(describeError(error, "Sign-in failed. Please try again."));
       setBusy(false);
     }
   }
@@ -49,7 +49,7 @@ export default function AuthForm({ initialMode = "signin", returnTo = "/", initi
       // requestPasswordReset never throws for an unknown email (the server
       // gives the same response either way -- see password-reset.ts) --
       // this only fires for a real network/server problem.
-      setError(error instanceof Error ? error.message : "Couldn't reach the sign-in service. Please try again.");
+      setError(describeError(error, "Couldn't reach the sign-in service. Please try again."));
     } finally {
       setBusy(false);
     }

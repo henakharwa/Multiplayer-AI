@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { PendingAction } from "@mai-chat/shared-types";
-import { confirmAction, cancelAction } from "../../lib/api";
+import { describeError, confirmAction, cancelAction } from "../../lib/api";
 
 // One card per PendingAction the agent has queued but not yet run (see
 // services/chat-server/src/actions.ts). Only renders for status "pending"
@@ -40,7 +40,7 @@ export default function PendingActionCard({
       // actually removes this card (via the parent's status === "pending"
       // filter) for everyone in the room, including this tab.
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(describeError(err, "Something went wrong."));
       setBusy(null);
     }
   }
