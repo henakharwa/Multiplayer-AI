@@ -11,6 +11,7 @@
   "scripts": {
     "build": "npm run build --workspace=packages/shared-types --workspace=packages/db --workspace=packages/integrations --if-present && npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "test:full": "node scripts/test-with-db.mjs",
     "migrate": "npm run migrate --workspace=packages/db",
     "db:reset": "node scripts/reset-database.mjs",
     "db:start": "node scripts/dev-db.mjs",
