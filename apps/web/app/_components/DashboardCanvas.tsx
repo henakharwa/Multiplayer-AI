@@ -12,7 +12,7 @@ import type { WorkspaceArtifactDashboard, WorkspaceArtifactVersion } from "@mai-
 // would just get silently discarded the next time someone hits "Refresh
 // live data" -- see the removal note in artifacts/page.tsx.
 export function DashboardCanvas({ value, versions, updatedAt }: { value: WorkspaceArtifactDashboard; versions: WorkspaceArtifactVersion[]; updatedAt: string }) {
-  const health = value.health === "on_track" ? { label: "On track", color: "#168451", progress: 82 } : value.health === "at_risk" ? { label: "At risk", color: "#c27b00", progress: 52 } : { label: "Off track", color: "#c43831", progress: 24 };
+  const health = value.health === "on_track" ? { label: "On track", color: "var(--success-strong)", progress: 82 } : value.health === "at_risk" ? { label: "At risk", color: "var(--warn)", progress: 52 } : { label: "Off track", color: "var(--danger)", progress: 24 };
   const history = versions.slice(0, 8).reverse().map((version) => version.dashboardData?.milestones[0]?.progress ?? 0);
   const points = history.length > 1 ? history.map((point, index) => `${(index / (history.length - 1)) * 180 + 10},${90 - point * .7}`).join(" ") : "10,90 190,90";
   return (
