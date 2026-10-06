@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-multiplayer_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-nexus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.oracle}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nexus} -d ${POSTGRES_DB:-multiplayer_ai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  nexus:
+    build:
+      context: .
+      dockerfile: Dockerfile.render
+      args:
+        NEXT_PUBLIC_CHAT_SERVER_URL: https://${NEXUS_DOMAIN}/api
+        NEXT_PUBLIC_CHAT_SERVER_WS_URL: wss://${NEXUS_DOMAIN}/api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PORT: "80"
+      CADDY_CONFIG: /app/Caddyfile.oracle
+      NEXUS_DOMAIN: ${NEXUS_DOMAIN:?Set NEXUS_DOMAIN in .env.oracle}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-multiplayer_ai}
+      INTEGRATION_ENCRYPTION_KEY: ${INTEGRATION_ENCRYPTION_KEY:?Set INTEGRATION_ENCRYPTION_KEY in .env.oracle}
+      WEB_APP_URL: https://${NEXUS_DOMAIN}
+      CHAT_SERVER_PUBLIC_URL: https://${NEXUS_DOMAIN}/api
+      NEXT_PUBLIC_CHAT_SERVER_URL: https://${NEXUS_DOMAIN}/api
+      NEXT_PUBLIC_CHAT_SERVER_WS_URL: wss://${NEXUS_DOMAIN}/api
+      AGENT_LLM_BASE_URL: ${AGENT_LLM_BASE_URL:?Set AGENT_LLM_BASE_URL in .env.oracle}
+      AGENT_LLM_API_KEY: ${AGENT_LLM_API_KEY:?Set AGENT_LLM_API_KEY in .env.oracle}
+      AGENT_LLM_MODEL: ${AGENT_LLM_MODEL:?Set AGENT_LLM_MODEL in .env.oracle}
+      AGENT_LLM_MAX_TOKENS: ${AGENT_LLM_MAX_TOKENS:-1024}
+      AGENT_LLM_TPM_LIMIT: ${AGENT_LLM_TPM_LIMIT:-8192}
+      GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+      GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      SLACK_OAUTH_CLIENT_ID: ${SLACK_OAUTH_CLIENT_ID:-}
+      SLACK_OAUTH_CLIENT_SECRET: ${SLACK_OAUTH_CLIENT_SECRET:-}
+      LINEAR_OAUTH_CLIENT_ID: ${LINEAR_OAUTH_CLIENT_ID:-}
+      LINEAR_OAUTH_CLIENT_SECRET: ${LINEAR_OAUTH_CLIENT_SECRET:-}
+      NOTION_OAUTH_CLIENT_ID: ${NOTION_OAUTH_CLIENT_ID:-}
+      NOTION_OAUTH_CLIENT_SECRET: ${NOTION_OAUTH_CLIENT_SECRET:-}
+      FIGMA_OAUTH_CLIENT_ID: ${FIGMA_OAUTH_CLIENT_ID:-}
+      FIGMA_OAUTH_CLIENT_SECRET: ${FIGMA_OAUTH_CLIENT_SECRET:-}
+      FIGMA_MCP_URL: ${FIGMA_MCP_URL:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-}
+      MAILER_MODE: ${MAILER_MODE:-}
+      GMAIL_CLIENT_ID: ${GMAIL_CLIENT_ID:-}
+      GMAIL_CLIENT_SECRET: ${GMAIL_CLIENT_SECRET:-}
+      GMAIL_REFRESH_TOKEN: ${GMAIL_REFRESH_TOKEN:-}
+
+volumes:
+  postgres_data:

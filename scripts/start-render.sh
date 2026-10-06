@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-render_port="${PORT:?Render must provide PORT}"
+render_port="${PORT:?PORT is required}"
 if [ "${RESET_DATABASE_ON_START:-}" = "DELETE_ALL_USERS_AND_WORKSPACES" ]; then
   echo "RESET_DATABASE_ON_START is set; clearing all workspace and user data."
   CONFIRM_DATABASE_RESET=DELETE_ALL_USERS_AND_WORKSPACES node scripts/reset-database.mjs
@@ -14,4 +14,5 @@ chat_pid=$!
 ) &
 web_pid=$!
 trap 'kill "$chat_pid" "$web_pid" 2>/dev/null || true' INT TERM EXIT
-PORT="$render_port" exec caddy run --config /app/Caddyfile --adapter caddyfile
+caddy_config="${CADDY_CONFIG:-/app/Caddyfile}"
+PORT="$render_port" exec caddy run --config "$caddy_config" --adapter caddyfile

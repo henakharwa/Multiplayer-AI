@@ -4,5 +4,6 @@ dist/
 *.tsbuildinfo
 .pgdata/
 .env
+.env.oracle
 !.env.example
 *.log
