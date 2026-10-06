@@ -35,7 +35,7 @@ export const defaultGoogleAuthDeps: GoogleAuthDeps = {
 
 export function registerGoogleAuthRoutes(app: Express, authConfig: UserAuthConfig, deps: GoogleAuthDeps = defaultGoogleAuthDeps): void {
   const ttl = 10 * 60 * 1000;
-  const cookieOptions = { httpOnly: true, sameSite: "lax" as const, secure: authConfig.secureCookie, path: "/auth/login/google" };
+  const cookieOptions = { httpOnly: true, sameSite: "lax" as const, secure: authConfig.secureCookie, path: `${authConfig.authCookiePath ?? "/auth"}/login/google` };
   app.get("/auth/login/google/start", async (req, res) => {
     const config = authConfig.google;
     const returnTo = safeReturnTo(req.query.returnTo);

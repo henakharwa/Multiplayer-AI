@@ -48,6 +48,8 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   // configured URL avoids rejecting legitimate deployed requests when a
   // host dashboard stores the URL as `https://example.com/`.
   const webAppUrl = (process.env.WEB_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+  const chatServerPublicUrl = (process.env.CHAT_SERVER_PUBLIC_URL ?? "http://localhost:4000").replace(/\/+$/, "");
+  const publicApiPath = new URL(chatServerPublicUrl).pathname.replace(/\/+$/, "");
   // Behind Render's proxy and the bundled Caddy proxy every request would
   // otherwise appear to come from 127.0.0.1, so per-IP sign-in and reset
   // limits would be shared by all users. Trust exactly the proxy hops in
@@ -79,11 +81,12 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     google: {
       clientId: process.env.GOOGLE_OAUTH_CLIENT_ID ?? "",
       clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? "",
-      redirectUri: `${(process.env.CHAT_SERVER_PUBLIC_URL ?? "http://localhost:4000").replace(/\/$/, "")}/auth/login/google/callback`,
+      redirectUri: `${chatServerPublicUrl}/auth/login/google/callback`,
     },
     redirectUri: deps.githubOAuthConfig.redirectUri,
     webAppUrl,
     secureCookie: new URL(webAppUrl).protocol === "https:",
+    authCookiePath: `${publicApiPath}/auth` || "/auth",
     emailVerificationEnabled: process.env.EMAIL_VERIFICATION_ENABLED === "true",
   };
   registerUserAuthRoutes(app, userAuthConfig, deps.userAuthDeps, deps.mailer);

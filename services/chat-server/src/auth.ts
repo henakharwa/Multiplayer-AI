@@ -46,6 +46,9 @@ export interface UserAuthConfig {
   // Secure attribute; false for local http:// dev, where Secure would
   // make the browser refuse to ever send the cookie at all.
   secureCookie: boolean;
+  // Public path prefix through the reverse proxy. Locally the API is at
+  // `/auth`; production Caddy publishes it under `/api/auth`.
+  authCookiePath?: string;
   // Disabled for the public prototype until transactional email is set up.
   // Kept as a flag so verification can be restored without changing the
   // authentication flow again.
@@ -224,7 +227,7 @@ export function registerUserAuthRoutes(
     const returnTo = safeReturnTo(req.query.returnTo);
     const browserToken = randomUUID();
     await db.saveOAuthPendingState(state, "github-login", { returnTo, browserToken }, new Date(Date.now() + STATE_TTL_MS));
-    res.cookie("mai_login_state", browserToken, { httpOnly: true, sameSite: "lax", secure: config.secureCookie, maxAge: STATE_TTL_MS, path: "/auth" });
+    res.cookie("mai_login_state", browserToken, { httpOnly: true, sameSite: "lax", secure: config.secureCookie, maxAge: STATE_TTL_MS, path: config.authCookiePath ?? "/auth" });
 
     const authorizeUrl = new URL("https://github.com/login/oauth/authorize");
     authorizeUrl.searchParams.set("client_id", config.clientId);
@@ -244,7 +247,7 @@ export function registerUserAuthRoutes(
 
     const pending = await db.consumeOAuthPendingState<{ returnTo: string; browserToken: string }>(state, "github-login");
     const browserToken = req.headers.cookie?.split(";").map(v => v.trim()).find(v => v.startsWith("mai_login_state="))?.slice("mai_login_state=".length);
-    res.clearCookie("mai_login_state", { path: "/auth", httpOnly: true, sameSite: "lax", secure: config.secureCookie });
+    res.clearCookie("mai_login_state", { path: config.authCookiePath ?? "/auth", httpOnly: true, sameSite: "lax", secure: config.secureCookie });
 
     function fail(message: string) {
       const url = new URL(pending?.returnTo ?? "/", config.webAppUrl);
