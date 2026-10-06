@@ -584,7 +584,7 @@ export default function WorkspaceRoomPage() {
         label: "Conversation name",
         defaultValue: conversation.title,
         confirmLabel: "Rename",
-        maxLength: 120,
+        maxLength: 100,
       })
     )?.trim();
     if (title && title !== conversation.title) void changeConversation(conversation, { title });

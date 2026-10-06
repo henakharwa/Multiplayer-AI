@@ -85,6 +85,7 @@ export function registerConversationsRoutes({ app, requireRole }: RouteContext):
     const eventType = typeof req.query.type === "string" && req.query.type ? (req.query.type as AuditEventType) : undefined;
     const search = typeof req.query.q === "string" && req.query.q.trim() ? req.query.q.trim() : undefined;
     const before = typeof req.query.before === "string" && req.query.before ? req.query.before : undefined;
+    if (before && Number.isNaN(Date.parse(before))) return res.status(400).json({ error: "before must be a valid timestamp" });
     const limitParam = Number(req.query.limit);
     const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : undefined;
     const events = await db.listAuditEvents(workspaceId, { eventType, search, before, limit });

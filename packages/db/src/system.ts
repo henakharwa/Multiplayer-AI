@@ -33,6 +33,12 @@ export async function consumeRateLimit(scope: string, subject: string, maxAttemp
   return Number(result.rows[0].attempts) <= maxAttempts;
 }
 
+/** Reports whether a subject has already used up its attempts in the current window, without consuming one. */
+export async function isRateLimited(scope: string, subject: string, maxAttempts: number): Promise<boolean> {
+  const result = await getPool().query("SELECT attempts FROM auth_rate_limits WHERE scope=$1 AND subject=$2 AND window_ends_at > now()", [scope, subject]);
+  return result.rows.length > 0 && Number(result.rows[0].attempts) >= maxAttempts;
+}
+
 /** A deliberately small database readiness probe for the deployment health endpoint. */
 export async function checkDatabaseHealth(): Promise<void> {
   await getPool().query("SELECT 1");

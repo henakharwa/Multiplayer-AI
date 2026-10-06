@@ -21,6 +21,7 @@ export function registerArtifactsRoutes({ app, deps, requireRole }: RouteContext
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const input = parseWorkspaceArtifactInput(req.body ?? {});
     if (!input.title || !input.content) return res.status(400).json({ error: "An artifact title and content are required." });
+    if (input.title.length > 200) return res.status(400).json({ error: "Artifact titles can be up to 200 characters." });
     if (input.ownerUserId && !(await db.getWorkspaceRole(paramString(req.params.id), input.ownerUserId))) return res.status(400).json({ error: "Artifact owner must be a workspace member." });
     const artifact = await db.createWorkspaceArtifact(paramString(req.params.id), req.user!.id, input);
     await db.recordAuditEvent({ workspaceId: artifact.workspaceId, eventType: "artifact.created", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} created ${artifact.type.replace("_", " ")} ${artifact.title}` });
@@ -33,6 +34,7 @@ export function registerArtifactsRoutes({ app, deps, requireRole }: RouteContext
     if (!access.allowed) return res.status(403).json({ error: "Only the artifact author or an Admin can edit it." });
     const input = parseWorkspaceArtifactInput(req.body ?? {});
     if (!input.title || !input.content) return res.status(400).json({ error: "An artifact title and content are required." });
+    if (input.title.length > 200) return res.status(400).json({ error: "Artifact titles can be up to 200 characters." });
     if (input.ownerUserId && !(await db.getWorkspaceRole(paramString(req.params.id), input.ownerUserId))) return res.status(400).json({ error: "Artifact owner must be a workspace member." });
     const artifact = await db.updateWorkspaceArtifact(paramString(req.params.id), paramString(req.params.artifactId), input, req.user!.id);
     if (!artifact) return res.status(404).json({ error: "Artifact not found." });

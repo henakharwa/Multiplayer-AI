@@ -80,7 +80,7 @@ export async function createDailyNotificationDigests(): Promise<number> {
 }
 
 export async function listNotifications(userId: string, options: { workspaceId?: string; limit?: number; before?: string } = {}): Promise<WorkspaceNotification[]> {
-  const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+  const limit = Math.min(Math.max(Math.floor(options.limit ?? 50), 1), 200);
   const clauses = ["n.user_id = $1"];
   const values: unknown[] = [userId];
   if (options.workspaceId) { values.push(options.workspaceId); clauses.push(`n.workspace_id = $${values.length}`); }
@@ -123,13 +123,15 @@ export async function getNotificationPreferences(workspaceId: string, userId: st
 
 export async function updateNotificationPreferences(workspaceId: string, userId: string, input: Partial<import("@mai-chat/shared-types").WorkspaceNotificationPreferences>): Promise<import("@mai-chat/shared-types").WorkspaceNotificationPreferences> {
   const current = await getNotificationPreferences(workspaceId, userId);
+  // Only real booleans change a switch; anything else keeps the saved value.
+  const flag = (value: unknown, saved: boolean) => (typeof value === "boolean" ? value : saved);
   const escalationMinutes = [15, 30, 60, 240, 1440].includes(input.escalationMinutes ?? current.escalationMinutes) ? input.escalationMinutes ?? current.escalationMinutes : current.escalationMinutes;
   const quietHoursStart = Number.isInteger(input.quietHoursStart) && input.quietHoursStart! >= 0 && input.quietHoursStart! <= 23 ? input.quietHoursStart : current.quietHoursStart;
   const quietHoursEnd = Number.isInteger(input.quietHoursEnd) && input.quietHoursEnd! >= 0 && input.quietHoursEnd! <= 23 ? input.quietHoursEnd : current.quietHoursEnd;
   const digestHour = Number.isInteger(input.digestHour) && input.digestHour! >= 0 && input.digestHour! <= 23 ? input.digestHour : current.digestHour;
   const result = await getPool().query(`INSERT INTO workspace_notification_preferences (workspace_id,user_id,browser_enabled,escalation_minutes,daily_summary_enabled,quiet_hours_enabled,quiet_hours_start,quiet_hours_end,digest_hour)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (workspace_id,user_id) DO UPDATE SET browser_enabled=EXCLUDED.browser_enabled,escalation_minutes=EXCLUDED.escalation_minutes,daily_summary_enabled=EXCLUDED.daily_summary_enabled,quiet_hours_enabled=EXCLUDED.quiet_hours_enabled,quiet_hours_start=EXCLUDED.quiet_hours_start,quiet_hours_end=EXCLUDED.quiet_hours_end,digest_hour=EXCLUDED.digest_hour,updated_at=now() RETURNING *`,
-    [workspaceId, userId, input.browserEnabled ?? current.browserEnabled, escalationMinutes, input.dailySummaryEnabled ?? current.dailySummaryEnabled, input.quietHoursEnabled ?? current.quietHoursEnabled, quietHoursStart, quietHoursEnd, digestHour]);
+    [workspaceId, userId, flag(input.browserEnabled, current.browserEnabled), escalationMinutes, flag(input.dailySummaryEnabled, current.dailySummaryEnabled), flag(input.quietHoursEnabled, current.quietHoursEnabled), quietHoursStart, quietHoursEnd, digestHour]);
   const row = result.rows[0];
   return { workspaceId, browserEnabled: row.browser_enabled, escalationMinutes: row.escalation_minutes, dailySummaryEnabled: row.daily_summary_enabled, quietHoursEnabled: row.quiet_hours_enabled, quietHoursStart: row.quiet_hours_start, quietHoursEnd: row.quiet_hours_end, digestHour: row.digest_hour, updatedAt: row.updated_at.toISOString() };
 }

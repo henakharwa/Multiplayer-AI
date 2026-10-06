@@ -106,24 +106,44 @@ export function registerWorkspacesRoutes({ app, deps, webAppUrl, requireRole }: 
     res.json({ workspaceId: result.workspaceId });
   });
 
+  // Bound join-code guessing per account and per network address. Only failed
+  // lookups count, so people who join many real workspaces are never blocked.
+  const JOIN_GUESS_WINDOW_SECONDS = 900;
+  const JOIN_GUESS_USER_LIMIT = 20;
+  const JOIN_GUESS_IP_LIMIT = 60;
+  async function joinGuessingBlocked(req: Request, res: Response): Promise<boolean> {
+    const blocked =
+      (await db.isRateLimited("workspace-join-user", req.user!.id, JOIN_GUESS_USER_LIMIT)) ||
+      (await db.isRateLimited("workspace-join-ip", req.ip ?? "unknown", JOIN_GUESS_IP_LIMIT));
+    if (!blocked) return false;
+    res.setHeader("Retry-After", String(JOIN_GUESS_WINDOW_SECONDS));
+    res.status(429).json({ error: "Too many join attempts. Try again in 15 minutes." });
+    return true;
+  }
+  async function recordFailedJoinGuess(req: Request): Promise<void> {
+    await db.consumeRateLimit("workspace-join-user", req.user!.id, JOIN_GUESS_USER_LIMIT, JOIN_GUESS_WINDOW_SECONDS);
+    await db.consumeRateLimit("workspace-join-ip", req.ip ?? "unknown", JOIN_GUESS_IP_LIMIT, JOIN_GUESS_WINDOW_SECONDS);
+  }
+
   app.get("/workspaces/by-code/:joinCode", async (req: Request, res: Response) => {
+    if (await joinGuessingBlocked(req, res)) return;
     const workspace = await db.getWorkspaceByJoinCode(paramString(req.params.joinCode));
-    if (!workspace) return res.status(404).json({ error: "not found" });
+    if (!workspace) {
+      await recordFailedJoinGuess(req);
+      return res.status(404).json({ error: "not found" });
+    }
     res.json(workspace);
   });
 
   // Join by code (shared capability). New members join as Editors; an
   // existing member keeps their current role.
   app.post("/workspaces/by-code/:joinCode/join", async (req: Request, res: Response) => {
-    // Bound join-code guessing per account and per network address.
-    const userAllowed = await db.consumeRateLimit("workspace-join-user", req.user!.id, 20, 900);
-    const ipAllowed = await db.consumeRateLimit("workspace-join-ip", req.ip ?? "unknown", 60, 900);
-    if (!userAllowed || !ipAllowed) {
-      res.setHeader("Retry-After", "900");
-      return res.status(429).json({ error: "Too many join attempts. Try again in 15 minutes." });
-    }
+    if (await joinGuessingBlocked(req, res)) return;
     const workspace = await db.getWorkspaceByJoinCode(paramString(req.params.joinCode));
-    if (!workspace) return res.status(404).json({ error: "No workspace found for that join code." });
+    if (!workspace) {
+      await recordFailedJoinGuess(req);
+      return res.status(404).json({ error: "No workspace found for that join code." });
+    }
     const existingMembers = await db.listWorkspaceMembersWithRoles(workspace.id);
     const joined = await db.addWorkspaceMember(workspace.id, req.user!.id, existingMembers.length === 0 ? "admin" : "editor");
     if (joined) {
@@ -191,6 +211,8 @@ export function registerWorkspacesRoutes({ app, deps, webAppUrl, requireRole }: 
     if (!Object.keys(policy.editor).includes(permission)) return res.status(400).json({ error: "Invalid permission." });
     if (policy.editor[permission as keyof import("@mai-chat/shared-types").WorkspacePermissions]) return res.status(409).json({ error: "You already have this permission." });
     if (!reason || reason.length > 1000) return res.status(400).json({ error: "Give a reason between 1 and 1,000 characters." });
+    const alreadyPending = (await db.listPermissionRequests(paramString(req.params.id))).some((item) => item.user_id === req.user!.id && item.permission === permission);
+    if (alreadyPending) return res.status(409).json({ error: "You already asked for this permission. An Admin will review it." });
     res.status(201).json(await db.createPermissionRequest(paramString(req.params.id), req.user!.id, permission, reason));
   });
   app.post("/workspaces/:id/permission-requests/:requestId/:decision", async (req: Request, res: Response) => {

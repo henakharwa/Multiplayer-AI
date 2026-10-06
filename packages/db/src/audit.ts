@@ -46,7 +46,7 @@ export async function listAuditEvents(
   options: { eventType?: AuditEventType; search?: string; before?: string; limit?: number } = {}
 ): Promise<AuditEvent[]> {
   const pool = getPool();
-  const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+  const limit = Math.min(Math.max(Math.floor(options.limit ?? 50), 1), 200);
   const conditions = ["workspace_id = $1"];
   const params: unknown[] = [workspaceId];
   if (options.eventType) {

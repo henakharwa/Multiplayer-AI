@@ -24,6 +24,7 @@ export function registerMemoryRoutes({ app, requireRole }: RouteContext): void {
     let input;
     try { input = parseWorkspaceMemoryInput(req.body ?? {}); } catch (error) { return res.status(400).json({ error: errMessage(error) }); }
     if (!input.title.trim() || !input.content.trim()) return res.status(400).json({ error: "A memory title and content are required." });
+    if (input.title.length > 200 || input.content.length > 20_000) return res.status(400).json({ error: "Memory titles can be up to 200 characters and content up to 20,000." });
     const memory = await db.createWorkspaceMemory({ workspaceId: paramString(req.params.id), ...input, createdByUserId: req.user!.id });
     await db.recordAuditEvent({ workspaceId: memory.workspaceId, eventType: "memory.created", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} saved ${memory.kind} memory ${memory.title}` });
     res.status(201).json(memory);
@@ -36,6 +37,7 @@ export function registerMemoryRoutes({ app, requireRole }: RouteContext): void {
     let input;
     try { input = parseWorkspaceMemoryInput(req.body ?? {}); } catch (error) { return res.status(400).json({ error: errMessage(error) }); }
     if (!input.title.trim() || !input.content.trim()) return res.status(400).json({ error: "A memory title and content are required." });
+    if (input.title.length > 200 || input.content.length > 20_000) return res.status(400).json({ error: "Memory titles can be up to 200 characters and content up to 20,000." });
     const memory = await db.updateWorkspaceMemory(paramString(req.params.id), paramString(req.params.memoryId), input);
     if (!memory) return res.status(404).json({ error: "Memory not found." });
     await db.recordAuditEvent({ workspaceId: memory.workspaceId, eventType: "memory.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} updated memory ${memory.title}` });

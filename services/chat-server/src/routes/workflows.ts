@@ -32,6 +32,7 @@ export function registerWorkflowsRoutes({ app, requireRole, requirePermission }:
     if (!(await requirePermission(req, res, "createAgents"))) return;
     const input = workflowInput(req.body ?? {});
     if (!input.name.trim() || !input.instructions.trim()) return res.status(400).json({ error: "A workflow name and instructions are required." });
+    if (input.name.trim().length > 120) return res.status(400).json({ error: "Workflow names can be up to 120 characters." });
     if (input.trigger === "schedule" && !input.scheduleMinutes) return res.status(400).json({ error: "Choose an interval between 5 minutes and 7 days." });
     if (input.workspaceAgentId && !(await db.getPublishedWorkspaceAgent(paramString(req.params.id), input.workspaceAgentId))) return res.status(400).json({ error: "Choose a published workspace agent." });
     const workflow = await db.createWorkspaceWorkflow(paramString(req.params.id), req.user!.id, input);
@@ -42,6 +43,7 @@ export function registerWorkflowsRoutes({ app, requireRole, requirePermission }:
     if (!(await requirePermission(req, res, "createAgents"))) return;
     const input = workflowInput(req.body ?? {});
     if (!input.name.trim() || !input.instructions.trim()) return res.status(400).json({ error: "A workflow name and instructions are required." });
+    if (input.name.trim().length > 120) return res.status(400).json({ error: "Workflow names can be up to 120 characters." });
     if (input.trigger === "schedule" && !input.scheduleMinutes) return res.status(400).json({ error: "Choose an interval between 5 minutes and 7 days." });
     if (input.workspaceAgentId && !(await db.getPublishedWorkspaceAgent(paramString(req.params.id), input.workspaceAgentId))) return res.status(400).json({ error: "Choose a published workspace agent." });
     const workflow = await db.updateWorkspaceWorkflow(paramString(req.params.id), paramString(req.params.workflowId), input);

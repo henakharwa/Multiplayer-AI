@@ -133,7 +133,7 @@ export async function enforceWorkflowRunRetention(workspaceId?: string): Promise
 }
 
 export async function listWorkflowRuns(workspaceId: string, workflowId: string, options: { limit?: number; before?: string } = {}): Promise<WorkflowRun[]> {
-  const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+  const limit = Math.min(Math.max(Math.floor(options.limit ?? 50), 1), 200);
   const result = await getPool().query(
     "SELECT r.* FROM workspace_workflow_runs r WHERE r.workspace_id=$1 AND r.workflow_id=$2 AND ($3::timestamptz IS NULL OR r.started_at < $3) ORDER BY r.started_at DESC LIMIT $4",
     [workspaceId, workflowId, options.before ?? null, limit]
@@ -143,7 +143,7 @@ export async function listWorkflowRuns(workspaceId: string, workflowId: string, 
 
 /** Recent runs across every workflow in a workspace, newest first, with each workflow's name (one query for Observability). */
 export async function listWorkspaceWorkflowRuns(workspaceId: string, options: { limit?: number; before?: string } = {}): Promise<Array<WorkflowRun & { workflowName: string }>> {
-  const limit = Math.min(Math.max(options.limit ?? 200, 1), 500);
+  const limit = Math.min(Math.max(Math.floor(options.limit ?? 200), 1), 500);
   const result = await getPool().query(
     "SELECT r.*, w.name AS workflow_name FROM workspace_workflow_runs r JOIN workspace_workflows w ON w.id = r.workflow_id WHERE r.workspace_id=$1 AND ($2::timestamptz IS NULL OR r.started_at < $2) ORDER BY r.started_at DESC LIMIT $3",
     [workspaceId, options.before ?? null, limit]

@@ -4,7 +4,7 @@ export { getPool, closePool, openListenerConnection, closeListenerConnection } f
 export { encryptToken, decryptToken, hashSessionToken } from "./crypto.js";
 export { runMigrations, rollbackLastMigration, listMigrationFiles, listAppliedMigrations } from "./migrations.js";
 export type { MigrationFile, AppliedMigration } from "./migrations.js";
-export { runWithAdvisoryLock, saveOAuthPendingState, consumeOAuthPendingState, consumeRateLimit, checkDatabaseHealth } from "./system.js";
+export { runWithAdvisoryLock, saveOAuthPendingState, consumeOAuthPendingState, consumeRateLimit, isRateLimited, checkDatabaseHealth } from "./system.js";
 export { WorkspaceNameTakenError, normalizeWorkspaceName, createWorkspace, addWorkspaceMember, isWorkspaceMemberEmail, createWorkspaceInvitation, deleteWorkspaceInvitation, listWorkspaceInvitations, revokeWorkspaceInvitation, acceptWorkspaceInvitation, getWorkspaceById, getWorkspaceByJoinCode, listWorkspacesForUser, listWorkspaceMembers, listWorkspaceMembersWithRoles, getWorkspaceRole, setWorkspaceMemberRole, removeWorkspaceMember, removeWorkspaceMemberAndPersonalIntegrations } from "./workspaces.js";
 export type { AcceptWorkspaceInvitationResult } from "./workspaces.js";
 export { createConversation, listConversations, renameConversation, setConversationPinned, setConversationArchived, getConversation, deleteConversation, insertMessage, listMessages } from "./conversations.js";

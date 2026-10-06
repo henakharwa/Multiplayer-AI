@@ -1,4 +1,4 @@
-import express, { type Express, type Request, type Response } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import { createServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -90,6 +90,14 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   registerEmailVerificationRoutes(app, userAuthConfig, deps.mailer);
   registerPasswordResetRoutes(app, userAuthConfig, deps.mailer);
   app.use("/workspaces", requireAuth);
+  // A malformed entity id can never match a row, so answer 404 up front
+  // instead of letting Postgres reject the value as a 500.
+  for (const name of ["taskId", "agentId", "memoryId", "artifactId", "workflowId", "conversationId", "requestId", "userId", "versionId", "invitationId"]) {
+    app.param(name, (req: Request, res: Response, next: NextFunction, value: string) => {
+      if (UUID_RE.test(value)) return next();
+      res.status(404).json({ error: "not found" });
+    });
+  }
   registerProviderOAuthRoutes(app);
 
   // Shared guard for workspace routes: a malformed id is a 400 (never a
@@ -629,6 +637,13 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
 
   app.use((error: unknown, req: Request, res: Response, _next: express.NextFunction) => {
     const requestId = res.getHeader("x-request-id");
+    // Body-parser failures (malformed JSON, oversized or unsupported bodies)
+    // are the client's mistake: answer with their 4xx status, not a 500.
+    const clientStatus = typeof (error as { status?: unknown })?.status === "number" ? (error as { status: number }).status : 0;
+    if (clientStatus >= 400 && clientStatus < 500) {
+      if (!res.headersSent) res.status(clientStatus).json({ error: clientStatus === 413 ? "Request body is too large." : "The request body could not be read. Send valid JSON." });
+      return;
+    }
     console.error(JSON.stringify({ level: "error", event: "unhandled_http_error", requestId, method: req.method, path: req.path, error: errMessage(error) }));
     if (!res.headersSent) res.status(500).json({ error: "Unexpected server error", requestId });
   });
