@@ -522,7 +522,7 @@ textarea {
 .marketing-nav { display: flex; align-items: center; gap: 22px; margin-left: auto; margin-right: 28px; }
 .marketing-nav a { color: var(--text-dim); font-size: 14px; font-weight: 600; text-decoration: none; }
 .marketing-nav a:hover { color: var(--text); }
-.auth-nav-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text); background: var(--surface); font-size: 13px; font-weight: 600; }
+.auth-nav-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-pill); color: var(--text); background: var(--surface); font-size: 13px; font-weight: 600; }
 .auth-nav-button:hover { background: var(--bg-subtle); }
 .auth-nav-button.primary { background: var(--accent); border-color: var(--accent); color: white; }
 .auth-nav-button.primary:hover { background: var(--accent-hover); }
