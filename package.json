@@ -18,9 +18,14 @@
     "dev:server": "npm run dev --workspace=services/chat-server",
     "dev:web": "npm run dev --workspace=apps/web",
     "start:server": "npm run start --workspace=services/chat-server",
-    "start:web": "npm run start --workspace=apps/web"
+    "start:web": "npm run start --workspace=apps/web",
+    "migrate:status": "npm run migrate:status --workspace=packages/db",
+    "migrate:down": "npm run migrate:down --workspace=packages/db",
+    "format": "prettier --write \"apps/web/app/**/*.{ts,tsx,css}\" \"apps/web/lib/**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"apps/web/app/**/*.{ts,tsx,css}\" \"apps/web/lib/**/*.{ts,tsx}\""
   },
   "devDependencies": {
-    "embedded-postgres": "^18.4.0-beta.17"
+    "embedded-postgres": "^18.4.0-beta.17",
+    "prettier": "3.9.9"
   }
 }

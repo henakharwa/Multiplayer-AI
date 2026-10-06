@@ -2,6 +2,7 @@ import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
 import { createChatServer } from "./server.js";
 import { closeAllGithubMcpClients } from "./github-mcp-pool.js";
+import { enforceProductionConfig } from "./config-check.js";
 
 loadEnv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
 loadEnv();
@@ -11,6 +12,7 @@ export { runAgentTurn } from "./agent.js";
 export * from "./tools.js";
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  enforceProductionConfig();
   const port = Number(process.env.PORT ?? process.env.CHAT_SERVER_PORT ?? 4000);
   createChatServer().start(port);
 

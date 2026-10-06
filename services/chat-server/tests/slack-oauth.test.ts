@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { runMigrations } from "@mai-chat/db";
 import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
 import express from "express";
 import request from "supertest";
-import { getPool, closePool, createWorkspace, getIntegrationCredential, listIntegrations } from "@mai-chat/db";
+import { getPool, closePool, createWorkspace as createWorkspaceRow, addWorkspaceMember, upsertUserFromGithub, getIntegrationCredential, listIntegrations } from "@mai-chat/db";
 import { registerSlackOAuthRoutes, type SlackOAuthConfig, type SlackOAuthDeps } from "../src/slack-oauth.js";
 
 loadEnv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
@@ -26,16 +26,30 @@ const config: SlackOAuthConfig = {
   webAppUrl: "http://localhost:3000",
 };
 
+// The start route now requires a signed-in workspace member with the
+// connectTools permission, so every test acts as an Admin of its workspace.
+let testUser: { id: string; displayName: string };
+function signedIn(app: express.Express) {
+  app.use((req, _res, next) => { (req as unknown as { user: typeof testUser }).user = testUser; next(); });
+}
+async function createWorkspace(name: string) {
+  const workspace = await createWorkspaceRow(name);
+  await addWorkspaceMember(workspace.id, testUser.id, "admin");
+  return workspace;
+}
+
 function makeApp(deps: SlackOAuthDeps) {
   const app = express();
   app.use(express.json());
+  signedIn(app);
   registerSlackOAuthRoutes(app, config, deps);
   return app;
 }
 
 beforeAll(async () => {
-  const schema = await readFile(fileURLToPath(new URL("../../../packages/db/sql/schema.sql", import.meta.url)), "utf8");
-  await getPool().query(schema);
+  await runMigrations();
+  const user = await upsertUserFromGithub({ githubId: `slack-oauth-test-${Math.random()}`, username: "slack-tester", displayName: "Slack Tester" });
+  testUser = { id: user.id, displayName: user.displayName };
 });
 
 afterAll(async () => {
@@ -74,6 +88,7 @@ describe("Slack OAuth start", () => {
     const workspace = await createWorkspace(`Slack OAuth unconfigured ${Math.random()}`);
     const app = express();
     app.use(express.json());
+    signedIn(app);
     registerSlackOAuthRoutes(app, { ...config, clientId: "", clientSecret: "" }, { exchangeCodeForToken: async () => ({ error: "n/a" }) });
     const res = await request(app).get(`/workspaces/${workspace.id}/integrations/slack/oauth/start`);
     expect(res.status).toBe(503);

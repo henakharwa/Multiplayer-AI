@@ -7,8 +7,10 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run",
-    "migrate": "tsx src/migrate.ts"
+    "test": "vitest run --no-file-parallelism",
+    "migrate": "tsx src/migrate.ts",
+    "migrate:status": "tsx src/migrate.ts status",
+    "migrate:down": "tsx src/migrate.ts down"
   },
   "dependencies": {
     "@mai-chat/shared-types": "0.1.0",

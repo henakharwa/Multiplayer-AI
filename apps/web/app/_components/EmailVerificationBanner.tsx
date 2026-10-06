@@ -12,7 +12,8 @@ export default function EmailVerificationBanner({ user }: { user: User }) {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [dismissed, setDismissed] = useState(false);
 
-  if (process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED !== "true" || !user.email || user.emailVerified || dismissed) return null;
+  if (process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED !== "true" || !user.email || user.emailVerified || dismissed)
+    return null;
 
   async function resend() {
     setStatus("sending");
@@ -37,7 +38,14 @@ export default function EmailVerificationBanner({ user }: { user: User }) {
           {status === "sending" ? "Sending…" : status === "error" ? "Try again" : "Resend email"}
         </button>
       )}
-      <button type="button" className="email-verification-dismiss" onClick={() => setDismissed(true)} aria-label="Dismiss verification reminder">×</button>
+      <button
+        type="button"
+        className="email-verification-dismiss"
+        onClick={() => setDismissed(true)}
+        aria-label="Dismiss verification reminder"
+      >
+        ×
+      </button>
     </div>
   );
 }

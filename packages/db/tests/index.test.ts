@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { runMigrations } from "../src/index.js";
 import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import {
   getPool,
@@ -21,6 +21,8 @@ import {
   notifyWorkspaceMembers,
   listNotifications,
   updateNotificationPreferences,
+  addWorkspaceMember,
+  createConversation,
 } from "../src/index.js";
 
 loadEnv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
@@ -30,8 +32,7 @@ loadEnv();
 // external call" line this project has drawn since Week 1; there's nothing
 // non-deterministic about a local database.
 beforeAll(async () => {
-  const schema = await readFile(fileURLToPath(new URL("../sql/schema.sql", import.meta.url)), "utf8");
-  await getPool().query(schema);
+  await runMigrations();
 });
 
 afterAll(async () => {
@@ -90,24 +91,27 @@ describe("workspaces", () => {
 
 describe("messages", () => {
   it("persists messages in order and lists them back", async () => {
-    const ws = await createWorkspace("Message Test Co");
-    await insertMessage({ workspaceId: ws.id, role: "user", authorName: "Alice", content: "hi" });
-    await insertMessage({ workspaceId: ws.id, role: "agent", authorName: "Agent", content: "hello Alice" });
-    await insertMessage({ workspaceId: ws.id, role: "user", authorName: "Bob", content: "hey" });
+    const ws = await createWorkspace(`Message Test Co ${randomUUID()}`);
+    const conversation = await createConversation({ workspaceId: ws.id });
+    await insertMessage({ workspaceId: ws.id, conversationId: conversation.id, role: "user", authorName: "Alice", content: "hi" });
+    await insertMessage({ workspaceId: ws.id, conversationId: conversation.id, role: "agent", authorName: "Agent", content: "hello Alice" });
+    await insertMessage({ workspaceId: ws.id, conversationId: conversation.id, role: "user", authorName: "Bob", content: "hey" });
 
-    const messages = await listMessages(ws.id);
+    const messages = await listMessages(ws.id, conversation.id);
     expect(messages.map((m) => m.content)).toEqual(["hi", "hello Alice", "hey"]);
     expect(messages[1].role).toBe("agent");
   });
 
   it("scopes messages to their own workspace", async () => {
-    const wsA = await createWorkspace("Workspace A");
-    const wsB = await createWorkspace("Workspace B");
-    await insertMessage({ workspaceId: wsA.id, role: "user", authorName: "A", content: "only in A" });
-    await insertMessage({ workspaceId: wsB.id, role: "user", authorName: "B", content: "only in B" });
+    const wsA = await createWorkspace(`Workspace A ${randomUUID()}`);
+    const wsB = await createWorkspace(`Workspace B ${randomUUID()}`);
+    const convA = await createConversation({ workspaceId: wsA.id });
+    const convB = await createConversation({ workspaceId: wsB.id });
+    await insertMessage({ workspaceId: wsA.id, conversationId: convA.id, role: "user", authorName: "A", content: "only in A" });
+    await insertMessage({ workspaceId: wsB.id, conversationId: convB.id, role: "user", authorName: "B", content: "only in B" });
 
-    const messagesA = await listMessages(wsA.id);
-    const messagesB = await listMessages(wsB.id);
+    const messagesA = await listMessages(wsA.id, convA.id);
+    const messagesB = await listMessages(wsB.id, convB.id);
     expect(messagesA.map((m) => m.content)).toEqual(["only in A"]);
     expect(messagesB.map((m) => m.content)).toEqual(["only in B"]);
   });
@@ -117,6 +121,7 @@ describe("in-app notifications", () => {
   it("suppresses routine delivery during quiet hours or when disabled, while retaining high-priority alerts", async () => {
     const owner = await upsertUserFromGithub({ githubId: randomUUID(), username: `notification-owner-${randomUUID()}`, displayName: "Notification Owner" });
     const workspace = await createWorkspace(`Notification policy ${randomUUID()}`, owner.id);
+    await addWorkspaceMember(workspace.id, owner.id, "admin");
 
     await updateNotificationPreferences(workspace.id, owner.id, {
       browserEnabled: false,

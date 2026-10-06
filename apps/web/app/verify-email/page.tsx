@@ -20,33 +20,45 @@ function VerifyEmailPageInner() {
     }
     let cancelled = false;
     verifyEmail(token)
-      .then(() => { if (!cancelled) setStatus("verified"); })
+      .then(() => {
+        if (!cancelled) setStatus("verified");
+      })
       .catch((error) => {
         if (cancelled) return;
         setStatus("error");
         setMessage(describeError(error, "Couldn't verify your email right now. Please try again."));
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   return (
     <div className="home-shell">
-      <nav className="home-nav"><BrandMark /></nav>
+      <nav className="home-nav">
+        <BrandMark />
+      </nav>
       <div className="home-hero" style={{ maxWidth: 460 }}>
         {status === "checking" && <p className="lede">Verifying your email…</p>}
         {status === "verified" && (
           <>
             <h1>Email verified</h1>
             <p className="lede">Your email is confirmed. You&apos;re all set.</p>
-            <Link className="btn" href="/">Go to your workspaces</Link>
+            <Link className="btn" href="/">
+              Go to your workspaces
+            </Link>
           </>
         )}
         {status === "error" && (
           <>
             <h1>That link didn&apos;t work</h1>
             <p className="lede">{message}</p>
-            <p className="panel-hint">Sign in and use &quot;Resend email&quot; from the banner at the top of the page to get a new link.</p>
-            <Link className="btn secondary" href="/">Back to Nexus</Link>
+            <p className="panel-hint">
+              Sign in and use &quot;Resend email&quot; from the banner at the top of the page to get a new link.
+            </p>
+            <Link className="btn secondary" href="/">
+              Back to Nexus
+            </Link>
           </>
         )}
       </div>

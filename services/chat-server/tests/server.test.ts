@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { runMigrations } from "@mai-chat/db";
 import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
 import request from "supertest";
 import { WebSocket } from "ws";
 import { getPool, closePool, upsertUserFromGithub, createSession } from "@mai-chat/db";
@@ -42,8 +42,7 @@ function makeDeps(overrides: Partial<CreateServerDeps> = {}): CreateServerDeps {
 }
 
 beforeAll(async () => {
-  const schema = await readFile(fileURLToPath(new URL("../../../packages/db/sql/schema.sql", import.meta.url)), "utf8");
-  await getPool().query(schema);
+  await runMigrations();
   const alice = await upsertUserFromGithub({ githubId: "test-auth-alice", username: "alice", displayName: "Alice" });
   const bob = await upsertUserFromGithub({ githubId: "test-auth-bob", username: "bob", displayName: "Bob" });
   aliceCookie = `mai_session=${(await createSession(alice.id, 60000)).token}`;
@@ -54,9 +53,15 @@ afterAll(async () => {
   await closePool();
 });
 
+// Alice creates the workspace; Bob joins it with the join code (live chat
+// is members-only). conversationId is the workspace's default conversation,
+// which every chat socket must name.
 async function createTestWorkspace(app: ReturnType<typeof import("../src/server.js").createApp>) {
   const res = await request(app).post("/workspaces").set("Cookie", aliceCookie).send({ name: `Test Co ${Math.random()}` });
-  return res.body as { id: string; joinCode: string; name: string };
+  const workspace = res.body as { id: string; joinCode: string; name: string };
+  await request(app).post(`/workspaces/by-code/${workspace.joinCode}/join`).set("Cookie", bobCookie);
+  const conversations = await request(app).get(`/workspaces/${workspace.id}/conversations`).set("Cookie", aliceCookie);
+  return { ...workspace, conversationId: (conversations.body as Array<{ id: string }>)[0].id };
 }
 
 describe("REST routes", () => {
@@ -158,7 +163,7 @@ describe("real-time shared chat over WebSocket", () => {
     const workspace = await createTestWorkspace(app);
     await new Promise<void>(resolve => server.listen(0, resolve));
     const port = (server.address() as { port: number }).port;
-    const socket = new WebSocket(`ws://localhost:${port}/ws?workspaceId=${workspace.id}&displayName=Alice`);
+    const socket = new WebSocket(`ws://localhost:${port}/ws?workspaceId=${workspace.id}&conversationId=${workspace.conversationId}&displayName=Alice`);
     expect(await new Promise<number>(resolve => socket.on("close", resolve))).toBe(4001);
     await new Promise<void>(resolve => server.close(() => resolve()));
   });
@@ -172,8 +177,8 @@ describe("real-time shared chat over WebSocket", () => {
 
     // Use the SAME server (not a second createChatServer) for the real workspace.
     const wsUrlBase = `ws://localhost:${port}/ws`;
-    const alice = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}&displayName=Alice`, { headers: { Cookie: aliceCookie } });
-    const bob = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}&displayName=Bob`, { headers: { Cookie: bobCookie } });
+    const alice = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}&conversationId=${workspace.conversationId}&displayName=Alice`, { headers: { Cookie: aliceCookie } });
+    const bob = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}&conversationId=${workspace.conversationId}&displayName=Bob`, { headers: { Cookie: bobCookie } });
 
     const aliceMessages: unknown[] = [];
     const bobMessages: unknown[] = [];
@@ -225,8 +230,8 @@ describe("real-time shared chat over WebSocket", () => {
     const workspace = await createTestWorkspace(app);
 
     const wsUrlBase = `ws://localhost:${port}/ws`;
-    const alice = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}&displayName=Alice`, { headers: { Cookie: aliceCookie } });
-    const bob = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}&displayName=Bob`, { headers: { Cookie: bobCookie } });
+    const alice = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}&conversationId=${workspace.conversationId}&displayName=Alice`, { headers: { Cookie: aliceCookie } });
+    const bob = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}&conversationId=${workspace.conversationId}&displayName=Bob`, { headers: { Cookie: bobCookie } });
     const aliceEvents: { type: string; status?: string; error?: string; message?: { content: string } }[] = [];
     const bobEvents: { type: string; status?: string; error?: string; message?: { content: string } }[] = [];
     alice.on("message", (data) => aliceEvents.push(JSON.parse(data.toString())));
@@ -273,7 +278,7 @@ describe("real-time shared chat over WebSocket", () => {
     expect(closeCode).toBe(4000);
 
     const unknownWorkspace = new WebSocket(
-      `ws://localhost:${port}/ws?workspaceId=00000000-0000-0000-0000-000000000000&displayName=Ghost`
+      `ws://localhost:${port}/ws?workspaceId=00000000-0000-0000-0000-000000000000&conversationId=00000000-0000-0000-0000-000000000000&displayName=Ghost`
     , { headers: { Cookie: aliceCookie } });
     const closeCode2 = await new Promise<number>((resolve) => unknownWorkspace.on("close", (code) => resolve(code)));
     expect(closeCode2).toBe(4004);
@@ -287,10 +292,10 @@ describe("real-time shared chat over WebSocket", () => {
     const port = (server.address() as { port: number }).port;
     const workspace = await createTestWorkspace(app);
 
-    const alice = new WebSocket(`ws://localhost:${port}/ws?workspaceId=${workspace.id}&displayName=Alice`, { headers: { Cookie: aliceCookie } });
+    const alice = new WebSocket(`ws://localhost:${port}/ws?workspaceId=${workspace.id}&conversationId=${workspace.conversationId}&displayName=Alice`, { headers: { Cookie: aliceCookie } });
     await new Promise((resolve) => alice.on("open", resolve));
 
-    const bob = new WebSocket(`ws://localhost:${port}/ws?workspaceId=${workspace.id}&displayName=Bob`, { headers: { Cookie: bobCookie } });
+    const bob = new WebSocket(`ws://localhost:${port}/ws?workspaceId=${workspace.id}&conversationId=${workspace.conversationId}&displayName=Bob`, { headers: { Cookie: bobCookie } });
     const bobMessages: { type: string; participants?: { displayName: string }[] }[] = [];
     bob.on("message", (data) => bobMessages.push(JSON.parse(data.toString())));
     await new Promise((resolve) => bob.on("open", resolve));
@@ -311,11 +316,11 @@ describe("real-time shared chat over WebSocket", () => {
     const port = (server.address() as { port: number }).port;
     const workspace = await createTestWorkspace(app);
 
-    const first = new WebSocket(`ws://localhost:${port}/ws?workspaceId=${workspace.id}&displayName=Alice`, { headers: { Cookie: aliceCookie } });
+    const first = new WebSocket(`ws://localhost:${port}/ws?workspaceId=${workspace.id}&conversationId=${workspace.conversationId}&displayName=Alice`, { headers: { Cookie: aliceCookie } });
     const firstCloseCode = new Promise<number>((resolve) => first.on("close", (code) => resolve(code)));
     await new Promise((resolve) => first.on("open", resolve));
 
-    const second = new WebSocket(`ws://localhost:${port}/ws?workspaceId=${workspace.id}&displayName=Alice`, { headers: { Cookie: aliceCookie } });
+    const second = new WebSocket(`ws://localhost:${port}/ws?workspaceId=${workspace.id}&conversationId=${workspace.conversationId}&displayName=Alice`, { headers: { Cookie: aliceCookie } });
     const secondMessages: { type: string; participants?: { displayName: string }[] }[] = [];
     second.on("message", (data) => secondMessages.push(JSON.parse(data.toString())));
     await new Promise((resolve) => second.on("open", resolve));

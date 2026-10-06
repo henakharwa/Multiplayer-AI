@@ -1,0 +1,298 @@
+/* Part of the global stylesheet, split in original order (see app/layout.tsx). */
+
+/* Public legal pages (privacy policy, terms) */
+.legal-page {
+  align-items: flex-start;
+}
+
+.legal-card {
+  max-width: 760px;
+  width: 100%;
+  line-height: 1.6;
+}
+
+.legal-card h1 {
+  margin: 12px 0 4px;
+}
+
+.legal-card h2 {
+  margin: 24px 0 6px;
+  font-size: 17px;
+}
+
+.legal-card ul {
+  padding-left: 20px;
+}
+
+.legal-updated {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin-top: 0;
+}
+
+/* Role access matrix: disabled / request-access states */
+.access-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.access-notice > span {
+  flex: 1 1 220px;
+}
+
+.access-notice .btn {
+  width: auto;
+  min-height: 30px;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.access-notice-form {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 8px;
+}
+
+.access-notice-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.access-notice-form textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.access-notice-form > div {
+  display: flex;
+  gap: 8px;
+}
+
+.access-notice small {
+  flex: 1 1 100%;
+}
+
+/* Read-only builder for members without the required permission */
+fieldset.access-readonly {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: contents;
+}
+
+fieldset.access-readonly:disabled input,
+fieldset.access-readonly:disabled textarea,
+fieldset.access-readonly:disabled select,
+fieldset.access-readonly:disabled button {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* App dialogs (replace browser confirm/prompt) */
+.app-dialog-backdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(18, 24, 37, 0.38);
+}
+
+.app-dialog {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  text-align: left;
+}
+
+.app-dialog h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.app-dialog p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-dialog-field {
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-dialog-field input {
+  min-height: var(--control-height);
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-weight: 400;
+}
+
+.app-dialog-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.app-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.app-dialog-actions .btn {
+  width: auto;
+  min-width: 96px;
+}
+
+/* One button system: .btn / .btn.secondary / .btn.danger and the workspace
+   .primary-button / .secondary-button share shape, weight and states. */
+.btn,
+.primary-button,
+.secondary-button,
+.section-heading button {
+  border-radius: var(--radius-pill);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease,
+    transform 0.05s ease;
+}
+
+.primary-button,
+.section-heading button {
+  background: var(--accent);
+  border: 1px solid transparent;
+  color: var(--surface);
+}
+
+.primary-button:hover:not(:disabled),
+.section-heading button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.secondary-button {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+}
+
+.secondary-button:hover:not(:disabled) {
+  background: var(--bg-subtle);
+  border-color: var(--text-faint);
+}
+
+.btn.danger {
+  background: var(--danger);
+  border-color: transparent;
+  color: var(--surface);
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: var(--danger-strong);
+}
+
+.btn:disabled,
+.primary-button:disabled,
+.secondary-button:disabled,
+.section-heading button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn:active:not(:disabled),
+.primary-button:active:not(:disabled),
+.secondary-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:focus-visible,
+.primary-button:focus-visible,
+.secondary-button:focus-visible,
+.section-heading button:focus-visible,
+.agent-delete-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft-border);
+}
+
+.workspace-hub-actions .secondary-button {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* Loading placeholders for lists */
+.list-loading {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.list-loading span {
+  display: block;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--bg-subtle) 0%, var(--bg-sunken) 50%, var(--bg-subtle) 100%);
+  background-size: 200% 100%;
+  animation: list-loading-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes list-loading-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list-loading span {
+    animation: none;
+  }
+}
+
+.agent-delete-button {
+  border-radius: var(--radius-pill);
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.agent-delete-button:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+.agent-delete-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -8,7 +8,16 @@ import { listMessages, listPendingActions } from "./api";
 export type ConnectionStatus = "connecting" | "open" | "closed";
 
 interface ServerEvent {
-  type: "history" | "message" | "workspace_message" | "presence" | "workspace_presence" | "error" | "pending_action" | "pending_action_update" | "agent_status";
+  type:
+    | "history"
+    | "message"
+    | "workspace_message"
+    | "presence"
+    | "workspace_presence"
+    | "error"
+    | "pending_action"
+    | "pending_action_update"
+    | "agent_status";
   messages?: ChatMessage[];
   message?: ChatMessage;
   participants?: Participant[];
@@ -37,7 +46,11 @@ export interface WorkspaceChatState {
   // next successful send.
   sendError: string | null;
   historyLoaded: boolean;
-  sendMessage: (content: string, agentKind?: "project" | "github" | "slack" | "linear" | "notion" | "figma", agentId?: string) => void;
+  sendMessage: (
+    content: string,
+    agentKind?: "project" | "github" | "slack" | "linear" | "notion" | "figma",
+    agentId?: string,
+  ) => void;
   reconnect: () => void;
 }
 
@@ -47,7 +60,11 @@ export interface WorkspaceChatState {
 // a button, matching services/chat-server's close codes 4000/4004 which
 // are deliberate rejections, not transient failures worth silently
 // retrying.
-export function useWorkspaceChat(workspaceId: string | null, conversationId: string | null, displayName: string | null): WorkspaceChatState {
+export function useWorkspaceChat(
+  workspaceId: string | null,
+  conversationId: string | null,
+  displayName: string | null,
+): WorkspaceChatState {
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -105,7 +122,10 @@ export function useWorkspaceChat(workspaceId: string | null, conversationId: str
     const ws = new WebSocket(url);
     socketRef.current = ws;
 
-    ws.onopen = () => { setStatus("open"); setReconnecting(false); };
+    ws.onopen = () => {
+      setStatus("open");
+      setReconnecting(false);
+    };
 
     ws.onmessage = (event) => {
       let parsed: ServerEvent;
@@ -121,7 +141,10 @@ export function useWorkspaceChat(workspaceId: string | null, conversationId: str
         setMessages((prev) => [...prev, parsed.message as ChatMessage]);
       } else if (parsed.type === "workspace_message" && parsed.message) {
         const message = parsed.message as ChatMessage;
-        if (message.conversationId !== conversationId) setUnreadConversationIds((current) => current.includes(message.conversationId) ? current : [...current, message.conversationId]);
+        if (message.conversationId !== conversationId)
+          setUnreadConversationIds((current) =>
+            current.includes(message.conversationId) ? current : [...current, message.conversationId],
+          );
       } else if (parsed.type === "presence" && parsed.participants) {
         setParticipants(parsed.participants);
       } else if (parsed.type === "workspace_presence" && parsed.participants) {
@@ -168,19 +191,44 @@ export function useWorkspaceChat(workspaceId: string | null, conversationId: str
     if (conversationId) setUnreadConversationIds((current) => current.filter((id) => id !== conversationId));
   }, [conversationId]);
 
-  const sendMessage = useCallback((content: string, agentKind: "project" | "github" | "slack" | "linear" | "notion" | "figma" = "project", agentId?: string) => {
-    const trimmed = content.trim();
-    if (!trimmed) return;
-    const ws = socketRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      setSendError("Your connection is offline. Reconnect before sending a message.");
-      return;
-    }
+  const sendMessage = useCallback(
+    (
+      content: string,
+      agentKind: "project" | "github" | "slack" | "linear" | "notion" | "figma" = "project",
+      agentId?: string,
+    ) => {
+      const trimmed = content.trim();
+      if (!trimmed) return;
+      const ws = socketRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        setSendError("Your connection is offline. Reconnect before sending a message.");
+        return;
+      }
+      setSendError(null);
+      ws.send(JSON.stringify({ type: "chat", content: trimmed, agentKind, agentId }));
+    },
+    [],
+  );
+
+  const reconnect = useCallback(() => {
+    setReconnecting(true);
     setSendError(null);
-    ws.send(JSON.stringify({ type: "chat", content: trimmed, agentKind, agentId }));
+    setGeneration((g) => g + 1);
   }, []);
 
-  const reconnect = useCallback(() => { setReconnecting(true); setSendError(null); setGeneration((g) => g + 1); }, []);
-
-  return { status, messages, participants, workspaceParticipants, unreadConversationIds, pendingActions, closeReason, reconnecting, agentBusy, sendError, historyLoaded, sendMessage, reconnect };
+  return {
+    status,
+    messages,
+    participants,
+    workspaceParticipants,
+    unreadConversationIds,
+    pendingActions,
+    closeReason,
+    reconnecting,
+    agentBusy,
+    sendError,
+    historyLoaded,
+    sendMessage,
+    reconnect,
+  };
 }

@@ -48,17 +48,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # These are the production release gates for the YC demo. Run each
-      # database-backed suite in its own process because each intentionally
-      # closes its own Postgres pool during teardown.
-      - name: Run agent request-budget tests
-        run: npm run test --workspace=services/chat-server -- --run tests/agent.test.ts
+      - name: Check web formatting
+        run: npm run format:check
 
-      - name: Run GitHub workflow release gate
-        run: npm run test --workspace=services/chat-server -- --run tests/github-workflow.test.ts
+      # Apply the versioned migrations the same way a deploy does.
+      - name: Apply database migrations
+        run: npm run migrate
 
-      - name: Run Slack workflow release gate
-        run: npm run test --workspace=services/chat-server -- --run tests/slack-workflow.test.ts
+      # The full suite for every workspace (database, chat server,
+      # integrations and web). Chat-server files run one at a time because
+      # they share one database.
+      - name: Run all tests
+        run: npm test
 
       - name: Build all workspaces
         run: npm run build

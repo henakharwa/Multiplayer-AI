@@ -65,7 +65,7 @@ In another terminal:
 
 ```sh
 npm run build            # builds every package, in dependency order
-npm run migrate          # applies packages/db/sql/schema.sql
+npm run migrate          # applies pending migrations in packages/db/sql/migrations (see "Database migrations")
 npm run dev:server       # starts the chat server on :4000
 ```
 
@@ -389,3 +389,11 @@ fully-tested product quickly rather than a half-built bigger one:
   (fresh `npm install`, fresh database) before being copied here, to catch
   anything that only worked by accident of leftover local state.
 
+## Database migrations
+
+Schema changes live in `packages/db/sql/migrations` as numbered files (`0001_baseline.sql`, `0002_...sql`). Each file is applied once, in order, inside a transaction, and recorded in the `schema_migrations` table with a checksum. Deploys run `npm run migrate` on start.
+
+- Add a change: create the next numbered file, e.g. `0002_add_task_labels.sql`. Never edit a migration that has already been applied.
+- Make it reversible: add `0002_add_task_labels.down.sql` next to it.
+- See what has run: `npm run migrate:status --workspace=packages/db`.
+- Undo the latest: `npm run migrate:down --workspace=packages/db` (needs its `.down.sql`).

@@ -1,0 +1,15 @@
+# Store text files with LF line endings in the repository and check them
+# out with LF everywhere, so Windows and Linux edits don't show up as
+# whole-file changes. Binary formats are left untouched.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.woff binary
+*.woff2 binary

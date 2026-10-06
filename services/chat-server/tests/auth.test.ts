@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { runMigrations } from "@mai-chat/db";
 import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
 import express from "express";
 import supertest from "supertest";
 const agents = new WeakMap<express.Express, ReturnType<typeof supertest.agent>>();
@@ -49,8 +49,7 @@ const okDeps: UserAuthDeps = {
 };
 
 beforeAll(async () => {
-  const schema = await readFile(fileURLToPath(new URL("../../../packages/db/sql/schema.sql", import.meta.url)), "utf8");
-  await getPool().query(schema);
+  await runMigrations();
 });
 
 afterAll(async () => {

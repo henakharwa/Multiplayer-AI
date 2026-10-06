@@ -17,8 +17,12 @@ function ResetPasswordPageInner() {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!token) { setError("This reset link is missing its token. Check the link from your email."); return; }
-    setBusy(true); setError(null);
+    if (!token) {
+      setError("This reset link is missing its token. Check the link from your email.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
     try {
       await resetPassword(token, password);
       setDone(true);
@@ -31,7 +35,9 @@ function ResetPasswordPageInner() {
 
   return (
     <div className="home-shell">
-      <nav className="home-nav"><BrandMark /></nav>
+      <nav className="home-nav">
+        <BrandMark />
+      </nav>
       <div className="home-hero" style={{ maxWidth: 460 }}>
         <div className="auth-form" style={{ margin: 0 }}>
           <h1>Choose a new password</h1>
@@ -53,16 +59,29 @@ function ResetPasswordPageInner() {
                   disabled={busy}
                   aria-describedby="new-password-hint"
                 />
-                <p className="hint" id="new-password-hint">Use at least 12 characters.</p>
+                <p className="hint" id="new-password-hint">
+                  Use at least 12 characters.
+                </p>
               </div>
-              {error && <p className="error-text auth-error" role="alert">{error}</p>}
+              {error && (
+                <p className="error-text auth-error" role="alert">
+                  {error}
+                </p>
+              )}
               <button className="btn auth-submit" type="submit" disabled={busy || !token}>
                 {busy ? "Resetting…" : "Reset password"}
               </button>
             </form>
           )}
-          {!token && !done && <p className="panel-hint">This link is missing its token — request a new one from the sign-in screen&apos;s &quot;Forgot password?&quot; link.</p>}
-          <p className="auth-switch"><Link href="/">Back to Nexus</Link></p>
+          {!token && !done && (
+            <p className="panel-hint">
+              This link is missing its token — request a new one from the sign-in screen&apos;s &quot;Forgot
+              password?&quot; link.
+            </p>
+          )}
+          <p className="auth-switch">
+            <Link href="/">Back to Nexus</Link>
+          </p>
         </div>
       </div>
     </div>

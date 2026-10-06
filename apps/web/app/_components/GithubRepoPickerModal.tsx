@@ -87,7 +87,8 @@ export default function GithubRepoPickerModal({
 
         {repos && repos.length === 0 && !loadError && (
           <p style={{ color: "var(--text-dim)", fontSize: 13 }}>
-            No repositories found for this GitHub account. Make sure you granted access to at least one repo when you logged in.
+            No repositories found for this GitHub account. Make sure you granted access to at least one repo when you
+            logged in.
           </p>
         )}
 

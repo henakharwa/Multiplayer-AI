@@ -24,7 +24,10 @@ export default function PendingActionCard({
 }) {
   const [busy, setBusy] = useState<"confirm" | "cancel" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const target = [action.args.owner, action.args.repo].filter((value): value is string => typeof value === "string" && value.length > 0).join("/") || (typeof action.args.channel === "string" ? `#${action.args.channel}` : action.toolName);
+  const target =
+    [action.args.owner, action.args.repo]
+      .filter((value): value is string => typeof value === "string" && value.length > 0)
+      .join("/") || (typeof action.args.channel === "string" ? `#${action.args.channel}` : action.toolName);
 
   async function handle(intent: "confirm" | "cancel") {
     setBusy(intent);
@@ -47,18 +50,48 @@ export default function PendingActionCard({
 
   return (
     <div className="pending-action" data-testid="pending-action-card">
-      <div className="pending-action-header"><div className="pending-action-label">Approval required</div><span>Nothing has changed yet</span></div>
+      <div className="pending-action-header">
+        <div className="pending-action-label">Approval required</div>
+        <span>Nothing has changed yet</span>
+      </div>
       <div className="pending-action-desc">{action.description}</div>
-      <dl className="pending-action-details"><div><dt>Action</dt><dd>{action.toolName.replace(/[_-]/g, " ")}</dd></div><div><dt>Target</dt><dd>{target}</dd></div><div><dt>Requested by</dt><dd>{action.requestedByName ?? "A workspace member"}</dd></div></dl>
+      <dl className="pending-action-details">
+        <div>
+          <dt>Action</dt>
+          <dd>{action.toolName.replace(/[_-]/g, " ")}</dd>
+        </div>
+        <div>
+          <dt>Target</dt>
+          <dd>{target}</dd>
+        </div>
+        <div>
+          <dt>Requested by</dt>
+          <dd>{action.requestedByName ?? "A workspace member"}</dd>
+        </div>
+      </dl>
       {action.preview && <pre className="pending-action-preview">{action.preview}</pre>}
       {error && <div className="pending-action-error">{error}</div>}
-      <p className="pending-action-note">{canApprove ? "Review the target and preview, then approve to run this action." : "An Admin or a teammate with the “Approve actions” permission must confirm this action."}</p>
+      <p className="pending-action-note">
+        {canApprove
+          ? "Review the target and preview, then approve to run this action."
+          : "An Admin or a teammate with the “Approve actions” permission must confirm this action."}
+      </p>
       {!canApprove && onRequestAccess}
       <div className="pending-action-buttons">
-        <button className="btn" disabled={busy !== null || !canApprove} onClick={() => handle("confirm")} data-testid="confirm-action-btn">
+        <button
+          className="btn"
+          disabled={busy !== null || !canApprove}
+          onClick={() => handle("confirm")}
+          data-testid="confirm-action-btn"
+        >
           {busy === "confirm" ? "Confirming…" : "Confirm"}
         </button>
-        <button className="btn secondary" disabled={busy !== null || !canApprove} onClick={() => handle("cancel")} data-testid="cancel-action-btn">
+        <button
+          className="btn secondary"
+          disabled={busy !== null || !canApprove}
+          onClick={() => handle("cancel")}
+          data-testid="cancel-action-btn"
+        >
           {busy === "cancel" ? "Cancelling…" : "Cancel"}
         </button>
       </div>

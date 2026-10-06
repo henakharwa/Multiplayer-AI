@@ -1,3 +1,43 @@
 "use client";
-type Task={index:number;done:boolean;label:string};function tasks(content:string):Task[]{return [...content.matchAll(/^\s*[-*+]\s+\[([ xX])\]\s*(.+)$/gm)].map((m,index)=>({index,done:/[xX]/.test(m[1]),label:m[2].replace(/\*\*/g,"").trim()}))}
-export function TaskListVisual({title,summary,content,onToggle}:{title:string;summary:string;content:string;onToggle?:(index:number)=>void}){const items=tasks(content);return <section className="task-visual task-calendar"><header><p>SHARED TASK LIST · DELIVERY CALENDAR</p><h2>{title||"Untitled task list"}</h2><span>{summary||"A focused delivery schedule."}</span></header><div className="task-calendar">{items.map((task,index)=><article key={task.index} className={task.done?"complete":""}><b>DAY {index+1}</b><i/><label><input type="checkbox" checked={task.done} onChange={()=>onToggle?.(task.index)} disabled={!onToggle}/><span>{task.label}</span></label></article>)}</div></section>}
+type Task = { index: number; done: boolean; label: string };
+function tasks(content: string): Task[] {
+  return [...content.matchAll(/^\s*[-*+]\s+\[([ xX])\]\s*(.+)$/gm)].map((m, index) => ({
+    index,
+    done: /[xX]/.test(m[1]),
+    label: m[2].replace(/\*\*/g, "").trim(),
+  }));
+}
+export function TaskListVisual({
+  title,
+  summary,
+  content,
+  onToggle,
+}: {
+  title: string;
+  summary: string;
+  content: string;
+  onToggle?: (index: number) => void;
+}) {
+  const items = tasks(content);
+  return (
+    <section className="task-visual task-calendar">
+      <header>
+        <p>SHARED TASK LIST · DELIVERY CALENDAR</p>
+        <h2>{title || "Untitled task list"}</h2>
+        <span>{summary || "A focused delivery schedule."}</span>
+      </header>
+      <div className="task-calendar">
+        {items.map((task, index) => (
+          <article key={task.index} className={task.done ? "complete" : ""}>
+            <b>DAY {index + 1}</b>
+            <i />
+            <label>
+              <input type="checkbox" checked={task.done} onChange={() => onToggle?.(task.index)} disabled={!onToggle} />
+              <span>{task.label}</span>
+            </label>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}

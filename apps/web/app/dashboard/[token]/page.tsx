@@ -19,13 +19,29 @@ export default function PublicDashboardPage() {
   useEffect(() => {
     let cancelled = false;
     getPublicDashboard(token)
-      .then((result) => { if (!cancelled) setView(result); })
-      .catch((err) => { if (!cancelled) setError(describeError(err, "Could not load this dashboard.")); });
-    return () => { cancelled = true; };
+      .then((result) => {
+        if (!cancelled) setView(result);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(describeError(err, "Could not load this dashboard."));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
-  if (error) return <main className="public-dashboard-page"><p className="error-text">{error}</p></main>;
-  if (!view) return <main className="public-dashboard-page"><p className="muted">Loading…</p></main>;
+  if (error)
+    return (
+      <main className="public-dashboard-page">
+        <p className="error-text">{error}</p>
+      </main>
+    );
+  if (!view)
+    return (
+      <main className="public-dashboard-page">
+        <p className="muted">Loading…</p>
+      </main>
+    );
 
   return (
     <main className="public-dashboard-page">
@@ -35,7 +51,9 @@ export default function PublicDashboardPage() {
         {view.summary && <p>{view.summary}</p>}
       </header>
       <DashboardCanvas value={view.dashboardData} versions={[]} updatedAt={view.updatedAt} />
-      <p className="public-dashboard-footnote">Read-only view shared from Nexus. Numbers refresh whenever a workspace member hits "Refresh live data".</p>
+      <p className="public-dashboard-footnote">
+        Read-only view shared from Nexus. Numbers refresh whenever a workspace member hits "Refresh live data".
+      </p>
     </main>
   );
 }

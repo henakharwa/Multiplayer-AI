@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { runMigrations } from "@mai-chat/db";
 import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
 import request from "supertest";
 import { getPool, closePool, upsertUserFromGithub, createSession } from "@mai-chat/db";
 import { createChatServer, type CreateServerDeps } from "../src/server.js";
@@ -41,8 +41,7 @@ function makeDeps(overrides: Partial<CreateServerDeps> = {}): CreateServerDeps {
 }
 
 beforeAll(async () => {
-  const schema = await readFile(fileURLToPath(new URL("../../../packages/db/sql/schema.sql", import.meta.url)), "utf8");
-  await getPool().query(schema);
+  await runMigrations();
   const user = await upsertUserFromGithub({ githubId: "test-auth-hena", username: "hena", displayName: "hena" });
   sessionCookie = `mai_session=${(await createSession(user.id, 60000)).token}`;
 });
@@ -73,8 +72,10 @@ describe("confirming a pending action that fails", () => {
     // Create the pending action the same way wrapForProposal would, via a
     // direct DB call (no HTTP route creates one outside the agent loop).
     const db = await import("@mai-chat/db");
+    const conversation = await db.createConversation({ workspaceId });
     const pending = await db.createPendingAction({
       workspaceId,
+      conversationId: conversation.id,
       toolName: "fake_write_tool",
       description: "edit main.py",
       args: {},
@@ -87,7 +88,7 @@ describe("confirming a pending action that fails", () => {
     const resolved = await db.getPendingAction(workspaceId, pending.id);
     expect(resolved?.status).toBe("failed");
 
-    const messages = await db.listMessages(workspaceId);
+    const messages = await db.listMessages(workspaceId, conversation.id);
     const failureMessage = messages.find((m) => m.role === "system" && m.content.includes("tried to confirm"));
     expect(failureMessage).toBeDefined();
     expect(failureMessage?.content).toContain("hena");
@@ -99,8 +100,10 @@ describe("confirming a pending action that fails", () => {
     const workspaceId = await createWorkspaceWithGithub(app);
 
     const db = await import("@mai-chat/db");
+    const conversation = await db.createConversation({ workspaceId });
     const pending = await db.createPendingAction({
       workspaceId,
+      conversationId: conversation.id,
       toolName: "some_tool_that_is_gone",
       description: "open a PR",
       args: {},
@@ -112,7 +115,7 @@ describe("confirming a pending action that fails", () => {
     const resolved = await db.getPendingAction(workspaceId, pending.id);
     expect(resolved?.status).toBe("failed");
 
-    const messages = await db.listMessages(workspaceId);
+    const messages = await db.listMessages(workspaceId, conversation.id);
     const failureMessage = messages.find((m) => m.role === "system" && m.content.includes("tried to confirm"));
     expect(failureMessage).toBeDefined();
     expect(failureMessage?.content).toContain("no longer connected");

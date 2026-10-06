@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { runMigrations } from "@mai-chat/db";
 import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import request from "supertest";
 import * as db from "@mai-chat/db";
@@ -40,13 +40,14 @@ function makeDeps(overrides: Partial<CreateServerDeps> = {}): CreateServerDeps {
 
 let ownerCookie: string;
 let ownerName: string;
+let ownerId: string;
 let outsiderCookie: string;
 
 beforeAll(async () => {
-  const schema = await readFile(fileURLToPath(new URL("../../../packages/db/sql/schema.sql", import.meta.url)), "utf8");
-  await getPool().query(schema);
+  await runMigrations();
   const owner = await upsertUserFromGithub({ githubId: `audit-owner-${randomUUID()}`, username: "owner", displayName: "Audit Owner" });
   ownerName = owner.displayName;
+  ownerId = owner.id;
   ownerCookie = `mai_session=${(await createSession(owner.id, 60_000)).token}`;
   const outsider = await upsertUserFromGithub({ githubId: `audit-outsider-${randomUUID()}`, username: "outsider", displayName: "Audit Outsider" });
   outsiderCookie = `mai_session=${(await createSession(outsider.id, 60_000)).token}`;
@@ -110,13 +111,15 @@ describe("action audit trail", () => {
     // pending_actions/audit_events -- but the workspace FK on both tables
     // means it needs to actually exist first.
     const created = await db.createWorkspace(`Audit WS ${randomUUID()}`);
+    await db.addWorkspaceMember(created.id, ownerId, "admin");
+    const conversation = await db.createConversation({ workspaceId: created.id, createdByUserId: ownerId });
     const requester = { userId: randomUUID(), name: "Requesting Member" };
     // Satisfy the FK on pending_actions/audit_events.requested_by_user_id
     // /actor_user_id -- a real signed-in user, distinct from the owner
     // used for the confirm call below.
     const requesterUser = await upsertUserFromGithub({ githubId: `audit-req-${randomUUID()}`, username: "req", displayName: requester.name });
 
-    const [wrapped] = wrapForProposal([workingTool], created.id, rooms, { userId: requesterUser.id, name: requester.name });
+    const [wrapped] = wrapForProposal([workingTool], created.id, conversation.id, rooms, { userId: requesterUser.id, name: requester.name });
     const result = (await wrapped.execute({})) as { actionId: string };
 
     const afterPropose = await db.listAuditEvents(created.id);
@@ -130,7 +133,11 @@ describe("action audit trail", () => {
     // GitHub integration + a matching githubMcpToolsFactory override are
     // both needed here for it to find "fake_write_tool" again.
     const { app } = createChatServer(makeDeps({ githubMcpToolsFactory: async () => [workingTool] }));
-    await request(app).post(`/workspaces/${created.id}/integrations/github`).set("Cookie", ownerCookie).send({ owner: "acme", repo: "widgets", token: "gh-token" });
+    // Tools are rebuilt from the REQUESTER's own connection (members act
+    // only through connections they own), so the requester connects GitHub.
+    await db.addWorkspaceMember(created.id, requesterUser.id, "editor");
+    const requesterCookie = `mai_session=${(await createSession(requesterUser.id, 60_000)).token}`;
+    await request(app).post(`/workspaces/${created.id}/integrations/github`).set("Cookie", requesterCookie).send({ owner: "acme", repo: "widgets", token: "gh-token" });
     const confirm = await request(app)
       .post(`/workspaces/${created.id}/actions/${result.actionId}/confirm`)
       .set("Cookie", ownerCookie)
@@ -158,7 +165,9 @@ describe("action audit trail", () => {
       execute: async () => "unused",
     };
     const workspace = await db.createWorkspace(`Audit WS ${randomUUID()}`);
-    const [wrapped] = wrapForProposal([tool], workspace.id, rooms);
+    await db.addWorkspaceMember(workspace.id, ownerId, "admin");
+    const conversation = await db.createConversation({ workspaceId: workspace.id, createdByUserId: ownerId });
+    const [wrapped] = wrapForProposal([tool], workspace.id, conversation.id, rooms);
     const result = (await wrapped.execute({})) as { actionId: string };
 
     const { app } = createChatServer(makeDeps());

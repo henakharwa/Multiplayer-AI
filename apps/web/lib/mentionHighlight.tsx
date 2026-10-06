@@ -36,7 +36,7 @@ export function renderWithMentions(content: string, names: string[]): React.Reac
     parts.push(
       <span className="mention-pill" key={key++}>
         {match[0]}
-      </span>
+      </span>,
     );
     lastIndex = match.index + match[0].length;
   }

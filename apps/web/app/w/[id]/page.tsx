@@ -4,8 +4,42 @@ import { useEffect, useRef, useState } from "react";
 import { useDialog } from "../../_components/DialogProvider";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import type { Conversation, GithubRepoSummary, IntegrationConfig, Workspace, WorkspaceAgent, WorkspaceMember, WorkspaceRole } from "@mai-chat/shared-types";
-import { describeError, getWorkspacePreference, setWorkspacePreference, createConversation, deleteConversation, getWorkspace, listConversations, listIntegrations, listNotifications, listWorkspaceMembers, markNotificationsRead, updateWorkspaceMemberRole, removeWorkspaceMember, leaveWorkspace, listWorkspaceInvitations, revokeWorkspaceInvitation, disconnectIntegration, githubOAuthStartUrl, sendWorkspaceInvitation, updateConversation, listWorkspaceAgents, listPermissionRequests, resolvePermissionRequest, type PermissionRequest, ApiError } from "../../../lib/api";
+import type {
+  Conversation,
+  GithubRepoSummary,
+  IntegrationConfig,
+  Workspace,
+  WorkspaceAgent,
+  WorkspaceMember,
+  WorkspaceRole,
+} from "@mai-chat/shared-types";
+import {
+  describeError,
+  getWorkspacePreference,
+  setWorkspacePreference,
+  createConversation,
+  deleteConversation,
+  getWorkspace,
+  listConversations,
+  listIntegrations,
+  listNotifications,
+  listWorkspaceMembers,
+  markNotificationsRead,
+  updateWorkspaceMemberRole,
+  removeWorkspaceMember,
+  leaveWorkspace,
+  listWorkspaceInvitations,
+  revokeWorkspaceInvitation,
+  disconnectIntegration,
+  githubOAuthStartUrl,
+  sendWorkspaceInvitation,
+  updateConversation,
+  listWorkspaceAgents,
+  listPermissionRequests,
+  resolvePermissionRequest,
+  type PermissionRequest,
+  ApiError,
+} from "../../../lib/api";
 import { useWorkspaceChat } from "../../../lib/useWorkspaceChat";
 import { colorForName, initialsForName } from "../../../lib/avatar";
 import ConnectChannelModal from "../../_components/ConnectChannelModal";
@@ -17,8 +51,6 @@ import { AccessNotice } from "../../_components/AccessNotice";
 import { useWorkspaceAccess } from "../../../lib/useWorkspaceAccess";
 import EmailVerificationBanner from "../../_components/EmailVerificationBanner";
 import { renderWithMentions, draftLooksLikeHandoff } from "../../../lib/mentionHighlight";
-
-
 
 function roleLabel(role: string): string {
   if (role === "agent") return "Agent";
@@ -35,7 +67,21 @@ function formatTime(iso: string): string {
 }
 
 function permissionLabel(permission: string): string {
-  return ({ connectTools: "Connect and manage tools", createAgents: "Create agents", publishAgents: "Publish agents", approveActions: "Approve actions", github: "Use GitHub", slack: "Use Slack", linear: "Use Linear", notion: "Use Notion", figma: "Use Figma" } as Record<string, string>)[permission] ?? permission;
+  return (
+    (
+      {
+        connectTools: "Connect and manage tools",
+        createAgents: "Create agents",
+        publishAgents: "Publish agents",
+        approveActions: "Approve actions",
+        github: "Use GitHub",
+        slack: "Use Slack",
+        linear: "Use Linear",
+        notion: "Use Notion",
+        figma: "Use Figma",
+      } as Record<string, string>
+    )[permission] ?? permission
+  );
 }
 
 // Small inline "spark" glyph for the agent's avatar -- distinguishes it at
@@ -181,7 +227,11 @@ export default function WorkspaceRoomPage() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<WorkspaceRole>("editor");
-  const [inviteState, setInviteState] = useState<{ sending: boolean; message: string | null; error: string | null }>({ sending: false, message: null, error: null });
+  const [inviteState, setInviteState] = useState<{ sending: boolean; message: string | null; error: string | null }>({
+    sending: false,
+    message: null,
+    error: null,
+  });
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLInputElement | null>(null);
   const knownMessageIds = useRef(new Set<string>());
@@ -198,23 +248,40 @@ export default function WorkspaceRoomPage() {
   useEffect(() => {
     const agentId = new URLSearchParams(window.location.search).get("agentId");
     if (!agentId) return;
-    listWorkspaceAgents(workspaceId).then((agents) => {
-      const agent = agents.find((item) => item.id === agentId && item.status === "published") ?? null;
-      if (agent) { setConfiguredAgent(agent); setSelectedAgent(agent.baseAgent); }
-    }).catch(() => {});
+    listWorkspaceAgents(workspaceId)
+      .then((agents) => {
+        const agent = agents.find((item) => item.id === agentId && item.status === "published") ?? null;
+        if (agent) {
+          setConfiguredAgent(agent);
+          setSelectedAgent(agent.baseAgent);
+        }
+      })
+      .catch(() => {});
   }, [workspaceId]);
 
   useEffect(() => {
     let cancelled = false;
-    const refresh = () => listPermissionRequests(workspaceId).then((requests) => { if (!cancelled) setPermissionRequests(requests); }).catch(() => {});
+    const refresh = () =>
+      listPermissionRequests(workspaceId)
+        .then((requests) => {
+          if (!cancelled) setPermissionRequests(requests);
+        })
+        .catch(() => {});
     refresh();
     const interval = window.setInterval(refresh, 15_000);
-    return () => { cancelled = true; window.clearInterval(interval); };
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
   }, [workspaceId]);
 
   async function decidePermissionRequest(request: PermissionRequest, decision: "approve" | "reject") {
-    try { await resolvePermissionRequest(workspaceId, request.id, decision); setPermissionRequests((items) => items.filter((item) => item.id !== request.id)); }
-    catch (error) { setLoadError(describeError(error, "Could not update the permission request.")); }
+    try {
+      await resolvePermissionRequest(workspaceId, request.id, decision);
+      setPermissionRequests((items) => items.filter((item) => item.id !== request.id));
+    } catch (error) {
+      setLoadError(describeError(error, "Could not update the permission request."));
+    }
   }
 
   // Lands here right after the GitHub or Slack OAuth redirect
@@ -228,7 +295,11 @@ export default function WorkspaceRoomPage() {
   // Best-effort -- if this fails, the sidebar's "Connected" row just stays
   // empty or stale; the rest of the room (chat, presence) doesn't depend
   // on it, so a network hiccup here shouldn't be treated as fatal.
-  useEffect(() => { listWorkspaceAgents(workspaceId).then(setWorkspaceAgents).catch(() => {}); }, [workspaceId]);
+  useEffect(() => {
+    listWorkspaceAgents(workspaceId)
+      .then(setWorkspaceAgents)
+      .catch(() => {});
+  }, [workspaceId]);
 
   function refreshIntegrations() {
     listIntegrations(workspaceId)
@@ -277,7 +348,16 @@ export default function WorkspaceRoomPage() {
   }
 
   async function leaveCurrentWorkspace() {
-    if (!(await dialog.confirm({ title: "Leave this workspace?", message: "Your personal connected tools will be removed. You can rejoin later with the join code or a new invitation.", confirmLabel: "Leave workspace", danger: true }))) return;
+    if (
+      !(await dialog.confirm({
+        title: "Leave this workspace?",
+        message:
+          "Your personal connected tools will be removed. You can rejoin later with the join code or a new invitation.",
+        confirmLabel: "Leave workspace",
+        danger: true,
+      }))
+    )
+      return;
     try {
       await leaveWorkspace(workspaceId);
       router.replace("/");
@@ -293,7 +373,14 @@ export default function WorkspaceRoomPage() {
         if (!cancelled) setWorkspace(ws);
       })
       .catch((err) => {
-        if (!cancelled) setLoadError(err instanceof ApiError && err.status === 404 ? "Workspace not found." : err instanceof ApiError && err.status === 403 ? "You are not a member of this workspace. Join it with its join code or ask an Admin for an invitation." : describeError(err, "Could not load this workspace."));
+        if (!cancelled)
+          setLoadError(
+            err instanceof ApiError && err.status === 404
+              ? "Workspace not found."
+              : err instanceof ApiError && err.status === 403
+                ? "You are not a member of this workspace. Join it with its join code or ask an Admin for an invitation."
+                : describeError(err, "Could not load this workspace."),
+          );
       });
     listIntegrations(workspaceId)
       .then((list) => {
@@ -308,7 +395,11 @@ export default function WorkspaceRoomPage() {
         setSelectedConversationId(list.some((item) => item.id === requested) ? requested : (list[0]?.id ?? null));
       })
       .catch(() => {});
-    listWorkspaceMembers(workspaceId).then((members) => { if (!cancelled) setWorkspaceMembers(members); }).catch(() => {});
+    listWorkspaceMembers(workspaceId)
+      .then((members) => {
+        if (!cancelled) setWorkspaceMembers(members);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -336,8 +427,14 @@ export default function WorkspaceRoomPage() {
   const [notificationsClearedAt, setNotificationsClearedAt] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
-    getWorkspacePreference<string>(workspaceId, "notifications-cleared-at").then((value) => { if (!cancelled) setNotificationsClearedAt(typeof value === "string" ? value : null); }).catch(() => {});
-    return () => { cancelled = true; };
+    getWorkspacePreference<string>(workspaceId, "notifications-cleared-at")
+      .then((value) => {
+        if (!cancelled) setNotificationsClearedAt(typeof value === "string" ? value : null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [workspaceId]);
   function clearNotifications(): void {
     const now = new Date().toISOString();
@@ -349,23 +446,44 @@ export default function WorkspaceRoomPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const refresh = () => listNotifications(workspaceId).then((serverNotifications) => {
-      if (cancelled) return;
-      const fromServer = serverNotifications.map((notification) => ({ id: notification.id, text: notification.text, createdAt: notification.createdAt, read: Boolean(notification.readAt) }));
-      // Keep live, in-session entries for a minute so they don't vanish
-      // before the server's copy (if any) arrives.
-      setNotifications((current) => {
-        const recentLocal = current.filter((item) => item.id.startsWith("local:") && Date.now() - new Date(item.createdAt).getTime() < 60_000 && !fromServer.some((server) => server.text === item.text));
-        return [...recentLocal, ...fromServer].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30);
-      });
-    }).catch(() => {});
+    const refresh = () =>
+      listNotifications(workspaceId)
+        .then((serverNotifications) => {
+          if (cancelled) return;
+          const fromServer = serverNotifications.map((notification) => ({
+            id: notification.id,
+            text: notification.text,
+            createdAt: notification.createdAt,
+            read: Boolean(notification.readAt),
+          }));
+          // Keep live, in-session entries for a minute so they don't vanish
+          // before the server's copy (if any) arrives.
+          setNotifications((current) => {
+            const recentLocal = current.filter(
+              (item) =>
+                item.id.startsWith("local:") &&
+                Date.now() - new Date(item.createdAt).getTime() < 60_000 &&
+                !fromServer.some((server) => server.text === item.text),
+            );
+            return [...recentLocal, ...fromServer].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30);
+          });
+        })
+        .catch(() => {});
     refresh();
     const interval = window.setInterval(refresh, 15_000);
-    return () => { cancelled = true; window.clearInterval(interval); };
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
   }, [workspaceId]);
 
   function addNotification(text: string): void {
-    setNotifications((current) => [{ id: `local:${crypto.randomUUID()}`, text, createdAt: new Date().toISOString(), read: false }, ...current].slice(0, 30));
+    setNotifications((current) =>
+      [
+        { id: `local:${crypto.randomUUID()}`, text, createdAt: new Date().toISOString(), read: false },
+        ...current,
+      ].slice(0, 30),
+    );
   }
 
   useEffect(() => {
@@ -379,11 +497,14 @@ export default function WorkspaceRoomPage() {
     for (const message of chat.messages) {
       if (knownMessageIds.current.has(message.id)) continue;
       knownMessageIds.current.add(message.id);
-      if (message.role === "agent") addNotification(`Agent replied in ${conversations.find((item) => item.id === selectedConversationId)?.title ?? "this conversation"}`);
+      if (message.role === "agent")
+        addNotification(
+          `Agent replied in ${conversations.find((item) => item.id === selectedConversationId)?.title ?? "this conversation"}`,
+        );
       if (message.role === "system") addNotification(message.content);
     }
-  // Chat history fills the set on a new conversation; only later messages create notifications.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Chat history fills the set on a new conversation; only later messages create notifications.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.historyLoaded, chat.messages]);
 
   useEffect(() => {
@@ -393,10 +514,12 @@ export default function WorkspaceRoomPage() {
       knownActionIds.current.add(action.id);
       if (action.status === "pending") addNotification(`Approval needed: ${action.description}`);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.historyLoaded, chat.pendingActions]);
 
-  const visibleNotifications = notifications.filter((notification) => !notificationsClearedAt || notification.createdAt > notificationsClearedAt);
+  const visibleNotifications = notifications.filter(
+    (notification) => !notificationsClearedAt || notification.createdAt > notificationsClearedAt,
+  );
   const unreadNotifications = visibleNotifications.filter((notification) => !notification.read).length;
 
   async function startNewConversation(): Promise<void> {
@@ -421,7 +544,15 @@ export default function WorkspaceRoomPage() {
   }
 
   async function removeConversation(conversation: Conversation): Promise<void> {
-    if (!(await dialog.confirm({ title: `Delete “${conversation.title}”?`, message: "This permanently removes its messages and pending approvals.", confirmLabel: "Delete conversation", danger: true }))) return;
+    if (
+      !(await dialog.confirm({
+        title: `Delete “${conversation.title}”?`,
+        message: "This permanently removes its messages and pending approvals.",
+        confirmLabel: "Delete conversation",
+        danger: true,
+      }))
+    )
+      return;
     try {
       const remaining = await deleteConversation(workspaceId, conversation.id);
       setConversations(remaining);
@@ -433,10 +564,13 @@ export default function WorkspaceRoomPage() {
     }
   }
 
-  async function changeConversation(conversation: Conversation, input: { title?: string; pinned?: boolean; archived?: boolean }): Promise<void> {
+  async function changeConversation(
+    conversation: Conversation,
+    input: { title?: string; pinned?: boolean; archived?: boolean },
+  ): Promise<void> {
     try {
       const updated = await updateConversation(workspaceId, conversation.id, input);
-      setConversations((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setConversations((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setConversationMenu(null);
     } catch (error) {
       setLoadError(describeError(error, "Could not update this conversation."));
@@ -444,7 +578,15 @@ export default function WorkspaceRoomPage() {
   }
 
   async function renameConversation(conversation: Conversation): Promise<void> {
-    const title = (await dialog.prompt({ title: "Rename conversation", label: "Conversation name", defaultValue: conversation.title, confirmLabel: "Rename", maxLength: 120 }))?.trim();
+    const title = (
+      await dialog.prompt({
+        title: "Rename conversation",
+        label: "Conversation name",
+        defaultValue: conversation.title,
+        confirmLabel: "Rename",
+        maxLength: 120,
+      })
+    )?.trim();
     if (title && title !== conversation.title) void changeConversation(conversation, { title });
   }
 
@@ -452,15 +594,13 @@ export default function WorkspaceRoomPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat.messages.length]);
 
-
-
   // See draftLooksLikeHandoff's own comment -- a draft that's clearly
   // @-mentioning only a teammate is exempt from the "wait for the agent"
   // gate, both here and in the composer's disabled state above, since the
   // server itself never blocks a handoff on the agent being busy.
   const draftIsHandoff = draftLooksLikeHandoff(
     draft,
-    chat.participants.map((p) => p.displayName)
+    chat.participants.map((p) => p.displayName),
   );
 
   function handleSend(e: React.FormEvent) {
@@ -468,11 +608,13 @@ export default function WorkspaceRoomPage() {
     if (!draft.trim() || (chat.agentBusy && !draftIsHandoff)) return;
     if (selectedConversationId) {
       const title = draft.trim().slice(0, 80);
-      setConversations((current) => current.map((conversation) =>
-        conversation.id === selectedConversationId && conversation.title === "New conversation"
-          ? { ...conversation, title }
-          : conversation
-      ));
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === selectedConversationId && conversation.title === "New conversation"
+            ? { ...conversation, title }
+            : conversation,
+        ),
+      );
     }
     chat.sendMessage(draft, selectedAgent, configuredAgent?.id);
     setDraft("");
@@ -484,7 +626,11 @@ export default function WorkspaceRoomPage() {
     setInviteState({ sending: true, message: null, error: null });
     try {
       const invitation = await sendWorkspaceInvitation(workspaceId, { email: inviteEmail.trim(), role: inviteRole });
-      setInviteState({ sending: false, message: `Invitation sent to ${invitation.email} as ${invitation.role}.`, error: null });
+      setInviteState({
+        sending: false,
+        message: `Invitation sent to ${invitation.email} as ${invitation.role}.`,
+        error: null,
+      });
       setInviteEmail("");
     } catch (error) {
       setInviteState({ sending: false, message: null, error: describeError(error, "Could not send the invitation.") });
@@ -492,26 +638,50 @@ export default function WorkspaceRoomPage() {
   }
 
   const visibleMessages = conversationSearch.trim()
-    ? chat.messages.filter((message) => `${message.authorName} ${message.content}`.toLowerCase().includes(conversationSearch.trim().toLowerCase()))
+    ? chat.messages.filter((message) =>
+        `${message.authorName} ${message.content}`.toLowerCase().includes(conversationSearch.trim().toLowerCase()),
+      )
     : chat.messages;
   const isNewWorkspaceConversation = chat.messages.length === 0;
-  const selectedAgentInfo = configuredAgent ? { ...(AGENTS.find((agent) => agent.id === selectedAgent) ?? AGENTS[0]), name: configuredAgent.name } : (AGENTS.find((agent) => agent.id === selectedAgent) ?? AGENTS[0]);
+  const selectedAgentInfo = configuredAgent
+    ? { ...(AGENTS.find((agent) => agent.id === selectedAgent) ?? AGENTS[0]), name: configuredAgent.name }
+    : (AGENTS.find((agent) => agent.id === selectedAgent) ?? AGENTS[0]);
   // Role comes from the server's effective access, never a client default,
   // so Admin-only controls are not shown before access has loaded.
-  const workspaceRole: WorkspaceRole | null = access.role ?? workspaceMembers.find((member) => member.id === user.id)?.role ?? null;
+  const workspaceRole: WorkspaceRole | null =
+    access.role ?? workspaceMembers.find((member) => member.id === user.id)?.role ?? null;
   const canEdit = workspaceRole === "admin" || workspaceRole === "editor";
   const canConnectTools = access.can("connectTools");
   const canApproveActions = access.can("approveActions");
-  const canUseSelectedProvider = selectedAgent === "project" || access.can(selectedAgent as "github" | "slack" | "linear" | "notion" | "figma");
-  const selectedAgentConnected = selectedAgent === "project" || integrations.some((integration) => integration.type === selectedAgent);
+  const canUseSelectedProvider =
+    selectedAgent === "project" || access.can(selectedAgent as "github" | "slack" | "linear" | "notion" | "figma");
+  const selectedAgentConnected =
+    selectedAgent === "project" || integrations.some((integration) => integration.type === selectedAgent);
   const onboardingSteps = [
     { label: "Create your workspace", complete: true },
-    { label: "Invite a teammate", complete: workspaceMembers.length > 1, action: workspaceRole === "admin" ? () => setShowInviteModal(true) : undefined },
-    { label: "Connect a tool", complete: integrations.length > 0, action: canConnectTools ? () => setShowConnectModal(true) : undefined },
-    { label: "Ask an agent a question", complete: conversations.some((conversation) => conversation.id === selectedConversationId && chat.messages.length > 0) },
+    {
+      label: "Invite a teammate",
+      complete: workspaceMembers.length > 1,
+      action: workspaceRole === "admin" ? () => setShowInviteModal(true) : undefined,
+    },
+    {
+      label: "Connect a tool",
+      complete: integrations.length > 0,
+      action: canConnectTools ? () => setShowConnectModal(true) : undefined,
+    },
+    {
+      label: "Ask an agent a question",
+      complete: conversations.some(
+        (conversation) => conversation.id === selectedConversationId && chat.messages.length > 0,
+      ),
+    },
   ];
-  const notificationsToday = visibleNotifications.filter((notification) => new Date(notification.createdAt).toDateString() === new Date().toDateString());
-  const notificationsEarlier = visibleNotifications.filter((notification) => !notificationsToday.includes(notification));
+  const notificationsToday = visibleNotifications.filter(
+    (notification) => new Date(notification.createdAt).toDateString() === new Date().toDateString(),
+  );
+  const notificationsEarlier = visibleNotifications.filter(
+    (notification) => !notificationsToday.includes(notification),
+  );
   const pendingActions = chat.pendingActions.filter((action) => action.status === "pending");
 
   function useStarterTemplate(prompt: string): void {
@@ -542,138 +712,545 @@ export default function WorkspaceRoomPage() {
     );
   }
 
-
-
   return (
     <div className="workspace-shell">
       <EmailVerificationBanner user={user} />
-      {(chat.status === "closed" || chat.reconnecting || githubNotice || slackNotice) && <div className="workspace-toast-stack" aria-live="polite">
-        {chat.reconnecting && <div className="workspace-toast reconnecting" data-testid="reconnecting-notice"><span>Reconnecting to the workspace…</span><button disabled>Reconnecting</button></div>}
-        {chat.status === "closed" && chat.closeReason && (
-          <div className="workspace-toast error" data-testid="disconnect-banner">
-            <span>{chat.closeReason}</span>
-            <button onClick={chat.reconnect} disabled={chat.reconnecting}>{chat.reconnecting ? "Reconnecting" : "Reconnect"}</button>
-          </div>
-        )}
-        {githubNotice && (
-          <div className={`workspace-toast ${githubNotice.kind === "success" ? "success" : "error"}`} data-testid="github-notice">
-            <span>{githubNotice.text}</span>
-            <button onClick={() => setGithubNotice(null)}>Dismiss</button>
-          </div>
-        )}
-        {slackNotice && (
-          <div className={`workspace-toast ${slackNotice.kind === "success" ? "success" : "error"}`} data-testid="slack-notice">
-            <span>{slackNotice.text}</span>
-            <button onClick={() => setSlackNotice(null)}>Dismiss</button>
-          </div>
-        )}
-      </div>}
+      {(chat.status === "closed" || chat.reconnecting || githubNotice || slackNotice) && (
+        <div className="workspace-toast-stack" aria-live="polite">
+          {chat.reconnecting && (
+            <div className="workspace-toast reconnecting" data-testid="reconnecting-notice">
+              <span>Reconnecting to the workspace…</span>
+              <button disabled>Reconnecting</button>
+            </div>
+          )}
+          {chat.status === "closed" && chat.closeReason && (
+            <div className="workspace-toast error" data-testid="disconnect-banner">
+              <span>{chat.closeReason}</span>
+              <button onClick={chat.reconnect} disabled={chat.reconnecting}>
+                {chat.reconnecting ? "Reconnecting" : "Reconnect"}
+              </button>
+            </div>
+          )}
+          {githubNotice && (
+            <div
+              className={`workspace-toast ${githubNotice.kind === "success" ? "success" : "error"}`}
+              data-testid="github-notice"
+            >
+              <span>{githubNotice.text}</span>
+              <button onClick={() => setGithubNotice(null)}>Dismiss</button>
+            </div>
+          )}
+          {slackNotice && (
+            <div
+              className={`workspace-toast ${slackNotice.kind === "success" ? "success" : "error"}`}
+              data-testid="slack-notice"
+            >
+              <span>{slackNotice.text}</span>
+              <button onClick={() => setSlackNotice(null)}>Dismiss</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {showConnectModal && <ConnectChannelModal workspaceId={workspaceId} onClose={() => setShowConnectModal(false)} />}
       {showRepoPicker && (
-        <GithubRepoPickerModal workspaceId={workspaceId} onClose={() => setShowRepoPicker(false)} onSelected={handleRepoSelected} />
+        <GithubRepoPickerModal
+          workspaceId={workspaceId}
+          onClose={() => setShowRepoPicker(false)}
+          onSelected={handleRepoSelected}
+        />
       )}
-      {showInviteModal && <div className="access-modal-backdrop" role="presentation" onMouseDown={() => setShowInviteModal(false)}><section className="access-modal workspace-invite-modal" role="dialog" aria-modal="true" aria-labelledby="invite-title" onMouseDown={(event) => event.stopPropagation()}><header><div><p>Workspace access</p><h2 id="invite-title">Invite a teammate</h2></div><button type="button" onClick={() => setShowInviteModal(false)} aria-label="Close"><CloseGlyph /></button></header><p className="access-modal-intro">They will receive an email with a secure link to join {workspace.name}. They must sign in with the invited email address.</p><form className="workspace-invite-form" onSubmit={(event) => void sendInvitation(event)}><label htmlFor="invite-email">Email address</label><input id="invite-email" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="teammate@example.com" autoComplete="email" required autoFocus /><label htmlFor="invite-role">Workspace role</label><select id="invite-role" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as WorkspaceRole)}><option value="editor">Editor</option><option value="admin">Admin</option></select><button className="btn" type="submit" disabled={inviteState.sending || !inviteEmail.trim()}>{inviteState.sending ? "Sending…" : "Send invitation"}</button></form>{inviteState.message && <p className="workspace-invite-success" role="status">{inviteState.message}</p>}{inviteState.error && <p className="error-text" role="alert">{inviteState.error}</p>}</section></div>}
+      {showInviteModal && (
+        <div className="access-modal-backdrop" role="presentation" onMouseDown={() => setShowInviteModal(false)}>
+          <section
+            className="access-modal workspace-invite-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invite-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div>
+                <p>Workspace access</p>
+                <h2 id="invite-title">Invite a teammate</h2>
+              </div>
+              <button type="button" onClick={() => setShowInviteModal(false)} aria-label="Close">
+                <CloseGlyph />
+              </button>
+            </header>
+            <p className="access-modal-intro">
+              They will receive an email with a secure link to join {workspace.name}. They must sign in with the invited
+              email address.
+            </p>
+            <form className="workspace-invite-form" onSubmit={(event) => void sendInvitation(event)}>
+              <label htmlFor="invite-email">Email address</label>
+              <input
+                id="invite-email"
+                type="email"
+                value={inviteEmail}
+                onChange={(event) => setInviteEmail(event.target.value)}
+                placeholder="teammate@example.com"
+                autoComplete="email"
+                required
+                autoFocus
+              />
+              <label htmlFor="invite-role">Workspace role</label>
+              <select
+                id="invite-role"
+                value={inviteRole}
+                onChange={(event) => setInviteRole(event.target.value as WorkspaceRole)}
+              >
+                <option value="editor">Editor</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button className="btn" type="submit" disabled={inviteState.sending || !inviteEmail.trim()}>
+                {inviteState.sending ? "Sending…" : "Send invitation"}
+              </button>
+            </form>
+            {inviteState.message && (
+              <p className="workspace-invite-success" role="status">
+                {inviteState.message}
+              </p>
+            )}
+            {inviteState.error && (
+              <p className="error-text" role="alert">
+                {inviteState.error}
+              </p>
+            )}
+          </section>
+        </div>
+      )}
 
       <aside className="workspace-sidebar">
         <div className="workspace-sidebar-top">
-          <Link href="/" className="workspace-brand" aria-label="Nexus home"><BrandGlyph /><span>Nexus</span></Link>
+          <Link href="/" className="workspace-brand" aria-label="Nexus home">
+            <BrandGlyph />
+            <span>Nexus</span>
+          </Link>
           <div className="workspace-sidebar-icons">
             <div className="workspace-notification-wrap">
-              <button type="button" title="Notifications" onClick={() => { setNotificationsOpen((open) => !open); setNotifications((current) => current.map((item) => ({ ...item, read: true }))); void markNotificationsRead(workspaceId); }} aria-label={`Notifications${unreadNotifications ? ` (${unreadNotifications} unread)` : ""}`}><BellGlyph />{unreadNotifications > 0 && <span className="workspace-notification-badge">{unreadNotifications > 9 ? "9+" : unreadNotifications}</span>}</button>
-              {notificationsOpen && <section className="workspace-notification-panel" aria-label="Notifications">
-                <div><strong>Notifications</strong><button type="button" onClick={clearNotifications}>Clear</button></div>
-                {visibleNotifications.length ? <>{notificationsToday.length > 0 && <NotificationGroup label="Today" notifications={notificationsToday} />}{notificationsEarlier.length > 0 && <NotificationGroup label="Earlier" notifications={notificationsEarlier} />}</> : <div className="workspace-notification-empty"><strong>You&apos;re all caught up</strong><span>Updates from teammates and approved actions will appear here.</span></div>}
-              </section>}
+              <button
+                type="button"
+                title="Notifications"
+                onClick={() => {
+                  setNotificationsOpen((open) => !open);
+                  setNotifications((current) => current.map((item) => ({ ...item, read: true })));
+                  void markNotificationsRead(workspaceId);
+                }}
+                aria-label={`Notifications${unreadNotifications ? ` (${unreadNotifications} unread)` : ""}`}
+              >
+                <BellGlyph />
+                {unreadNotifications > 0 && (
+                  <span className="workspace-notification-badge">
+                    {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                  </span>
+                )}
+              </button>
+              {notificationsOpen && (
+                <section className="workspace-notification-panel" aria-label="Notifications">
+                  <div>
+                    <strong>Notifications</strong>
+                    <button type="button" onClick={clearNotifications}>
+                      Clear
+                    </button>
+                  </div>
+                  {visibleNotifications.length ? (
+                    <>
+                      {notificationsToday.length > 0 && (
+                        <NotificationGroup label="Today" notifications={notificationsToday} />
+                      )}
+                      {notificationsEarlier.length > 0 && (
+                        <NotificationGroup label="Earlier" notifications={notificationsEarlier} />
+                      )}
+                    </>
+                  ) : (
+                    <div className="workspace-notification-empty">
+                      <strong>You&apos;re all caught up</strong>
+                      <span>Updates from teammates and approved actions will appear here.</span>
+                    </div>
+                  )}
+                </section>
+              )}
             </div>
-            {workspaceRole === "admin" && <div className="workspace-permission-request-wrap"><button type="button" title="Permission requests" onClick={() => setPermissionRequestsOpen((open) => !open)} aria-label={`Permission requests${permissionRequests.length ? ` (${permissionRequests.length} pending)` : ""}`}><KeyGlyph />{permissionRequests.length > 0 && <span className="workspace-notification-badge">{permissionRequests.length > 9 ? "9+" : permissionRequests.length}</span>}</button>{permissionRequestsOpen && <section className="workspace-permission-request-panel" aria-label="Pending permission requests"><header><div><p>Requests</p><strong>Pending permissions</strong></div><span>{permissionRequests.length}</span></header>{permissionRequests.length ? permissionRequests.map((request) => <article key={request.id}><dl><div><dt>Requested by</dt><dd>{request.display_name} <small>@{request.username}</small></dd></div><div><dt>Capability</dt><dd>{permissionLabel(request.permission)}</dd></div><div><dt>Reason</dt><dd>{request.reason}</dd></div></dl><aside><button className="btn" onClick={() => void decidePermissionRequest(request, "approve")}>Approve</button><button className="btn secondary permission-reject" onClick={() => void decidePermissionRequest(request, "reject")}>Reject</button></aside></article>) : <p className="workspace-notification-empty">No pending permission requests.</p>}</section>}</div>}
-            {canConnectTools && <button type="button" title="Workspace integrations" onClick={() => setShowConnectModal(true)} aria-label="Add integration"><PlugGlyph /></button>}
+            {workspaceRole === "admin" && (
+              <div className="workspace-permission-request-wrap">
+                <button
+                  type="button"
+                  title="Permission requests"
+                  onClick={() => setPermissionRequestsOpen((open) => !open)}
+                  aria-label={`Permission requests${permissionRequests.length ? ` (${permissionRequests.length} pending)` : ""}`}
+                >
+                  <KeyGlyph />
+                  {permissionRequests.length > 0 && (
+                    <span className="workspace-notification-badge">
+                      {permissionRequests.length > 9 ? "9+" : permissionRequests.length}
+                    </span>
+                  )}
+                </button>
+                {permissionRequestsOpen && (
+                  <section className="workspace-permission-request-panel" aria-label="Pending permission requests">
+                    <header>
+                      <div>
+                        <p>Requests</p>
+                        <strong>Pending permissions</strong>
+                      </div>
+                      <span>{permissionRequests.length}</span>
+                    </header>
+                    {permissionRequests.length ? (
+                      permissionRequests.map((request) => (
+                        <article key={request.id}>
+                          <dl>
+                            <div>
+                              <dt>Requested by</dt>
+                              <dd>
+                                {request.display_name} <small>@{request.username}</small>
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Capability</dt>
+                              <dd>{permissionLabel(request.permission)}</dd>
+                            </div>
+                            <div>
+                              <dt>Reason</dt>
+                              <dd>{request.reason}</dd>
+                            </div>
+                          </dl>
+                          <aside>
+                            <button className="btn" onClick={() => void decidePermissionRequest(request, "approve")}>
+                              Approve
+                            </button>
+                            <button
+                              className="btn secondary permission-reject"
+                              onClick={() => void decidePermissionRequest(request, "reject")}
+                            >
+                              Reject
+                            </button>
+                          </aside>
+                        </article>
+                      ))
+                    ) : (
+                      <p className="workspace-notification-empty">No pending permission requests.</p>
+                    )}
+                  </section>
+                )}
+              </div>
+            )}
+            {canConnectTools && (
+              <button
+                type="button"
+                title="Workspace integrations"
+                onClick={() => setShowConnectModal(true)}
+                aria-label="Add integration"
+              >
+                <PlugGlyph />
+              </button>
+            )}
           </div>
         </div>
         <div className="workspace-sidebar-scroll">
-        <div className="workspace-search"><SearchGlyph /><input value={conversationSearch} onChange={(event) => setConversationSearch(event.target.value)} placeholder="Search this conversation" aria-label="Search this conversation" /></div>
-        <button
-          className="workspace-new"
-          onClick={startNewConversation}
-        >
-          <PlusGlyph /> New chat
-        </button>
-
-        <nav className="workspace-nav" aria-label="Workspace navigation">
-          <a className="active" href="#conversation"><ChatGlyph /> Conversation</a>
-          <Link href={`/w/${workspaceId}/overview`}><GridGlyph /> Overview</Link>
-          <Link href={`/w/${workspaceId}/audit`}><ActivityGlyph /> Activity</Link>
-          <Link href={`/w/${workspaceId}/integrations`}><PlugGlyph /> Integrations</Link>
-          <Link href={`/w/${workspaceId}/observability`}><ActivityGlyph /> Observability</Link>
-          <Link href={`/w/${workspaceId}/notifications`}><BellGlyph /> Notifications</Link>
-          <Link href={`/w/${workspaceId}/agents`}><AgentGlyph /> Agents</Link>
-          <Link href={`/w/${workspaceId}/workflows`}><ActivityGlyph /> Workflows</Link>
-          <Link href={`/w/${workspaceId}/memory`}><MemoryGlyph /> Memory</Link>
-          <Link href={`/w/${workspaceId}/artifacts`}><ArtifactGlyph /> Artifacts</Link>
-        </nav>
-
-        <div className="workspace-conversations" aria-label="Conversations">
-          <button type="button" className="workspace-conversation-toggle" aria-expanded={conversationsOpen} onClick={() => setConversationsOpen((open) => !open)}>
-            <span>Conversations</span><ChevronGlyph direction={conversationsOpen ? "up" : "down"} />
+          <div className="workspace-search">
+            <SearchGlyph />
+            <input
+              value={conversationSearch}
+              onChange={(event) => setConversationSearch(event.target.value)}
+              placeholder="Search this conversation"
+              aria-label="Search this conversation"
+            />
+          </div>
+          <button className="workspace-new" onClick={startNewConversation}>
+            <PlusGlyph /> New chat
           </button>
-          {conversationsOpen && conversations.map((conversation) => (
-            <div className={`workspace-conversation-row${conversation.id === selectedConversationId ? " active" : ""}${conversation.archivedAt ? " archived" : ""}`} key={conversation.id}>
-              <button type="button" className="workspace-conversation-item" onClick={() => selectConversation(conversation.id)} title={conversation.title}>
-                <span>{conversation.pinnedAt && <b className="workspace-pin" aria-label="Pinned">⌖</b>}{conversation.title}</span>{conversation.archivedAt && <small className="workspace-archived-label">Archived</small>}{chat.unreadConversationIds.includes(conversation.id) && <i className="workspace-unread-dot" aria-label="Unread messages" />}
-              </button>
-              {canEdit && <div className="workspace-conversation-menu"><button type="button" className="workspace-conversation-more" aria-label={`More options for ${conversation.title}`} aria-expanded={conversationMenu === conversation.id} onClick={() => setConversationMenu((current) => current === conversation.id ? null : conversation.id)}><MoreGlyph /></button>{conversationMenu === conversation.id && <div className="workspace-conversation-popover"><button type="button" onClick={() => renameConversation(conversation)}>Rename</button><button type="button" onClick={() => void changeConversation(conversation, { pinned: !conversation.pinnedAt })}>{conversation.pinnedAt ? "Unpin chat" : "Pin chat"}</button><button type="button" onClick={() => void changeConversation(conversation, { archived: !conversation.archivedAt })}>{conversation.archivedAt ? "Restore chat" : "Archive chat"}</button><button type="button" className="danger" onClick={() => void removeConversation(conversation)}>Delete chat</button></div>}</div>}
+
+          <nav className="workspace-nav" aria-label="Workspace navigation">
+            <a className="active" href="#conversation">
+              <ChatGlyph /> Conversation
+            </a>
+            <Link href={`/w/${workspaceId}/overview`}>
+              <GridGlyph /> Overview
+            </Link>
+            <Link href={`/w/${workspaceId}/audit`}>
+              <ActivityGlyph /> Activity
+            </Link>
+            <Link href={`/w/${workspaceId}/integrations`}>
+              <PlugGlyph /> Integrations
+            </Link>
+            <Link href={`/w/${workspaceId}/observability`}>
+              <ActivityGlyph /> Observability
+            </Link>
+            <Link href={`/w/${workspaceId}/notifications`}>
+              <BellGlyph /> Notifications
+            </Link>
+            <Link href={`/w/${workspaceId}/agents`}>
+              <AgentGlyph /> Agents
+            </Link>
+            <Link href={`/w/${workspaceId}/workflows`}>
+              <ActivityGlyph /> Workflows
+            </Link>
+            <Link href={`/w/${workspaceId}/memory`}>
+              <MemoryGlyph /> Memory
+            </Link>
+            <Link href={`/w/${workspaceId}/artifacts`}>
+              <ArtifactGlyph /> Artifacts
+            </Link>
+          </nav>
+
+          <div className="workspace-conversations" aria-label="Conversations">
+            <button
+              type="button"
+              className="workspace-conversation-toggle"
+              aria-expanded={conversationsOpen}
+              onClick={() => setConversationsOpen((open) => !open)}
+            >
+              <span>Conversations</span>
+              <ChevronGlyph direction={conversationsOpen ? "up" : "down"} />
+            </button>
+            {conversationsOpen &&
+              conversations.map((conversation) => (
+                <div
+                  className={`workspace-conversation-row${conversation.id === selectedConversationId ? " active" : ""}${conversation.archivedAt ? " archived" : ""}`}
+                  key={conversation.id}
+                >
+                  <button
+                    type="button"
+                    className="workspace-conversation-item"
+                    onClick={() => selectConversation(conversation.id)}
+                    title={conversation.title}
+                  >
+                    <span>
+                      {conversation.pinnedAt && (
+                        <b className="workspace-pin" aria-label="Pinned">
+                          ⌖
+                        </b>
+                      )}
+                      {conversation.title}
+                    </span>
+                    {conversation.archivedAt && <small className="workspace-archived-label">Archived</small>}
+                    {chat.unreadConversationIds.includes(conversation.id) && (
+                      <i className="workspace-unread-dot" aria-label="Unread messages" />
+                    )}
+                  </button>
+                  {canEdit && (
+                    <div className="workspace-conversation-menu">
+                      <button
+                        type="button"
+                        className="workspace-conversation-more"
+                        aria-label={`More options for ${conversation.title}`}
+                        aria-expanded={conversationMenu === conversation.id}
+                        onClick={() =>
+                          setConversationMenu((current) => (current === conversation.id ? null : conversation.id))
+                        }
+                      >
+                        <MoreGlyph />
+                      </button>
+                      {conversationMenu === conversation.id && (
+                        <div className="workspace-conversation-popover">
+                          <button type="button" onClick={() => renameConversation(conversation)}>
+                            Rename
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void changeConversation(conversation, { pinned: !conversation.pinnedAt })}
+                          >
+                            {conversation.pinnedAt ? "Unpin chat" : "Pin chat"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void changeConversation(conversation, { archived: !conversation.archivedAt })
+                            }
+                          >
+                            {conversation.archivedAt ? "Restore chat" : "Archive chat"}
+                          </button>
+                          <button
+                            type="button"
+                            className="danger"
+                            onClick={() => void removeConversation(conversation)}
+                          >
+                            Delete chat
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+          </div>
+
+          <div className="workspace-side-section">
+            <div className="workspace-side-heading">
+              <span>Connected tools</span>
             </div>
-          ))}
-        </div>
+            {integrations.length > 0 && integrations.some((i) => connectedChannelLabel(i))
+              ? integrations.map((integration) => {
+                  const label = connectedChannelLabel(integration);
+                  if (!label) return null;
+                  return (
+                    <div
+                      className="workspace-tool-row"
+                      key={integration.id ?? integration.type}
+                      data-testid={`connected-${integration.type}`}
+                    >
+                      <Link className="workspace-tool" href={`/w/${workspaceId}/integrations`}>
+                        <span className="channel-glyph">
+                          <ToolIcon tool={integration.type} />
+                        </span>
+                        <span>
+                          {label}
+                          <small className="tool-connector">
+                            Connected by{" "}
+                            {integration.ownerUserId === user.id
+                              ? "You"
+                              : (integration.connectedByName ?? "workspace member")}
+                          </small>
+                        </span>
+                        <small className="tool-health connected">Connected</small>
+                      </Link>
+                      {canConnectTools && integration.ownerUserId === user.id && (
+                        <div className="workspace-tool-menu">
+                          <button
+                            type="button"
+                            className="workspace-tool-more"
+                            aria-label={`Manage ${integration.type}`}
+                            aria-expanded={toolMenu === integration.type}
+                            onClick={() =>
+                              setToolMenu((current) => (current === integration.type ? null : integration.type))
+                            }
+                          >
+                            <MoreGlyph />
+                          </button>
+                          {toolMenu === integration.type && (
+                            <div className="workspace-tool-popover">
+                              {integration.type === "github" && (
+                                <button type="button" onClick={changeGithubConnection}>
+                                  Change
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="danger"
+                                onClick={() => void removeIntegration(integration)}
+                              >
+                                Disconnect
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              : null}
+            <button className="workspace-empty-tool" onClick={() => setShowConnectModal(true)}>
+              Connect your tools +
+            </button>
+          </div>
 
-        <div className="workspace-side-section">
-          <div className="workspace-side-heading"><span>Connected tools</span></div>
-          {integrations.length > 0 && integrations.some((i) => connectedChannelLabel(i)) ? integrations.map((integration) => {
-            const label = connectedChannelLabel(integration);
-            if (!label) return null;
-            return <div className="workspace-tool-row" key={integration.id ?? integration.type} data-testid={`connected-${integration.type}`}>
-              <Link className="workspace-tool" href={`/w/${workspaceId}/integrations`}><span className="channel-glyph"><ToolIcon tool={integration.type} /></span><span>{label}<small className="tool-connector">Connected by {integration.ownerUserId === user.id ? "You" : integration.connectedByName ?? "workspace member"}</small></span><small className="tool-health connected">Connected</small></Link>
-              {canConnectTools && integration.ownerUserId === user.id && <div className="workspace-tool-menu"><button type="button" className="workspace-tool-more" aria-label={`Manage ${integration.type}`} aria-expanded={toolMenu === integration.type} onClick={() => setToolMenu((current) => current === integration.type ? null : integration.type)}><MoreGlyph /></button>{toolMenu === integration.type && <div className="workspace-tool-popover">{integration.type === "github" && <button type="button" onClick={changeGithubConnection}>Change</button>}<button type="button" className="danger" onClick={() => void removeIntegration(integration)}>Disconnect</button></div>}</div>}
-            </div>;
-          }) : null}
-          <button className="workspace-empty-tool" onClick={() => setShowConnectModal(true)}>Connect your tools +</button>
-        </div>
-
-        <div className="workspace-side-section workspace-members">
-          <div className="workspace-side-heading"><span>In this workspace</span>{workspaceRole === "admin" ? <button className="workspace-manage-members" onClick={() => setShowAccessManager(true)}>Manage</button> : <span>{workspaceRole}</span>}</div>
-          {chat.workspaceParticipants.map((p) => (
-            <div className="participant" key={p.clientId} data-testid="participant">
-              <span className="avatar" style={{ background: colorForName(p.displayName) }}>{initialsForName(p.displayName)}</span>
-              <span>{p.displayName}{p.displayName === displayName ? " (you)" : ""}{p.activeConversationId && p.activeConversationId !== selectedConversationId ? <small> · viewing another chat</small> : ""}</span>
-              {p.activeConversationId && p.activeConversationId !== selectedConversationId && <button className="workspace-follow" onClick={() => selectConversation(p.activeConversationId!)}>Follow</button>}<span className="dot" />
+          <div className="workspace-side-section workspace-members">
+            <div className="workspace-side-heading">
+              <span>In this workspace</span>
+              {workspaceRole === "admin" ? (
+                <button className="workspace-manage-members" onClick={() => setShowAccessManager(true)}>
+                  Manage
+                </button>
+              ) : (
+                <span>{workspaceRole}</span>
+              )}
             </div>
-          ))}
-        </div>
-
+            {chat.workspaceParticipants.map((p) => (
+              <div className="participant" key={p.clientId} data-testid="participant">
+                <span className="avatar" style={{ background: colorForName(p.displayName) }}>
+                  {initialsForName(p.displayName)}
+                </span>
+                <span>
+                  {p.displayName}
+                  {p.displayName === displayName ? " (you)" : ""}
+                  {p.activeConversationId && p.activeConversationId !== selectedConversationId ? (
+                    <small> · viewing another chat</small>
+                  ) : (
+                    ""
+                  )}
+                </span>
+                {p.activeConversationId && p.activeConversationId !== selectedConversationId && (
+                  <button className="workspace-follow" onClick={() => selectConversation(p.activeConversationId!)}>
+                    Follow
+                  </button>
+                )}
+                <span className="dot" />
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="workspace-account">
-          <span className="workspace-account-avatar" style={{ background: colorForName(displayName) }}>{initialsForName(displayName)}</span>
-          <span><strong>{displayName}</strong><small>{user.username}</small></span>
-          <button onClick={async () => { await logout(); window.location.href = "/"; }} aria-label="Sign out" title="Sign out"><SignOutGlyph /></button>
+          <span className="workspace-account-avatar" style={{ background: colorForName(displayName) }}>
+            {initialsForName(displayName)}
+          </span>
+          <span>
+            <strong>{displayName}</strong>
+            <small>{user.username}</small>
+          </span>
+          <button
+            onClick={async () => {
+              await logout();
+              window.location.href = "/";
+            }}
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            <SignOutGlyph />
+          </button>
         </div>
       </aside>
 
       <main className="workspace-main" id="conversation">
         <header className="workspace-main-header">
-          <div><p className="workspace-kicker">Shared workspace</p><h1>{workspace.name}</h1></div>
+          <div>
+            <p className="workspace-kicker">Shared workspace</p>
+            <h1>{workspace.name}</h1>
+          </div>
           <div className="workspace-header-actions">
-            {workspaceRole === "admin" && <button className="workspace-invite" onClick={() => { setInviteState({ sending: false, message: null, error: null }); setShowInviteModal(true); }}><LinkGlyph /> Invite teammates</button>}
-            {workspaceRole === "admin" && <button className="workspace-invite" onClick={() => setShowAccessManager(true)}>Manage access</button>}
-            <button className="workspace-invite workspace-leave" onClick={() => void leaveCurrentWorkspace()}>Leave workspace</button>
+            {workspaceRole === "admin" && (
+              <button
+                className="workspace-invite"
+                onClick={() => {
+                  setInviteState({ sending: false, message: null, error: null });
+                  setShowInviteModal(true);
+                }}
+              >
+                <LinkGlyph /> Invite teammates
+              </button>
+            )}
+            {workspaceRole === "admin" && (
+              <button className="workspace-invite" onClick={() => setShowAccessManager(true)}>
+                Manage access
+              </button>
+            )}
+            <button className="workspace-invite workspace-leave" onClick={() => void leaveCurrentWorkspace()}>
+              Leave workspace
+            </button>
           </div>
         </header>
 
         <section className="workspace-overview" aria-label="Workspace overview">
-          <div><span>Team</span><strong>{workspaceMembers.length || 1} {workspaceMembers.length === 1 ? "member" : "members"}</strong></div>
-          <div><span>Tools</span><strong>{integrations.length ? `${integrations.length} connected` : "None connected"}</strong></div>
-          <div><span>Conversations</span><strong>{conversations.length || 1} {conversations.length === 1 ? "chat" : "chats"}</strong></div>
-          <Link href={`/w/${workspaceId}/integrations`} className="workspace-overview-link">Manage tools →</Link>
+          <div>
+            <span>Team</span>
+            <strong>
+              {workspaceMembers.length || 1} {workspaceMembers.length === 1 ? "member" : "members"}
+            </strong>
+          </div>
+          <div>
+            <span>Tools</span>
+            <strong>{integrations.length ? `${integrations.length} connected` : "None connected"}</strong>
+          </div>
+          <div>
+            <span>Conversations</span>
+            <strong>
+              {conversations.length || 1} {conversations.length === 1 ? "chat" : "chats"}
+            </strong>
+          </div>
+          <Link href={`/w/${workspaceId}/integrations`} className="workspace-overview-link">
+            Manage tools →
+          </Link>
         </section>
 
         <div className="workspace-chat-scroll" data-testid="message-list">
@@ -681,7 +1258,9 @@ export default function WorkspaceRoomPage() {
             <section className="workspace-empty-state">
               <p className="workspace-empty-eyebrow">Your shared AI workspace</p>
               <h2>What&apos;s next, {greetingName}?</h2>
-              <p className="workspace-empty-copy">Choose an agent, ask a question, and approve actions only when your team is ready.</p>
+              <p className="workspace-empty-copy">
+                Choose an agent, ask a question, and approve actions only when your team is ready.
+              </p>
               <form className="workspace-hero-composer" onSubmit={handleSend}>
                 <input
                   ref={composerInputRef}
@@ -693,8 +1272,33 @@ export default function WorkspaceRoomPage() {
                   autoComplete="off"
                 />
                 <div className="workspace-hero-composer-footer">
-                  <AgentSelector selected={selectedAgent} selectedName={selectedAgentInfo.name} customName={configuredAgent?.name} customAgents={workspaceAgents.filter((agent) => agent.status === "published")} selectedCustomId={configuredAgent?.id} open={agentPickerOpen} onToggle={() => setAgentPickerOpen((open) => !open)} onSelect={(agent) => { setSelectedAgent(agent); setConfiguredAgent(null); setAgentPickerOpen(false); }} onSelectCustom={(agent) => { setConfiguredAgent(agent); setSelectedAgent(agent.baseAgent); setAgentPickerOpen(false); }} />
-                  <button type="submit" data-testid="send-btn" disabled={chat.status !== "open" || !canEdit || !draft.trim()} aria-label="Start chat"><ArrowGlyph /></button>
+                  <AgentSelector
+                    selected={selectedAgent}
+                    selectedName={selectedAgentInfo.name}
+                    customName={configuredAgent?.name}
+                    customAgents={workspaceAgents.filter((agent) => agent.status === "published")}
+                    selectedCustomId={configuredAgent?.id}
+                    open={agentPickerOpen}
+                    onToggle={() => setAgentPickerOpen((open) => !open)}
+                    onSelect={(agent) => {
+                      setSelectedAgent(agent);
+                      setConfiguredAgent(null);
+                      setAgentPickerOpen(false);
+                    }}
+                    onSelectCustom={(agent) => {
+                      setConfiguredAgent(agent);
+                      setSelectedAgent(agent.baseAgent);
+                      setAgentPickerOpen(false);
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    data-testid="send-btn"
+                    disabled={chat.status !== "open" || !canEdit || !draft.trim()}
+                    aria-label="Start chat"
+                  >
+                    <ArrowGlyph />
+                  </button>
                 </div>
               </form>
               <StarterPrompts
@@ -708,65 +1312,144 @@ export default function WorkspaceRoomPage() {
                 onConnect={() => setShowConnectModal(true)}
               />
               <section className="workspace-onboarding" aria-label="Getting started">
-                <div><p>Getting started</p><span>{onboardingSteps.filter((step) => step.complete).length} of {onboardingSteps.length} complete</span></div>
-                <ol>{onboardingSteps.map((step) => <li key={step.label} className={step.complete ? "complete" : ""}>{step.complete ? <span aria-label="Complete">✓</span> : <span aria-hidden>○</span>}{step.action && !step.complete ? <button type="button" onClick={step.action}>{step.label}</button> : <em>{step.label}</em>}</li>)}</ol>
+                <div>
+                  <p>Getting started</p>
+                  <span>
+                    {onboardingSteps.filter((step) => step.complete).length} of {onboardingSteps.length} complete
+                  </span>
+                </div>
+                <ol>
+                  {onboardingSteps.map((step) => (
+                    <li key={step.label} className={step.complete ? "complete" : ""}>
+                      {step.complete ? <span aria-label="Complete">✓</span> : <span aria-hidden>○</span>}
+                      {step.action && !step.complete ? (
+                        <button type="button" onClick={step.action}>
+                          {step.label}
+                        </button>
+                      ) : (
+                        <em>{step.label}</em>
+                      )}
+                    </li>
+                  ))}
+                </ol>
               </section>
             </section>
-          ) : visibleMessages.map((m) => {
-            if (m.role === "system") {
+          ) : (
+            visibleMessages.map((m) => {
+              if (m.role === "system") {
+                return (
+                  <div className="msg system" key={m.id} data-testid="chat-message">
+                    <div className="bubble">{m.content}</div>
+                  </div>
+                );
+              }
+              const isAgent = m.role === "agent";
+              const agentIdentity = isAgent ? identityForAgentMessage(m.authorName) : null;
+              // @-mention / handoff mechanics (docs/spec.md Phase 2): a
+              // 'user' message that @-mentioned only a teammate (never the
+              // agent) never triggered a turn -- see server.ts's WebSocket
+              // handler -- so it's marked here as handed off instead of
+              // looking like an ordinary message the agent silently ignored.
+              // Defensive: mentionsAgent/mentionedUserIds are only present
+              // once the chat-server is running the build that added them
+              // (see the migration + rebuild steps this feature needs) --
+              // fall back to "not a handoff, mentions nobody" rather than
+              // crash the whole message list on a stale/partial response.
+              const isHandoff = m.role === "user" && m.mentionsAgent === false;
+              const mentionsCurrentUser = (m.mentionedUserIds ?? []).includes(user.id);
+              // Prefer the immutable user id. The name fallback keeps older messages aligned for their author.
+              const isCurrentUserMessage =
+                m.role === "user" && (m.authorUserId ? m.authorUserId === user.id : m.authorName === displayName);
               return (
-                <div className="msg system" key={m.id} data-testid="chat-message">
-                  <div className="bubble">{m.content}</div>
+                <div
+                  className={`msg${isCurrentUserMessage ? " own" : ""}${mentionsCurrentUser ? " mentions-you" : ""}`}
+                  key={m.id}
+                  data-testid="chat-message"
+                >
+                  <span
+                    className={`avatar ${isAgent ? "agent" : ""}`}
+                    style={isAgent ? undefined : { background: colorForName(m.authorName) }}
+                  >
+                    {isAgent && agentIdentity ? (
+                      AGENTS.some((agent) => agent.name === agentIdentity.name) ? (
+                        <AgentIcon agent={agentIdentity.kind} />
+                      ) : (
+                        <CustomAgentLogo name={agentIdentity.name} />
+                      )
+                    ) : (
+                      initialsForName(m.authorName)
+                    )}
+                  </span>
+                  <div className="msg-body">
+                    <div className="meta">
+                      <span className={`author ${isAgent ? "agent" : ""}`}>
+                        {agentIdentity?.name ?? (m.authorName || roleLabel(m.role))}
+                      </span>
+                      <span>· {formatTime(m.createdAt)}</span>
+                      {isHandoff && (
+                        <span
+                          className="handoff-badge"
+                          data-testid="handoff-badge"
+                          title="Directed at a teammate -- the agent didn't see this as a request"
+                        >
+                          handed off
+                        </span>
+                      )}
+                    </div>
+                    <div className="bubble">
+                      {renderWithMentions(
+                        m.content,
+                        chat.participants.map((p) => p.displayName),
+                      )}
+                    </div>
+                  </div>
                 </div>
               );
-            }
-            const isAgent = m.role === "agent";
-            const agentIdentity = isAgent ? identityForAgentMessage(m.authorName) : null;
-            // @-mention / handoff mechanics (docs/spec.md Phase 2): a
-            // 'user' message that @-mentioned only a teammate (never the
-            // agent) never triggered a turn -- see server.ts's WebSocket
-            // handler -- so it's marked here as handed off instead of
-            // looking like an ordinary message the agent silently ignored.
-            // Defensive: mentionsAgent/mentionedUserIds are only present
-            // once the chat-server is running the build that added them
-            // (see the migration + rebuild steps this feature needs) --
-            // fall back to "not a handoff, mentions nobody" rather than
-            // crash the whole message list on a stale/partial response.
-            const isHandoff = m.role === "user" && m.mentionsAgent === false;
-            const mentionsCurrentUser = (m.mentionedUserIds ?? []).includes(user.id);
-            // Prefer the immutable user id. The name fallback keeps older messages aligned for their author.
-            const isCurrentUserMessage = m.role === "user" && (m.authorUserId ? m.authorUserId === user.id : m.authorName === displayName);
-            return (
-              <div className={`msg${isCurrentUserMessage ? " own" : ""}${mentionsCurrentUser ? " mentions-you" : ""}`} key={m.id} data-testid="chat-message">
-                <span className={`avatar ${isAgent ? "agent" : ""}`} style={isAgent ? undefined : { background: colorForName(m.authorName) }}>
-                  {isAgent && agentIdentity ? (AGENTS.some((agent) => agent.name === agentIdentity.name) ? <AgentIcon agent={agentIdentity.kind} /> : <CustomAgentLogo name={agentIdentity.name} />) : initialsForName(m.authorName)}
-                </span>
-                <div className="msg-body">
-                  <div className="meta">
-                    <span className={`author ${isAgent ? "agent" : ""}`}>{agentIdentity?.name ?? (m.authorName || roleLabel(m.role))}</span>
-                    <span>· {formatTime(m.createdAt)}</span>
-                    {isHandoff && (
-                      <span className="handoff-badge" data-testid="handoff-badge" title="Directed at a teammate -- the agent didn't see this as a request">
-                        handed off
-                      </span>
-                    )}
-                  </div>
-                  <div className="bubble">{renderWithMentions(m.content, chat.participants.map((p) => p.displayName))}</div>
-                </div>
-              </div>
-            );
-          })}
-          {conversationSearch && visibleMessages.length === 0 && <p className="workspace-no-results">No messages match “{conversationSearch}”.</p>}
+            })
+          )}
+          {conversationSearch && visibleMessages.length === 0 && (
+            <p className="workspace-no-results">No messages match “{conversationSearch}”.</p>
+          )}
           <div ref={messagesEndRef} />
         </div>
 
-        {!canUseSelectedProvider && <AccessNotice workspaceId={workspaceId} access={access} permission={selectedAgent as "github" | "slack" | "linear" | "notion" | "figma"} message={`Your workspace role cannot use the ${selectedAgentInfo.name} provider in chat or workflows.`} />}
+        {!canUseSelectedProvider && (
+          <AccessNotice
+            workspaceId={workspaceId}
+            access={access}
+            permission={selectedAgent as "github" | "slack" | "linear" | "notion" | "figma"}
+            message={`Your workspace role cannot use the ${selectedAgentInfo.name} provider in chat or workflows.`}
+          />
+        )}
         {pendingActions.length > 0 && (
           <div className="pending-actions-list" data-testid="pending-actions-list">
-            <div className="pending-actions-summary"><span>{pendingActions.length} approval request{pendingActions.length === 1 ? "" : "s"} awaiting review</span>{pendingActions.length > 1 && <button type="button" onClick={() => setShowAllPendingActions((open) => !open)}>{showAllPendingActions ? "Show latest" : `Review all (${pendingActions.length})`}</button>}</div>
+            <div className="pending-actions-summary">
+              <span>
+                {pendingActions.length} approval request{pendingActions.length === 1 ? "" : "s"} awaiting review
+              </span>
+              {pendingActions.length > 1 && (
+                <button type="button" onClick={() => setShowAllPendingActions((open) => !open)}>
+                  {showAllPendingActions ? "Show latest" : `Review all (${pendingActions.length})`}
+                </button>
+              )}
+            </div>
             {(showAllPendingActions ? pendingActions : pendingActions.slice(0, 1)).map((a) => (
-                <PendingActionCard key={a.id} workspaceId={workspaceId} action={a} actorName={displayName} canApprove={canApproveActions} onRequestAccess={<AccessNotice workspaceId={workspaceId} access={access} permission="approveActions" message="You can review this request, but confirming external actions requires the “Approve actions” permission." />} />
-              ))}
+              <PendingActionCard
+                key={a.id}
+                workspaceId={workspaceId}
+                action={a}
+                actorName={displayName}
+                canApprove={canApproveActions}
+                onRequestAccess={
+                  <AccessNotice
+                    workspaceId={workspaceId}
+                    access={access}
+                    permission="approveActions"
+                    message="You can review this request, but confirming external actions requires the “Approve actions” permission."
+                  />
+                }
+              />
+            ))}
           </div>
         )}
 
@@ -781,67 +1464,127 @@ export default function WorkspaceRoomPage() {
           </div>
         )}
 
-        {!isNewWorkspaceConversation && <div className="workspace-composer-wrap">
-        <StarterPrompts
-          compact
-          agent={selectedAgent}
-          agentName={selectedAgentInfo.name}
-          connected={selectedAgentConnected}
-          canEdit={canEdit}
-          chatOpen={chat.status === "open"}
-          onChoose={useStarterTemplate}
-          canConnect={canConnectTools}
-                onConnect={() => setShowConnectModal(true)}
-        />
-        <form className="composer" onSubmit={handleSend}>
-          <input
-            ref={composerInputRef}
-            data-testid="chat-input"
-            placeholder={
-              chat.status !== "open"
-                ? "Connecting…"
-                : chat.agentBusy && !draftIsHandoff
-                  ? "Waiting for the agent to finish… (or @mention a teammate to hand this off now)"
-                  : "Message the workspace… (@mention the agent or a teammate)"
-            }
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            disabled={chat.status !== "open" || !canEdit || (chat.agentBusy && !draftIsHandoff)}
-            autoComplete="off"
+        {!isNewWorkspaceConversation && (
+          <div className="workspace-composer-wrap">
+            <StarterPrompts
+              compact
+              agent={selectedAgent}
+              agentName={selectedAgentInfo.name}
+              connected={selectedAgentConnected}
+              canEdit={canEdit}
+              chatOpen={chat.status === "open"}
+              onChoose={useStarterTemplate}
+              canConnect={canConnectTools}
+              onConnect={() => setShowConnectModal(true)}
+            />
+            <form className="composer" onSubmit={handleSend}>
+              <input
+                ref={composerInputRef}
+                data-testid="chat-input"
+                placeholder={
+                  chat.status !== "open"
+                    ? "Connecting…"
+                    : chat.agentBusy && !draftIsHandoff
+                      ? "Waiting for the agent to finish… (or @mention a teammate to hand this off now)"
+                      : "Message the workspace… (@mention the agent or a teammate)"
+                }
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                disabled={chat.status !== "open" || !canEdit || (chat.agentBusy && !draftIsHandoff)}
+                autoComplete="off"
+              />
+              <AgentSelector
+                selected={selectedAgent}
+                selectedName={selectedAgentInfo.name}
+                customName={configuredAgent?.name}
+                customAgents={workspaceAgents.filter((agent) => agent.status === "published")}
+                selectedCustomId={configuredAgent?.id}
+                open={agentPickerOpen}
+                onToggle={() => setAgentPickerOpen((open) => !open)}
+                onSelect={(agent) => {
+                  setSelectedAgent(agent);
+                  setConfiguredAgent(null);
+                  setAgentPickerOpen(false);
+                }}
+                onSelectCustom={(agent) => {
+                  setConfiguredAgent(agent);
+                  setSelectedAgent(agent.baseAgent);
+                  setAgentPickerOpen(false);
+                }}
+                compact
+              />
+              <button
+                className="composer-send"
+                type="submit"
+                data-testid="send-btn"
+                disabled={chat.status !== "open" || !canEdit || (chat.agentBusy && !draftIsHandoff) || !draft.trim()}
+              >
+                <ArrowGlyph />
+              </button>
+            </form>
+            <p className="workspace-composer-note">
+              Messages are shared with everyone in {workspace.name}. Use @agent or @mention a teammate to direct the
+              next step.
+            </p>
+          </div>
+        )}
+        {showAccessManager && (
+          <AccessManager
+            workspaceId={workspaceId}
+            members={workspaceMembers}
+            onClose={() => setShowAccessManager(false)}
+            onChanged={setWorkspaceMembers}
           />
-          <AgentSelector selected={selectedAgent} selectedName={selectedAgentInfo.name} customName={configuredAgent?.name} customAgents={workspaceAgents.filter((agent) => agent.status === "published")} selectedCustomId={configuredAgent?.id} open={agentPickerOpen} onToggle={() => setAgentPickerOpen((open) => !open)} onSelect={(agent) => { setSelectedAgent(agent); setConfiguredAgent(null); setAgentPickerOpen(false); }} onSelectCustom={(agent) => { setConfiguredAgent(agent); setSelectedAgent(agent.baseAgent); setAgentPickerOpen(false); }} compact />
-          <button className="composer-send"
-            type="submit"
-            data-testid="send-btn"
-            disabled={chat.status !== "open" || !canEdit || (chat.agentBusy && !draftIsHandoff) || !draft.trim()}
-          >
-            <ArrowGlyph />
-          </button>
-        </form>
-        <p className="workspace-composer-note">Messages are shared with everyone in {workspace.name}. Use @agent or @mention a teammate to direct the next step.</p>
-        </div>}
-        {showAccessManager && <AccessManager workspaceId={workspaceId} members={workspaceMembers} onClose={() => setShowAccessManager(false)} onChanged={setWorkspaceMembers} />}
+        )}
       </main>
     </div>
   );
 }
 
 function BrandGlyph() {
-  return <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <ellipse cx="12" cy="12" rx="10" ry="4.4" stroke="#2F5FED" strokeWidth="1.7" transform="rotate(-30 12 12)" />
-    <ellipse cx="12" cy="12" rx="10" ry="4.4" stroke="#8D70FF" strokeWidth="1.7" transform="rotate(30 12 12)" />
-    <circle cx="12" cy="12" r="3.35" fill="#17244A" />
-    <circle cx="19.35" cy="5.8" r="1.8" fill="#2F5FED" />
-    <circle cx="4.65" cy="18.2" r="1.8" fill="#8D70FF" />
-  </svg>;
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <ellipse cx="12" cy="12" rx="10" ry="4.4" stroke="#2F5FED" strokeWidth="1.7" transform="rotate(-30 12 12)" />
+      <ellipse cx="12" cy="12" rx="10" ry="4.4" stroke="#8D70FF" strokeWidth="1.7" transform="rotate(30 12 12)" />
+      <circle cx="12" cy="12" r="3.35" fill="#17244A" />
+      <circle cx="19.35" cy="5.8" r="1.8" fill="#2F5FED" />
+      <circle cx="4.65" cy="18.2" r="1.8" fill="#8D70FF" />
+    </svg>
+  );
 }
-function AgentSelector({ selected, selectedName, customName, customAgents, selectedCustomId, open, onToggle, onSelect, onSelectCustom, compact = false }: { selected: AgentKind; selectedName: string; customName?: string; customAgents: WorkspaceAgent[]; selectedCustomId?: string; open: boolean; onToggle: () => void; onSelect: (agent: AgentKind) => void; onSelectCustom: (agent: WorkspaceAgent) => void; compact?: boolean }) {
+function AgentSelector({
+  selected,
+  selectedName,
+  customName,
+  customAgents,
+  selectedCustomId,
+  open,
+  onToggle,
+  onSelect,
+  onSelectCustom,
+  compact = false,
+}: {
+  selected: AgentKind;
+  selectedName: string;
+  customName?: string;
+  customAgents: WorkspaceAgent[];
+  selectedCustomId?: string;
+  open: boolean;
+  onToggle: () => void;
+  onSelect: (agent: AgentKind) => void;
+  onSelectCustom: (agent: WorkspaceAgent) => void;
+  compact?: boolean;
+}) {
   const [query, setQuery] = useState("");
   const [pickerPlacement, setPickerPlacement] = useState<"above" | "below">("above");
   const [pickerMaxHeight, setPickerMaxHeight] = useState(330);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const matchingAgents = AGENTS.filter((agent) => `${agent.name} ${agent.description}`.toLowerCase().includes(query.trim().toLowerCase()));
-  const matchingCustomAgents = customAgents.filter((agent) => agent.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const matchingAgents = AGENTS.filter((agent) =>
+    `${agent.name} ${agent.description}`.toLowerCase().includes(query.trim().toLowerCase()),
+  );
+  const matchingCustomAgents = customAgents.filter((agent) =>
+    agent.name.toLowerCase().includes(query.trim().toLowerCase()),
+  );
   function togglePicker() {
     if (!open && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
@@ -853,12 +1596,94 @@ function AgentSelector({ selected, selectedName, customName, customAgents, selec
     }
     onToggle();
   }
-  return <div className={`agent-selector${compact ? " compact" : ""}`}>
-    <button ref={triggerRef} type="button" className="workspace-agent-chip" onClick={togglePicker} title={`Select agent: ${selectedName}`} aria-label={`Select agent: ${selectedName}`}>{customName ? <CustomAgentLogo name={customName} /> : <AgentIcon agent={selected} />}</button>
-    {open && <div className={`agent-picker ${pickerPlacement}`} style={{ maxHeight: pickerMaxHeight }} role="menu"><div className="agent-picker-toolbar"><label><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search agents" aria-label="Search agents" /><SearchGlyph /></label></div><div className="agent-picker-columns"><section><p className="agent-picker-section">Built-in agents</p><div className="agent-picker-list">{matchingAgents.map((agent) => <button type="button" key={agent.id} className={!selectedCustomId && agent.id === selected ? "selected" : ""} onClick={() => onSelect(agent.id)}><span><AgentIcon agent={agent.id} /></span><strong>{agent.name}</strong><small>{agent.description}</small>{!selectedCustomId && agent.id === selected && <b>✓</b>}</button>)}{matchingAgents.length === 0 && <p>No built-in agents match.</p>}</div></section><section><p className="agent-picker-section">Your agents</p><div className="agent-picker-list">{matchingCustomAgents.map((agent) => <button type="button" key={agent.id} className={agent.id === selectedCustomId ? "selected" : ""} onClick={() => onSelectCustom(agent)}><span><CustomAgentLogo name={agent.name} /></span><strong>{agent.name}</strong><small>{agent.baseAgent} · version {agent.publishedVersion}</small>{agent.id === selectedCustomId && <b>✓</b>}</button>)}{matchingCustomAgents.length === 0 && <p>No published agents yet.</p>}</div></section></div></div>}
-  </div>;
+  return (
+    <div className={`agent-selector${compact ? " compact" : ""}`}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="workspace-agent-chip"
+        onClick={togglePicker}
+        title={`Select agent: ${selectedName}`}
+        aria-label={`Select agent: ${selectedName}`}
+      >
+        {customName ? <CustomAgentLogo name={customName} /> : <AgentIcon agent={selected} />}
+      </button>
+      {open && (
+        <div className={`agent-picker ${pickerPlacement}`} style={{ maxHeight: pickerMaxHeight }} role="menu">
+          <div className="agent-picker-toolbar">
+            <label>
+              <input
+                autoFocus
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search agents"
+                aria-label="Search agents"
+              />
+              <SearchGlyph />
+            </label>
+          </div>
+          <div className="agent-picker-columns">
+            <section>
+              <p className="agent-picker-section">Built-in agents</p>
+              <div className="agent-picker-list">
+                {matchingAgents.map((agent) => (
+                  <button
+                    type="button"
+                    key={agent.id}
+                    className={!selectedCustomId && agent.id === selected ? "selected" : ""}
+                    onClick={() => onSelect(agent.id)}
+                  >
+                    <span>
+                      <AgentIcon agent={agent.id} />
+                    </span>
+                    <strong>{agent.name}</strong>
+                    <small>{agent.description}</small>
+                    {!selectedCustomId && agent.id === selected && <b>✓</b>}
+                  </button>
+                ))}
+                {matchingAgents.length === 0 && <p>No built-in agents match.</p>}
+              </div>
+            </section>
+            <section>
+              <p className="agent-picker-section">Your agents</p>
+              <div className="agent-picker-list">
+                {matchingCustomAgents.map((agent) => (
+                  <button
+                    type="button"
+                    key={agent.id}
+                    className={agent.id === selectedCustomId ? "selected" : ""}
+                    onClick={() => onSelectCustom(agent)}
+                  >
+                    <span>
+                      <CustomAgentLogo name={agent.name} />
+                    </span>
+                    <strong>{agent.name}</strong>
+                    <small>
+                      {agent.baseAgent} · version {agent.publishedVersion}
+                    </small>
+                    {agent.id === selectedCustomId && <b>✓</b>}
+                  </button>
+                ))}
+                {matchingCustomAgents.length === 0 && <p>No published agents yet.</p>}
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
-function StarterPrompts({ agent, agentName, connected, canEdit, canConnect, chatOpen, onChoose, onConnect, compact = false }: {
+function StarterPrompts({
+  agent,
+  agentName,
+  connected,
+  canEdit,
+  canConnect,
+  chatOpen,
+  onChoose,
+  onConnect,
+  compact = false,
+}: {
   agent: AgentKind;
   agentName: string;
   connected: boolean;
@@ -870,68 +1695,456 @@ function StarterPrompts({ agent, agentName, connected, canEdit, canConnect, chat
   onConnect: () => void;
   compact?: boolean;
 }) {
-  return <section className={`workspace-starter-prompts${compact ? " compact" : ""}`} aria-label={`${agentName} starter prompts`}>
-    <p>Try {agentName}</p>
-    <div>
-      {connected ? STARTER_TEMPLATES[agent].map((template) => (
-        <button key={template.prompt} type="button" onClick={() => onChoose(template.prompt)} disabled={!canEdit || !chatOpen}>
-          <span>{template.prompt}</span>{template.requiresApproval && <small>Requires approval</small>}
-        </button>
-      )) : (
-        <button type="button" onClick={onConnect} disabled={!canEdit || !canConnect} title={canConnect ? undefined : "Connecting tools requires the “Connect and manage tools” permission."}><span>{canConnect ? `Connect ${agentName} to get started` : `${agentName} isn't connected — ask an Admin or request tool access`}</span></button>
-      )}
-    </div>
-  </section>;
+  return (
+    <section
+      className={`workspace-starter-prompts${compact ? " compact" : ""}`}
+      aria-label={`${agentName} starter prompts`}
+    >
+      <p>Try {agentName}</p>
+      <div>
+        {connected ? (
+          STARTER_TEMPLATES[agent].map((template) => (
+            <button
+              key={template.prompt}
+              type="button"
+              onClick={() => onChoose(template.prompt)}
+              disabled={!canEdit || !chatOpen}
+            >
+              <span>{template.prompt}</span>
+              {template.requiresApproval && <small>Requires approval</small>}
+            </button>
+          ))
+        ) : (
+          <button
+            type="button"
+            onClick={onConnect}
+            disabled={!canEdit || !canConnect}
+            title={canConnect ? undefined : "Connecting tools requires the “Connect and manage tools” permission."}
+          >
+            <span>
+              {canConnect
+                ? `Connect ${agentName} to get started`
+                : `${agentName} isn't connected — ask an Admin or request tool access`}
+            </span>
+          </button>
+        )}
+      </div>
+    </section>
+  );
 }
 function NotificationGroup({ label, notifications }: { label: string; notifications: StoredNotification[] }) {
-  return <section className="workspace-notification-group"><p>{label}</p>{notifications.map((notification) => <article key={notification.id}><p>{notification.text}</p><time>{formatTime(notification.createdAt)}</time></article>)}</section>;
+  return (
+    <section className="workspace-notification-group">
+      <p>{label}</p>
+      {notifications.map((notification) => (
+        <article key={notification.id}>
+          <p>{notification.text}</p>
+          <time>{formatTime(notification.createdAt)}</time>
+        </article>
+      ))}
+    </section>
+  );
 }
-function LinearIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5.2 5.2 4 20 18.8 18.8 20 4 5.2Zm0 6.7L5.2 10.7 13.3 18.8 12.1 20 4 11.9Zm6.7-7.9L12 2.8 20 10.7l-1.2 1.2L10.7 4Z" /></svg>; }
-function NotionIcon() { return <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.2 4.5 18.8 3.4l1.5 1.8v14.1l-1.7 1.2-13.4-.9-1.5-1.7V6.2l1.5-1.7Z" stroke="currentColor" strokeWidth="1.8" /><path d="M8 8.4v7.1m0-7.1 7.8 7.1m0-7.1v7.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>; }
-function FigmaIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#F24E1E" d="M8 2h4v4H8a2 2 0 1 1 0-4Z" /><path fill="#FF7262" d="M12 2h4a2 2 0 1 1 0 4h-4V2Z" /><path fill="#A259FF" d="M8 6h4v4H8a2 2 0 1 1 0-4Z" /><path fill="#1ABCFE" d="M12 6h4a2 2 0 1 1 0 4h-4V6Z" /><path fill="#0ACF83" d="M8 10h4v4a2 2 0 1 1-4 0v-4Z" /></svg>; }
-function ToolIcon({ tool }: { tool: Exclude<IntegrationConfig["type"], "project"> }) { return tool === "github" ? <GithubIcon /> : tool === "slack" ? <SlackIcon /> : tool === "linear" ? <LinearIcon /> : tool === "notion" ? <NotionIcon /> : <FigmaIcon />; }
-function AgentIcon({ agent }: { agent: AgentKind }) { return <span className={`agent-logo ${agent}`}>{agent === "project" ? <AgentGlyph /> : <ToolIcon tool={agent} />}</span>; }
+function LinearIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M4 5.2 5.2 4 20 18.8 18.8 20 4 5.2Zm0 6.7L5.2 10.7 13.3 18.8 12.1 20 4 11.9Zm6.7-7.9L12 2.8 20 10.7l-1.2 1.2L10.7 4Z"
+      />
+    </svg>
+  );
+}
+function NotionIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M5.2 4.5 18.8 3.4l1.5 1.8v14.1l-1.7 1.2-13.4-.9-1.5-1.7V6.2l1.5-1.7Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path d="M8 8.4v7.1m0-7.1 7.8 7.1m0-7.1v7.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+function FigmaIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#F24E1E" d="M8 2h4v4H8a2 2 0 1 1 0-4Z" />
+      <path fill="#FF7262" d="M12 2h4a2 2 0 1 1 0 4h-4V2Z" />
+      <path fill="#A259FF" d="M8 6h4v4H8a2 2 0 1 1 0-4Z" />
+      <path fill="#1ABCFE" d="M12 6h4a2 2 0 1 1 0 4h-4V6Z" />
+      <path fill="#0ACF83" d="M8 10h4v4a2 2 0 1 1-4 0v-4Z" />
+    </svg>
+  );
+}
+function ToolIcon({ tool }: { tool: Exclude<IntegrationConfig["type"], "project"> }) {
+  return tool === "github" ? (
+    <GithubIcon />
+  ) : tool === "slack" ? (
+    <SlackIcon />
+  ) : tool === "linear" ? (
+    <LinearIcon />
+  ) : tool === "notion" ? (
+    <NotionIcon />
+  ) : (
+    <FigmaIcon />
+  );
+}
+function AgentIcon({ agent }: { agent: AgentKind }) {
+  return (
+    <span className={`agent-logo ${agent}`}>{agent === "project" ? <AgentGlyph /> : <ToolIcon tool={agent} />}</span>
+  );
+}
 function CustomAgentLogo({ name }: { name: string }) {
   const hue = Array.from(name).reduce((total, character) => total + character.charCodeAt(0), 0) % 360;
-  const initials = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "AI";
-  return <span className="agent-logo custom-agent-logo" style={{ background: `linear-gradient(135deg, hsl(${hue} 72% 48%), hsl(${(hue + 44) % 360} 75% 61%))` }} aria-label={`${name} logo`}>{initials}</span>;
+  const initials =
+    name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase() || "AI";
+  return (
+    <span
+      className="agent-logo custom-agent-logo"
+      style={{ background: `linear-gradient(135deg, hsl(${hue} 72% 48%), hsl(${(hue + 44) % 360} 75% 61%))` }}
+      aria-label={`${name} logo`}
+    >
+      {initials}
+    </span>
+  );
 }
-function AccessManager({ workspaceId, members, onClose, onChanged }: { workspaceId: string; members: WorkspaceMember[]; onClose: () => void; onChanged: (members: WorkspaceMember[]) => void }) {
+function AccessManager({
+  workspaceId,
+  members,
+  onClose,
+  onChanged,
+}: {
+  workspaceId: string;
+  members: WorkspaceMember[];
+  onClose: () => void;
+  onChanged: (members: WorkspaceMember[]) => void;
+}) {
   const [error, setError] = useState<string | null>(null);
-  const [invitations, setInvitations] = useState<Array<{ id: string; email: string; role: WorkspaceRole; expiresAt: string }>>([]);
+  const [invitations, setInvitations] = useState<
+    Array<{ id: string; email: string; role: WorkspaceRole; expiresAt: string }>
+  >([]);
   const dialog = useDialog();
-  useEffect(() => { listWorkspaceInvitations(workspaceId).then(setInvitations).catch(() => {}); }, [workspaceId]);
+  useEffect(() => {
+    listWorkspaceInvitations(workspaceId)
+      .then(setInvitations)
+      .catch(() => {});
+  }, [workspaceId]);
   async function changeRole(member: WorkspaceMember, role: WorkspaceRole) {
     try {
       await updateWorkspaceMemberRole(workspaceId, member.id, role);
-      onChanged(members.map((item) => item.id === member.id ? { ...item, role } : item));
-    } catch (err) { setError(describeError(err, "Could not change role.")); }
+      onChanged(members.map((item) => (item.id === member.id ? { ...item, role } : item)));
+    } catch (err) {
+      setError(describeError(err, "Could not change role."));
+    }
   }
   async function removeMember(member: WorkspaceMember) {
-    if (!(await dialog.confirm({ title: `Remove ${member.displayName}?`, message: "They lose access to this workspace and their personal tool connections are removed.", confirmLabel: "Remove member", danger: true }))) return;
-    try { await removeWorkspaceMember(workspaceId, member.id); onChanged(members.filter((item) => item.id !== member.id)); } catch (err) { setError(describeError(err, "Could not remove member.")); }
+    if (
+      !(await dialog.confirm({
+        title: `Remove ${member.displayName}?`,
+        message: "They lose access to this workspace and their personal tool connections are removed.",
+        confirmLabel: "Remove member",
+        danger: true,
+      }))
+    )
+      return;
+    try {
+      await removeWorkspaceMember(workspaceId, member.id);
+      onChanged(members.filter((item) => item.id !== member.id));
+    } catch (err) {
+      setError(describeError(err, "Could not remove member."));
+    }
   }
   async function revokeInvitation(invitationId: string) {
-    try { await revokeWorkspaceInvitation(workspaceId, invitationId); setInvitations((current) => current.filter((item) => item.id !== invitationId)); } catch (err) { setError(describeError(err, "Could not revoke invitation.")); }
+    try {
+      await revokeWorkspaceInvitation(workspaceId, invitationId);
+      setInvitations((current) => current.filter((item) => item.id !== invitationId));
+    } catch (err) {
+      setError(describeError(err, "Could not revoke invitation."));
+    }
   }
   async function resendInvitation(invite: { id: string; email: string; role: WorkspaceRole }) {
-    try { await sendWorkspaceInvitation(workspaceId, { email: invite.email, role: invite.role }); await revokeWorkspaceInvitation(workspaceId, invite.id); setInvitations(await listWorkspaceInvitations(workspaceId)); } catch (err) { setError(describeError(err, "Could not resend invitation.")); }
+    try {
+      await sendWorkspaceInvitation(workspaceId, { email: invite.email, role: invite.role });
+      await revokeWorkspaceInvitation(workspaceId, invite.id);
+      setInvitations(await listWorkspaceInvitations(workspaceId));
+    } catch (err) {
+      setError(describeError(err, "Could not resend invitation."));
+    }
   }
-  return <div className="access-modal-backdrop" role="presentation"><section className="access-modal" role="dialog" aria-modal="true" aria-label="Manage workspace access"><header><div><p>Workspace access</p><h2>Members and roles</h2></div><button onClick={onClose} aria-label="Close"><CloseGlyph /></button></header><p className="access-modal-intro">Admins manage access and approve write actions. Editors can connect tools and work with agents.</p>{error && <p className="error-text">{error}</p>}<div className="access-member-list">{members.map((member) => <div className="access-member" key={member.id}><span className="avatar" style={{ background: colorForName(member.displayName) }}>{initialsForName(member.displayName)}</span><strong>{member.displayName}<small>{member.email ?? member.username}</small></strong><select value={member.role} onChange={(event) => void changeRole(member, event.target.value as WorkspaceRole)} aria-label={`Role for ${member.displayName}`}><option value="admin">Admin</option><option value="editor">Editor</option></select><button className="access-remove" type="button" onClick={() => void removeMember(member)}>Remove</button></div>)}</div><section className="access-invitations"><h3>Pending invitations</h3>{invitations.length ? invitations.map((invite) => <div key={invite.id}><span><strong>{invite.email}</strong><small>{invite.role} · expires {new Date(invite.expiresAt).toLocaleDateString()}</small></span><aside><button type="button" onClick={() => void resendInvitation(invite)}>Resend</button><button type="button" onClick={() => void revokeInvitation(invite.id)}>Revoke</button></aside></div>) : <p>No pending invitations.</p>}</section></section></div>;
+  return (
+    <div className="access-modal-backdrop" role="presentation">
+      <section className="access-modal" role="dialog" aria-modal="true" aria-label="Manage workspace access">
+        <header>
+          <div>
+            <p>Workspace access</p>
+            <h2>Members and roles</h2>
+          </div>
+          <button onClick={onClose} aria-label="Close">
+            <CloseGlyph />
+          </button>
+        </header>
+        <p className="access-modal-intro">
+          Admins manage access and approve write actions. Editors can connect tools and work with agents.
+        </p>
+        {error && <p className="error-text">{error}</p>}
+        <div className="access-member-list">
+          {members.map((member) => (
+            <div className="access-member" key={member.id}>
+              <span className="avatar" style={{ background: colorForName(member.displayName) }}>
+                {initialsForName(member.displayName)}
+              </span>
+              <strong>
+                {member.displayName}
+                <small>{member.email ?? member.username}</small>
+              </strong>
+              <select
+                value={member.role}
+                onChange={(event) => void changeRole(member, event.target.value as WorkspaceRole)}
+                aria-label={`Role for ${member.displayName}`}
+              >
+                <option value="admin">Admin</option>
+                <option value="editor">Editor</option>
+              </select>
+              <button className="access-remove" type="button" onClick={() => void removeMember(member)}>
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+        <section className="access-invitations">
+          <h3>Pending invitations</h3>
+          {invitations.length ? (
+            invitations.map((invite) => (
+              <div key={invite.id}>
+                <span>
+                  <strong>{invite.email}</strong>
+                  <small>
+                    {invite.role} · expires {new Date(invite.expiresAt).toLocaleDateString()}
+                  </small>
+                </span>
+                <aside>
+                  <button type="button" onClick={() => void resendInvitation(invite)}>
+                    Resend
+                  </button>
+                  <button type="button" onClick={() => void revokeInvitation(invite.id)}>
+                    Revoke
+                  </button>
+                </aside>
+              </div>
+            ))
+          ) : (
+            <p>No pending invitations.</p>
+          )}
+        </section>
+      </section>
+    </div>
+  );
 }
-function SearchGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" strokeWidth="2"/><path d="m16 16 4 4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>; }
-function PlusGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>; }
-function MoreGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="19" cy="12" r="1.7" fill="currentColor"/></svg>; }
-function PlugGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v6m8-6v6M6 9h12v2a6 6 0 0 1-12 0V9Zm6 8v4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>; }
-function GearGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M19 13.5v-3l-2-.6a6 6 0 0 0-.8-1.8l1-1.8-2.1-2.1-1.8 1.1a6 6 0 0 0-1.8-.8L11 2.5H8v2.1a6 6 0 0 0-1.8.8L4.4 4.3 2.3 6.4l1.1 1.8a6 6 0 0 0-.8 1.8l-2 .5v3l2 .6a6 6 0 0 0 .8 1.8l-1.1 1.8 2.1 2.1 1.8-1.1a6 6 0 0 0 1.8.8L8 21.5h3v-2.1a6 6 0 0 0 1.8-.8l1.8 1.1 2.1-2.1-1.1-1.8a6 6 0 0 0 .8-1.8l1.6-.5Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>; }
-function ChatGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 3V5Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg>; }
-function ActivityGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l2-6 4 12 2-6h4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
-function GridGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2"/><rect x="14" y="4" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2"/><rect x="4" y="14" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2"/><rect x="14" y="14" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2"/></svg>; }function MemoryGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5A2.5 2.5 0 0 0 3.5 7v10.5A2.5 2.5 0 0 1 6 15h4.5a2.5 2.5 0 0 1 2.5 2.5V7A2.5 2.5 0 0 0 10.5 4.5H6Zm12 0A2.5 2.5 0 0 1 20.5 7v10.5A2.5 2.5 0 0 0 18 15h-4.5a2.5 2.5 0 0 0-2.5 2.5V7a2.5 2.5 0 0 1 2.5-2.5H18Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>; }
-function ArtifactGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4 4V20a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 20V4a.5.5 0 0 1 .5-.5Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M14 3.5V8h4M9 12h6M9 16h6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>; }
-function ChevronGlyph({ direction }: { direction: "up" | "down" }) { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={direction === "up" ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
-function LinkGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1L11 5m3 6a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 19.9L13 19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>; }
-function ArrowGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13m-5-5 5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
-function SignOutGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H5v14h5m4-4 5-3-5-3m5 3H9" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
-function CloseGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>; }
-function BellGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 10a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 22h4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
-function KeyGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4" fill="none" stroke="currentColor" strokeWidth="2"/><path d="m11 12 8-8m-3 0h3v3m-6 3 2 2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
+function SearchGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="m16 16 4 4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+function PlusGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+function MoreGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="5" cy="12" r="1.7" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.7" fill="currentColor" />
+      <circle cx="19" cy="12" r="1.7" fill="currentColor" />
+    </svg>
+  );
+}
+function PlugGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M8 3v6m8-6v6M6 9h12v2a6 6 0 0 1-12 0V9Zm6 8v4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+function GearGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M19 13.5v-3l-2-.6a6 6 0 0 0-.8-1.8l1-1.8-2.1-2.1-1.8 1.1a6 6 0 0 0-1.8-.8L11 2.5H8v2.1a6 6 0 0 0-1.8.8L4.4 4.3 2.3 6.4l1.1 1.8a6 6 0 0 0-.8 1.8l-2 .5v3l2 .6a6 6 0 0 0 .8 1.8l-1.1 1.8 2.1 2.1 1.8-1.1a6 6 0 0 0 1.8.8L8 21.5h3v-2.1a6 6 0 0 0 1.8-.8l1.8 1.1 2.1-2.1-1.1-1.8a6 6 0 0 0 .8-1.8l1.6-.5Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function ChatGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 5h16v11H8l-4 3V5Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function ActivityGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M4 12h4l2-6 4 12 2-6h4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function GridGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="4" y="4" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2" />
+      <rect x="14" y="4" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2" />
+      <rect x="4" y="14" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2" />
+      <rect x="14" y="14" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+function MemoryGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M6 4.5A2.5 2.5 0 0 0 3.5 7v10.5A2.5 2.5 0 0 1 6 15h4.5a2.5 2.5 0 0 1 2.5 2.5V7A2.5 2.5 0 0 0 10.5 4.5H6Zm12 0A2.5 2.5 0 0 1 20.5 7v10.5A2.5 2.5 0 0 0 18 15h-4.5a2.5 2.5 0 0 0-2.5 2.5V7a2.5 2.5 0 0 1 2.5-2.5H18Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function ArtifactGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M6 3.5h8l4 4V20a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 20V4a.5.5 0 0 1 .5-.5Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path d="M14 3.5V8h4M9 12h6M9 16h6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+function ChevronGlyph({ direction }: { direction: "up" | "down" }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d={direction === "up" ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function LinkGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1L11 5m3 6a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 19.9L13 19"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+function ArrowGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M5 12h13m-5-5 5 5-5 5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function SignOutGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M10 5H5v14h5m4-4 5-3-5-3m5 3H9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function CloseGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m7 7 10 10M17 7 7 17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+function BellGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M18 10a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 22h4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function KeyGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="8" cy="15" r="4" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="m11 12 8-8m-3 0h3v3m-6 3 2 2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

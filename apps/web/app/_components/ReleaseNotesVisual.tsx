@@ -1,2 +1,38 @@
 "use client";
-export function ReleaseNotesVisual({title,summary,content}:{title:string;summary:string;content:string}) { const groups=content.split(/^##\s+/m).filter(Boolean).map(part=>{const [title,...rest]=part.split("\n");return{title:title.replace(/^#+\s*/,""),items:rest.map(x=>x.replace(/^[-*+]\s+|\*\*/g,"").trim()).filter(x=>x&&!/^[-| :]+$/.test(x))}});return <section className="release-visual release-changelog"><header><p>RELEASE NOTES · CHANGE LOG</p><h2>{title||"Untitled release"}</h2><span>{summary||"A clear update for customers and teammates."}</span></header><div className="release-changelog">{groups.map(group=><article key={group.title}><h3>{group.title}</h3>{group.items.length?<ul>{group.items.map(item=><li key={item}>{item}</li>)}</ul>:<p>No updates recorded.</p>}</article>)}</div></section> }
+export function ReleaseNotesVisual({ title, summary, content }: { title: string; summary: string; content: string }) {
+  const groups = content
+    .split(/^##\s+/m)
+    .filter(Boolean)
+    .map((part) => {
+      const [title, ...rest] = part.split("\n");
+      return {
+        title: title.replace(/^#+\s*/, ""),
+        items: rest.map((x) => x.replace(/^[-*+]\s+|\*\*/g, "").trim()).filter((x) => x && !/^[-| :]+$/.test(x)),
+      };
+    });
+  return (
+    <section className="release-visual release-changelog">
+      <header>
+        <p>RELEASE NOTES · CHANGE LOG</p>
+        <h2>{title || "Untitled release"}</h2>
+        <span>{summary || "A clear update for customers and teammates."}</span>
+      </header>
+      <div className="release-changelog">
+        {groups.map((group) => (
+          <article key={group.title}>
+            <h3>{group.title}</h3>
+            {group.items.length ? (
+              <ul>
+                {group.items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>No updates recorded.</p>
+            )}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}

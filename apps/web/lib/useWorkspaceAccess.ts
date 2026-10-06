@@ -40,12 +40,29 @@ export function useWorkspaceAccess(workspaceId: string): WorkspaceAccessState {
     if (!workspaceId) return;
     let cancelled = false;
     getWorkspaceAccess(workspaceId)
-      .then((access) => { if (!cancelled) { setRole(access.role); setPermissions(access.permissions); } })
-      .catch(() => { if (!cancelled) { setRole(null); setPermissions(null); } })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .then((access) => {
+        if (!cancelled) {
+          setRole(access.role);
+          setPermissions(access.permissions);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRole(null);
+          setPermissions(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [workspaceId, version]);
-  const can = useCallback((permission: WorkspacePermission) => role === "admin" || Boolean(permissions?.[permission]), [permissions, role]);
+  const can = useCallback(
+    (permission: WorkspacePermission) => role === "admin" || Boolean(permissions?.[permission]),
+    [permissions, role],
+  );
   const refresh = useCallback(() => setVersion((value) => value + 1), []);
   return { loading, role, isAdmin: role === "admin", isEditor: role === "editor", can, refresh };
 }

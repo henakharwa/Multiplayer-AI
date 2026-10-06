@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { runMigrations } from "@mai-chat/db";
 import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { WebSocket } from "ws";
@@ -48,8 +48,7 @@ function makeDeps(overrides: Partial<CreateServerDeps> = {}): CreateServerDeps {
 }
 
 beforeAll(async () => {
-  const schema = await readFile(fileURLToPath(new URL("../../../packages/db/sql/schema.sql", import.meta.url)), "utf8");
-  await getPool().query(schema);
+  await runMigrations();
   const admin = await upsertUserFromGithub({
     githubId: `github-workflow-admin-${randomUUID()}`,
     username: "github-workflow-admin",

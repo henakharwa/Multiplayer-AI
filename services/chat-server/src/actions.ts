@@ -134,7 +134,7 @@ export function wrapForProposal(
   conversationId: string,
   rooms: RoomRegistry,
   // Whoever's chat message triggered this agent turn -- recorded on the
-  // pending action itself (see schema.sql) and on the "action.proposed"
+  // pending action itself (see sql/migrations/0001_baseline.sql) and on the "action.proposed"
   // audit event below, so the trail answers "who asked for what", not
   // just "what did the agent do". Optional: some call sites (tests that
   // build tools directly) don't have a requesting user to attribute.
@@ -179,7 +179,7 @@ export function wrapForProposal(
           eventType: "action.proposed",
           actorType: "agent",
           actorName: "Agent",
-          summary: `Agent prepared an action for review: ${description}`,
+          summary: `Agent prepared an action for review${requestedBy?.name ? ` (requested by ${requestedBy.name})` : ""}: ${description}`,
           metadata: { actionId: action.id, toolName: action.toolName, requestedByUserId: requestedBy?.userId ?? null, requestedByName: requestedBy?.name ?? null },
         });
         return {

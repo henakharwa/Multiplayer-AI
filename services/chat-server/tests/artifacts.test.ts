@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { runMigrations } from "@mai-chat/db";
 import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { getPool, closePool, upsertUserFromGithub, createSession, addWorkspaceMember, upsertSlackIntegration } from "@mai-chat/db";
@@ -47,8 +47,7 @@ let editorId: string;
 let outsiderCookie: string;
 
 beforeAll(async () => {
-  const schema = await readFile(fileURLToPath(new URL("../../../packages/db/sql/schema.sql", import.meta.url)), "utf8");
-  await getPool().query(schema);
+  await runMigrations();
   const owner = await upsertUserFromGithub({ githubId: `artifacts-owner-${randomUUID()}`, username: "artifacts-owner", displayName: "Artifacts Owner" });
   ownerCookie = `mai_session=${(await createSession(owner.id, 60_000)).token}`;
   const editor = await upsertUserFromGithub({ githubId: `artifacts-editor-${randomUUID()}`, username: "artifacts-editor", displayName: "Artifacts Editor" });

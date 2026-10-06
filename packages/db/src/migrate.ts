@@ -1,29 +1,40 @@
-import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import path from "node:path";
 import { config as loadEnv } from "dotenv";
-import { getPool, closePool } from "./pool.js";
+import { closePool } from "./pool.js";
+import { listAppliedMigrations, listMigrationFiles, rollbackLastMigration, runMigrations } from "./migrations.js";
 
-// Mirrors the repo-root-.env-loading pattern this project has used since
-// its first Postgres-backed package: `npm run migrate --workspace=...`
-// sets cwd to this package's own directory, not the repo root where the
-// real .env lives.
+// `npm run migrate --workspace=...` sets cwd to this package, not the repo
+// root where the real .env lives.
 loadEnv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
 loadEnv();
 
-async function migrate() {
-  const schemaPath = path.join(fileURLToPath(new URL("../sql/schema.sql", import.meta.url)));
-  const sql = await readFile(schemaPath, "utf8");
-  const pool = getPool();
-  await pool.query(sql);
-  console.log("migration applied");
+// Usage: migrate            apply pending migrations
+//        migrate status     list applied and pending migrations
+//        migrate down       roll back the most recent migration
+async function main(command = "up") {
+  const log = (message: string) => console.log(message);
+  if (command === "up") {
+    const ran = await runMigrations({ log });
+    console.log(ran.length ? `applied ${ran.length} migration(s)` : "database is up to date");
+  } else if (command === "status") {
+    const applied = new Map((await listAppliedMigrations()).map((row) => [row.version, row]));
+    for (const file of await listMigrationFiles()) {
+      const row = applied.get(file.version);
+      console.log(`${row ? "applied " : "pending "} ${file.version}_${file.name}${row ? `  (${row.appliedAt})` : ""}`);
+    }
+  } else if (command === "down") {
+    await rollbackLastMigration({ log });
+  } else {
+    throw new Error(`unknown command "${command}" (use up, status or down)`);
+  }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  migrate()
+  main(process.argv[2])
     .then(() => closePool())
-    .catch((err) => {
-      console.error(err);
+    .catch(async (err) => {
+      console.error(err instanceof Error ? err.message : err);
       process.exitCode = 1;
+      await closePool().catch(() => undefined);
     });
 }

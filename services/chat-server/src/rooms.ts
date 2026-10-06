@@ -6,6 +6,24 @@ interface Connection {
   participant: Participant;
 }
 
+// Optional link to other chat-server processes (see realtime-bus.ts). With
+// no bus, everything below stays in this process, which is all a single
+// instance needs.
+export type BusMessage =
+  | { kind: "broadcast"; room: string; payload: unknown }
+  | { kind: "presence"; room: string; instanceId: string; participants: Participant[] };
+export interface RoomBus {
+  readonly instanceId: string;
+  publish(message: BusMessage): Promise<void>;
+  subscribe(handler: (message: BusMessage) => void): void;
+  tryLock(room: string, ttlSeconds: number): Promise<boolean>;
+  unlock(room: string): Promise<void>;
+  close(): Promise<void>;
+}
+
+const REMOTE_PRESENCE_TTL_MS = 90_000;
+const AGENT_TURN_LOCK_SECONDS = 15 * 60;
+
 // One room per workspace: the set of currently-connected WebSocket clients.
 // Deliberately in-memory, not persisted -- presence is ephemeral, same
 // distinction this project's prior build drew between Yjs Awareness
@@ -13,6 +31,54 @@ interface Connection {
 // real rows in packages/db; who's online right now is not.
 export class RoomRegistry {
   private rooms = new Map<string, Set<Connection>>();
+  // Participants connected to OTHER processes, per room, as last reported.
+  private remotePresence = new Map<string, Map<string, { participants: Participant[]; at: number }>>();
+
+  constructor(private readonly bus?: RoomBus) {
+    bus?.subscribe((message) => {
+      if (message.kind === "broadcast") this.deliverLocal(message.room, message.payload);
+      else if (message.instanceId !== bus.instanceId) {
+        const byInstance = this.remotePresence.get(message.room) ?? new Map();
+        byInstance.set(message.instanceId, { participants: message.participants, at: Date.now() });
+        this.remotePresence.set(message.room, byInstance);
+      }
+    });
+  }
+
+  /** Re-announces this process's presence for every room (called on a heartbeat). */
+  refreshPresence(): void {
+    for (const room of this.rooms.keys()) this.publishPresence(room);
+  }
+
+  private localParticipants(room: string): Participant[] {
+    const conns = this.rooms.get(room);
+    return conns ? Array.from(conns).map((c) => c.participant) : [];
+  }
+
+  private publishPresence(room: string): void {
+    if (!this.bus) return;
+    void this.bus.publish({ kind: "presence", room, instanceId: this.bus.instanceId, participants: this.localParticipants(room) }).catch((error) => console.error("presence publish failed", error));
+  }
+
+  /**
+   * Takes the one-agent-turn-at-a-time lock for a conversation. Shared
+   * across processes when a bus is configured; otherwise in-memory.
+   */
+  async tryAcquireAgentTurn(room: string): Promise<boolean> {
+    if (this.bus) {
+      const acquired = await this.bus.tryLock(room, AGENT_TURN_LOCK_SECONDS);
+      if (acquired) this.busyWorkspaces.add(room);
+      return acquired;
+    }
+    if (this.busyWorkspaces.has(room)) return false;
+    this.busyWorkspaces.add(room);
+    return true;
+  }
+
+  async releaseAgentTurn(room: string): Promise<void> {
+    this.busyWorkspaces.delete(room);
+    if (this.bus) await this.bus.unlock(room);
+  }
   // Workspaces where an agent turn (server.ts's runAgentReply) is
   // currently in flight -- the chat is multiplayer, but only one agent
   // turn should ever run at a time per workspace: it reads the full
@@ -63,6 +129,7 @@ export class RoomRegistry {
       }
     }
     room.add({ ws, participant });
+    this.publishPresence(workspaceId);
   }
 
   leave(workspaceId: string, ws: WebSocket): void {
@@ -75,15 +142,33 @@ export class RoomRegistry {
       }
     }
     if (room.size === 0) this.rooms.delete(workspaceId);
+    this.publishPresence(workspaceId);
   }
 
   participants(workspaceId: string): Participant[] {
-    const room = this.rooms.get(workspaceId);
-    if (!room) return [];
-    return Array.from(room).map((c) => c.participant);
+    const local = this.localParticipants(workspaceId);
+    const remote = this.remotePresence.get(workspaceId);
+    if (!remote) return local;
+    const now = Date.now();
+    const merged = [...local];
+    const seen = new Set(local.map((p) => p.userId ?? p.displayName));
+    for (const [instanceId, entry] of remote) {
+      if (now - entry.at > REMOTE_PRESENCE_TTL_MS) { remote.delete(instanceId); continue; }
+      for (const participant of entry.participants) {
+        const key = participant.userId ?? participant.displayName;
+        if (!seen.has(key)) { seen.add(key); merged.push(participant); }
+      }
+    }
+    return merged;
   }
 
+  /** Sends to this process's sockets and, with a bus, to every other process. */
   broadcast(workspaceId: string, payload: unknown, exclude?: WebSocket): void {
+    this.deliverLocal(workspaceId, payload, exclude);
+    if (this.bus) void this.bus.publish({ kind: "broadcast", room: workspaceId, payload }).catch((error) => console.error("realtime publish failed", error));
+  }
+
+  private deliverLocal(workspaceId: string, payload: unknown, exclude?: WebSocket): void {
     const room = this.rooms.get(workspaceId);
     if (!room) return;
     const data = JSON.stringify(payload);

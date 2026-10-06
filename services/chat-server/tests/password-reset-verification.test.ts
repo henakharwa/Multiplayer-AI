@@ -1,6 +1,6 @@
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from "vitest";
+import { runMigrations } from "@mai-chat/db";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import express from "express";
@@ -60,7 +60,7 @@ function makeApp(mailer: Mailer) {
 const newAccount = () => ({ email: `${randomUUID()}@example.test`, password: `Test-${randomUUID()}`, displayName: "Reset Member" });
 
 beforeAll(async () => {
-  await db.getPool().query(await readFile(fileURLToPath(new URL("../../../packages/db/sql/schema.sql", import.meta.url)), "utf8"));
+  await runMigrations();
 });
 afterAll(async () => { await db.closePool(); });
 

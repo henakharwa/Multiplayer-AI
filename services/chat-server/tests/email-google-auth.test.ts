@@ -1,6 +1,6 @@
 import { beforeAll, afterAll, describe, it, expect, vi } from "vitest";
+import { runMigrations } from "@mai-chat/db";
 import { randomUUID, createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import express from "express";
@@ -28,7 +28,9 @@ function makeApp(overrides: Partial<UserAuthDeps> = {}, authConfig = config) {
   return app;
 }
 beforeAll(async () => {
-  await db.getPool().query(await readFile(fileURLToPath(new URL("../../../packages/db/sql/schema.sql", import.meta.url)), "utf8"));
+  await runMigrations();
+  // Sign-in limits are stored in the database; start each run with a clean slate.
+  await db.getPool().query("DELETE FROM auth_rate_limits WHERE scope LIKE 'email-auth-%'");
 });
 afterAll(async () => { await db.closePool(); });
 const newAccount = () => ({ email: `${randomUUID()}@example.test`, password: `Test-${randomUUID()}`, displayName: "Email Member" });
@@ -58,13 +60,18 @@ describe("email account authentication", () => {
     expect(duplicate.status).toBe(409);
     expect((await db.getPool().query("SELECT count(*) FROM users WHERE username = $1", [account.email])).rows[0].count).toBe("1");
   });
-  it("returns the same error for an unknown email and wrong password", async () => {
+  // Product decision (email-auth.ts): an unknown email is told to sign up
+  // instead of being shown a generic error; both still fail with 401 and
+  // never set a session cookie.
+  it("rejects an unknown email and a wrong password without signing in", async () => {
     const app = makeApp(); const account = newAccount();
     await request(app).post("/auth/signup/email").send(account);
     const wrong = await request(app).post("/auth/login/email").send({ ...account, password: "wrong" });
     const unknown = await request(app).post("/auth/login/email").send(newAccount());
     expect(wrong.status).toBe(401); expect(unknown.status).toBe(401);
-    expect(wrong.body).toEqual(unknown.body); expect(wrong.headers["set-cookie"]).toBeUndefined();
+    expect(wrong.body.error).toBe("Incorrect email or password.");
+    expect(unknown.body.error).toContain("sign up");
+    expect(wrong.headers["set-cookie"]).toBeUndefined(); expect(unknown.headers["set-cookie"]).toBeUndefined();
   });
   it("validates credentials and rejects cross-origin login and non-JSON forms", async () => {
     const app = makeApp(); const account = newAccount();

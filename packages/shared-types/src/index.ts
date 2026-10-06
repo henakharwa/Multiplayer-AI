@@ -631,7 +631,7 @@ export interface PendingAction {
   createdAt: string;
   resolvedAt: string | null;
   // Whoever's chat message triggered the agent turn that proposed this
-  // action, if known -- see schema.sql's comment on these two columns.
+  // action, if known -- see the baseline migration's comment on these two columns.
   requestedByUserId?: string | null;
   requestedByName?: string | null;
   agentKind?: "project" | "github" | "slack" | "linear" | "notion" | "figma" | null;
@@ -679,7 +679,7 @@ export type AuditEventType =
   | "action.cancelled"
   | "action.failed"
   // Logged whenever a message @-mentions one or more teammates without
-  // also @-mentioning the agent -- see mentions_agent's schema.sql
+  // also @-mentioning the agent -- see mentions_agent's sql/migrations/0001_baseline.sql
   // comment. Gives "who's driving this" a durable, searchable trail
   // (docs/spec.md: "so who's driving this stays visible"), on top of the
   // handoff message itself being visible live in the chat.

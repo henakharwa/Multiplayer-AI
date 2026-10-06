@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { runMigrations } from "@mai-chat/db";
 import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
 import request from "supertest";
 import { WebSocket } from "ws";
 import * as db from "@mai-chat/db";
@@ -42,8 +42,7 @@ let bobCookie: string;
 let bobName: string;
 
 beforeAll(async () => {
-  const schema = await readFile(fileURLToPath(new URL("../../../packages/db/sql/schema.sql", import.meta.url)), "utf8");
-  await getPool().query(schema);
+  await runMigrations();
   const alice = await upsertUserFromGithub({ githubId: "mentions-alice", username: "alice", displayName: "Alice" });
   const bob = await upsertUserFromGithub({ githubId: "mentions-bob", username: "bob", displayName: "Bob" });
   bobName = bob.displayName;
@@ -52,9 +51,14 @@ beforeAll(async () => {
 });
 afterAll(async () => { await closePool(); });
 
+// Alice creates the workspace; Bob joins with the join code (live chat is
+// members-only). Sockets name the workspace's default conversation.
 async function createTestWorkspace(app: ReturnType<typeof import("../src/server.js").createApp>) {
   const res = await request(app).post("/workspaces").set("Cookie", aliceCookie).send({ name: `Mentions Co ${Math.random()}` });
-  return res.body as { id: string; joinCode: string; name: string };
+  const workspace = res.body as { id: string; joinCode: string; name: string };
+  await request(app).post(`/workspaces/by-code/${workspace.joinCode}/join`).set("Cookie", bobCookie);
+  const conversations = await request(app).get(`/workspaces/${workspace.id}/conversations`).set("Cookie", aliceCookie);
+  return { ...workspace, conversationId: (conversations.body as Array<{ id: string }>)[0].id };
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 5000): Promise<void> {
@@ -75,8 +79,8 @@ describe("@-mention / handoff mechanics", () => {
     const workspace = await createTestWorkspace(app);
 
     const wsUrlBase = `ws://localhost:${port}/ws`;
-    const alice = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}`, { headers: { Cookie: aliceCookie } });
-    const bob = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}`, { headers: { Cookie: bobCookie } });
+    const alice = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}&conversationId=${workspace.conversationId}`, { headers: { Cookie: aliceCookie } });
+    const bob = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}&conversationId=${workspace.conversationId}`, { headers: { Cookie: bobCookie } });
     const bobEvents: { type: string; message?: { content: string; mentionsAgent: boolean; mentionedUserIds: string[] } }[] = [];
     bob.on("message", (data) => bobEvents.push(JSON.parse(data.toString())));
 
@@ -116,8 +120,8 @@ describe("@-mention / handoff mechanics", () => {
     const workspace = await createTestWorkspace(app);
 
     const wsUrlBase = `ws://localhost:${port}/ws`;
-    const alice = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}`, { headers: { Cookie: aliceCookie } });
-    const bob = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}`, { headers: { Cookie: bobCookie } });
+    const alice = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}&conversationId=${workspace.conversationId}`, { headers: { Cookie: aliceCookie } });
+    const bob = new WebSocket(`${wsUrlBase}?workspaceId=${workspace.id}&conversationId=${workspace.conversationId}`, { headers: { Cookie: bobCookie } });
     const aliceEvents: { type: string; status?: string; error?: string; message?: { content: string } }[] = [];
     alice.on("message", (data) => aliceEvents.push(JSON.parse(data.toString())));
 
@@ -148,7 +152,7 @@ describe("@-mention / handoff mechanics", () => {
     const port = (server.address() as { port: number }).port;
     const workspace = await createTestWorkspace(app);
 
-    const alice = new WebSocket(`ws://localhost:${port}/ws?workspaceId=${workspace.id}`, { headers: { Cookie: aliceCookie } });
+    const alice = new WebSocket(`ws://localhost:${port}/ws?workspaceId=${workspace.id}&conversationId=${workspace.conversationId}`, { headers: { Cookie: aliceCookie } });
     const events: { type: string }[] = [];
     alice.on("message", (data) => events.push(JSON.parse(data.toString())));
     await new Promise((r) => alice.on("open", r));

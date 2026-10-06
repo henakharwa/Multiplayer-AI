@@ -11,7 +11,7 @@ export interface MentionTarget {
 
 export interface ParsedMentions {
   // True unless the message @-mentions one or more teammates and does
-  // NOT also @-mention the agent -- see schema.sql's comment on
+  // NOT also @-mention the agent -- see the baseline migration's comment on
   // messages.mentions_agent for the full reasoning. A message with no
   // @-mention at all is the common case and defaults to true, matching
   // this app's behavior before mentions existed at all.
