@@ -259,9 +259,13 @@ export default function HomePage() {
               >
                 Create your workspace
               </button>
-              <a className="marketing-secondary-cta" href="/brag.mp4">
+              <button
+                className="marketing-secondary-cta"
+                type="button"
+                onClick={() => document.getElementById("demo")?.scrollIntoView({ behavior: "smooth" })}
+              >
                 Watch demo
-              </a>
+              </button>
             </div>
             <button
               className="home-text-action"
@@ -506,20 +510,12 @@ export default function HomePage() {
                 Try it in your workspace
               </button>
             </div>
-            <article aria-label="Example approval card">
-              <header>
-                <span>GitHub agent</span>
-                <small>Approval required</small>
-              </header>
-              <h3>Create issue: Improve empty-state guidance</h3>
-              <p>
-                Target: <b>acme/web-app</b> · Nothing has changed yet.
-              </p>
-              <footer>
-                <button>Review proposal</button>
-                <button>Approve</button>
-              </footer>
-            </article>
+            <div className="marketing-demo-video">
+              <video controls preload="metadata" poster="/brag.jpg" aria-label="Nexus product demo">
+                <source src="/brag.mp4" type="video/mp4" />
+                Your browser does not support embedded videos.
+              </video>
+            </div>
           </section>
           <section data-scroll-reveal id="product" className="marketing-section">
             <p className="marketing-kicker">Designed around outcomes</p>
