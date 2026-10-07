@@ -58,6 +58,22 @@ PostgreSQL runs on the Oracle VM with a persistent Docker volume.
    nano .env.oracle
    ```
 
+   To use OpenAI `gpt-6-luna` as the paid primary while retaining the current
+   OpenAI-compatible provider as a fallback, keep the existing `AGENT_LLM_*`
+   values and add:
+
+   ```env
+   AGENT_LLM_PRIMARY_BASE_URL=https://api.openai.com/v1
+   AGENT_LLM_PRIMARY_API_KEY=YOUR_OPENAI_API_KEY
+   AGENT_LLM_PRIMARY_MODEL=gpt-6-luna
+   AGENT_LLM_PRIMARY_MAX_TOKENS=1024
+   AGENT_LLM_PRIMARY_TPM_LIMIT=8192
+   ```
+
+   Nexus only uses the fallback when OpenAI explicitly reports exhausted
+   credits or billing quota. Normal transient rate limits remain on the paid
+   provider and use its retry policy.
+
 3. Start PostgreSQL only, then import the Render backup:
 
    ```bash

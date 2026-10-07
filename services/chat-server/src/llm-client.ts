@@ -59,6 +59,8 @@ export interface LlmConfig {
   // a paid tier with a much bigger TPM) lets more history through instead
   // of it being trimmed unnecessarily.
   tpmLimit: number;
+  /** A retained low-cost provider used only when the primary account has exhausted credits. */
+  fallback?: Omit<LlmConfig, "fallback">;
 }
 
 /** Injectable for tests -- exercises the real tool-execution loop without a real network call. */
@@ -135,6 +137,30 @@ const longRunningLlmDispatcher = new Agent({
   bodyTimeout: LLM_FETCH_TIMEOUT_MS,
 });
 
+export class LlmHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly statusText: string,
+    readonly body: string,
+    readonly url: string
+  ) {
+    super(`LLM request to ${url} failed: ${status} ${statusText} -- ${body.slice(0, 500)}`);
+    this.name = "LlmHttpError";
+  }
+}
+
+/**
+ * Do not fail over on an ordinary 429: that is normally a short-lived rate
+ * limit and the configured retry policy handles it. Fail over only when the
+ * provider explicitly reports depleted billing credit or quota.
+ */
+export function isCreditExhaustion(error: unknown): boolean {
+  if (!(error instanceof LlmHttpError)) return false;
+  if (error.status !== 402 && error.status !== 429) return false;
+  const detail = `${error.statusText} ${error.body}`.toLowerCase();
+  return /insufficient[_ ]quota|credit balance|credits? (?:have )?been exhausted|billing (?:limit|hard limit)|quota (?:has )?(?:been )?exceeded/.test(detail);
+}
+
 // Groq's own wait-time text comes in a few shapes: "try again in 7.056s"
 // for a per-minute limit, or "try again in 21m7.056s" for a much longer
 // daily-quota wait. The original version of this only matched the
@@ -177,7 +203,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export const chatCompletion: LlmChatFn = async (config, messages, tools) => {
+async function requestChatCompletion(config: Omit<LlmConfig, "fallback">, messages: ChatMessage[], tools: ToolDefinition[]): Promise<ChatMessage> {
   const url = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
 
   for (let attempt = 0; ; attempt++) {
@@ -231,13 +257,14 @@ export const chatCompletion: LlmChatFn = async (config, messages, tools) => {
     }
 
     const body = await res.text().catch(() => "");
-    const retryable = isRetryableFailure(res.status, body);
+    const creditExhausted = isCreditExhaustion(new LlmHttpError(res.status, res.statusText, body, url));
+    const retryable = !creditExhausted && isRetryableFailure(res.status, body);
     const parsedDelayMs = retryable ? parseRetryDelayMs(body) : null;
     const tooLongToWaitOn = parsedDelayMs !== null && parsedDelayMs > MAX_AUTO_RETRY_DELAY_MS;
     if (!retryable || attempt >= MAX_RETRIES || tooLongToWaitOn) {
-      throw new Error(
-        `LLM request to ${url} failed: ${res.status} ${res.statusText} -- ${body.slice(0, 500)}${friendlyWaitSuffix(parsedDelayMs)}`
-      );
+      const error = new LlmHttpError(res.status, res.statusText, body, url);
+      if (tooLongToWaitOn) error.message += friendlyWaitSuffix(parsedDelayMs);
+      throw error;
     }
     const delayMs = parsedDelayMs ?? 1000 * 2 ** attempt;
     // Visible in the chat-server terminal -- without this, a retry looks
@@ -247,6 +274,17 @@ export const chatCompletion: LlmChatFn = async (config, messages, tools) => {
       `[llm-client] ${res.status} from ${url}, retrying in ${Math.round(delayMs / 1000)}s (attempt ${attempt + 1}/${MAX_RETRIES})`
     );
     await sleep(delayMs);
+  }
+}
+
+export const chatCompletion: LlmChatFn = async (config, messages, tools) => {
+  const { fallback, ...primary } = config;
+  try {
+    return await requestChatCompletion(primary, messages, tools);
+  } catch (error) {
+    if (!fallback || !isCreditExhaustion(error)) throw error;
+    console.warn(`[llm-client] primary credits exhausted; using configured fallback model ${fallback.model}.`);
+    return requestChatCompletion(fallback, messages, tools);
   }
 };
 
@@ -271,11 +309,17 @@ function firstNonEmpty(...values: (string | undefined)[]): string | undefined {
 // so it gets a context window bigger than Ollama's silent 2048-token
 // default).
 export function resolveLlmConfig(overrides?: Partial<LlmConfig>): LlmConfig {
-  const baseUrl = firstNonEmpty(overrides?.baseUrl, process.env.AGENT_LLM_BASE_URL, "http://localhost:11434/v1")!;
-  const apiKey = firstNonEmpty(overrides?.apiKey, process.env.AGENT_LLM_API_KEY, process.env.GROQ_API_KEY, "ollama")!;
-  const model = firstNonEmpty(overrides?.model, process.env.AGENT_LLM_MODEL, "mai-agent")!;
+  const fallbackBaseUrl = firstNonEmpty(process.env.AGENT_LLM_BASE_URL, "http://localhost:11434/v1")!;
+  const fallbackApiKey = firstNonEmpty(process.env.AGENT_LLM_API_KEY, process.env.GROQ_API_KEY, "ollama")!;
+  const fallbackModel = firstNonEmpty(process.env.AGENT_LLM_MODEL, "mai-agent")!;
+  const primaryConfigured = [process.env.AGENT_LLM_PRIMARY_BASE_URL, process.env.AGENT_LLM_PRIMARY_API_KEY, process.env.AGENT_LLM_PRIMARY_MODEL]
+    .every((value) => value !== undefined && value !== "");
+  const baseUrl = firstNonEmpty(overrides?.baseUrl, primaryConfigured ? process.env.AGENT_LLM_PRIMARY_BASE_URL : undefined, fallbackBaseUrl)!;
+  const apiKey = firstNonEmpty(overrides?.apiKey, primaryConfigured ? process.env.AGENT_LLM_PRIMARY_API_KEY : undefined, fallbackApiKey)!;
+  const model = firstNonEmpty(overrides?.model, primaryConfigured ? process.env.AGENT_LLM_PRIMARY_MODEL : undefined, fallbackModel)!;
   const maxTokensRaw = firstNonEmpty(
     overrides?.maxTokens !== undefined ? String(overrides.maxTokens) : undefined,
+    primaryConfigured ? process.env.AGENT_LLM_PRIMARY_MAX_TOKENS : undefined,
     process.env.AGENT_LLM_MAX_TOKENS
   );
   // 1024 by default -- there's no per-minute quota to share with history
@@ -292,6 +336,7 @@ export function resolveLlmConfig(overrides?: Partial<LlmConfig>): LlmConfig {
   const maxTokens = maxTokensRaw !== undefined && Number.isFinite(Number(maxTokensRaw)) ? Number(maxTokensRaw) : 1024;
   const tpmLimitRaw = firstNonEmpty(
     overrides?.tpmLimit !== undefined ? String(overrides.tpmLimit) : undefined,
+    primaryConfigured ? process.env.AGENT_LLM_PRIMARY_TPM_LIMIT : undefined,
     process.env.AGENT_LLM_TPM_LIMIT
   );
   // 8192 to match scripts/ollama/Modelfile.mai-agent's num_ctx -- this
@@ -302,5 +347,8 @@ export function resolveLlmConfig(overrides?: Partial<LlmConfig>): LlmConfig {
   // configured context window for a local model. Keep this in sync with
   // whatever num_ctx you actually set.
   const tpmLimit = tpmLimitRaw !== undefined && Number.isFinite(Number(tpmLimitRaw)) ? Number(tpmLimitRaw) : 8192;
-  return { baseUrl, apiKey, model, maxTokens, tpmLimit };
+  const fallback = primaryConfigured
+    ? { baseUrl: fallbackBaseUrl, apiKey: fallbackApiKey, model: fallbackModel, maxTokens, tpmLimit }
+    : undefined;
+  return { baseUrl, apiKey, model, maxTokens, tpmLimit, fallback };
 }
