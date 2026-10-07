@@ -125,6 +125,11 @@ git pull
 docker compose --env-file .env.oracle -f docker-compose.oracle.yml up -d --build
 ```
 
+The deployment keeps Caddy's certificate data in Docker volumes. Do not remove
+`caddy_data` or `caddy_config` (for example with `docker compose down -v`)
+unless you intend to replace the TLS certificate. Removing them forces a new
+certificate request and can trigger the certificate authority's rate limits.
+
 Back up PostgreSQL regularly:
 
 ```bash

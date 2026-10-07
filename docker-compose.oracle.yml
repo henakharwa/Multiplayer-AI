@@ -28,6 +28,12 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    volumes:
+      # Caddy stores its ACME account and certificates here. Keeping these
+      # across image rebuilds prevents a new certificate request on every
+      # deployment (and avoids Let's Encrypt rate limits).
+      - caddy_data:/root/.local/share/caddy
+      - caddy_config:/root/.config/caddy
     environment:
       PORT: "80"
       CADDY_CONFIG: /app/Caddyfile.oracle
@@ -70,3 +76,5 @@ services:
 
 volumes:
   postgres_data:
+  caddy_data:
+  caddy_config:
