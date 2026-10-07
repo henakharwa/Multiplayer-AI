@@ -156,6 +156,13 @@
   margin-top: 24px;
 }
 
+.marketing-demo-preview {
+  display: grid;
+  gap: 16px;
+  width: min(520px, 100%);
+  justify-self: end;
+}
+
 .marketing-demo-video {
   overflow: hidden;
   border: 1px solid var(--border-strong);
@@ -168,8 +175,74 @@
 .marketing-demo-video video {
   display: block;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  height: 292px;
+  object-fit: cover;
   background: var(--bg-subtle);
+}
+
+.marketing-demo-approval {
+  padding: 18px;
+  border: 1px solid var(--palette-amber-125-2);
+  border-radius: 16px;
+  background: var(--warn-soft);
+  box-shadow: 0 18px 36px rgba(62, 54, 39, 0.12);
+}
+
+.marketing-demo-approval header,
+.marketing-demo-approval footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.marketing-demo-approval header span {
+  color: var(--palette-amber-675);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.marketing-demo-approval header small {
+  padding: 4px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--palette-amber-50);
+  color: var(--palette-amber-525);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.marketing-demo-approval h3 {
+  margin: 22px 0 10px;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.marketing-demo-approval p {
+  margin: 0 0 22px;
+  color: var(--palette-amber-575-2);
+  font-size: 12px;
+}
+
+.marketing-demo-approval footer {
+  justify-content: flex-end;
+}
+
+.marketing-demo-approval footer button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--palette-amber-200);
+  border-radius: 8px;
+  background: white;
+  color: var(--palette-amber-675);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.marketing-demo-approval footer button:last-child {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
 }
 
 .marketing-outcomes {
@@ -371,6 +444,13 @@
   .marketing-demo,
   .marketing-safety {
     padding: 30px 22px;
+  }
+  .marketing-demo-preview {
+    justify-self: stretch;
+  }
+  .marketing-demo-video video {
+    height: auto;
+    aspect-ratio: 16 / 9;
   }
   .marketing-steps > div,
   .marketing-safety > div {

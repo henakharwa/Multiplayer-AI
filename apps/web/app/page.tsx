@@ -510,11 +510,34 @@ export default function HomePage() {
                 Try it in your workspace
               </button>
             </div>
-            <div className="marketing-demo-video">
-              <video controls preload="metadata" poster="/brag.jpg" aria-label="Nexus product demo">
-                <source src="/brag.mp4" type="video/mp4" />
-                Your browser does not support embedded videos.
-              </video>
+            <div className="marketing-demo-preview">
+              <div className="marketing-demo-video">
+                <video
+                  controls
+                  controlsList="nodownload nofullscreen noremoteplayback"
+                  disablePictureInPicture
+                  preload="metadata"
+                  poster="/brag.jpg"
+                  aria-label="Nexus product demo"
+                >
+                  <source src="/brag.mp4" type="video/mp4" />
+                  Your browser does not support embedded videos.
+                </video>
+              </div>
+              <article className="marketing-demo-approval" aria-label="Example approval card">
+                <header>
+                  <span>GitHub agent</span>
+                  <small>Approval required</small>
+                </header>
+                <h3>Create issue: Improve empty-state guidance</h3>
+                <p>
+                  Target: <b>acme/web-app</b> · Nothing has changed yet.
+                </p>
+                <footer>
+                  <button type="button">Review proposal</button>
+                  <button type="button">Approve</button>
+                </footer>
+              </article>
             </div>
           </section>
           <section data-scroll-reveal id="product" className="marketing-section">
