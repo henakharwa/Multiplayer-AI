@@ -259,10 +259,7 @@ export default function HomePage() {
               >
                 Create your workspace
               </button>
-              <a
-                className="marketing-secondary-cta"
-                href="/brag.mp4"
-              >
+              <a className="marketing-secondary-cta" href="/brag.mp4">
                 Watch demo
               </a>
             </div>
