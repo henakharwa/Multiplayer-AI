@@ -35,6 +35,10 @@ vi.mock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
 const { getGithubMcpClient, closeAllGithubMcpClients, DEFAULT_GITHUB_MCP_IMAGE, DEFAULT_GITHUB_TOOLS } = await import("../src/github-mcp-pool.js");
 
 beforeEach(() => {
+  // The Oracle production image invokes the bundled GitHub MCP binary
+  // directly. These tests deliberately cover the local Docker transport,
+  // so do not inherit GITHUB_MCP_COMMAND from a developer/deployment .env.
+  vi.stubEnv("GITHUB_MCP_COMMAND", undefined);
   connectMock.mockClear();
   closeMock.mockClear();
   lastTransportArgs = null;
@@ -42,6 +46,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await closeAllGithubMcpClients();
+  vi.unstubAllEnvs();
 });
 
 describe("getGithubMcpClient", () => {

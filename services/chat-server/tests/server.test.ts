@@ -42,6 +42,11 @@ function makeDeps(overrides: Partial<CreateServerDeps> = {}): CreateServerDeps {
 }
 
 beforeAll(async () => {
+  // This integration suite asserts the local callback URLs supplied below.
+  // Keep a deployment .env (with the public DuckDNS URL) from changing the
+  // app configuration while the suite runs.
+  vi.stubEnv("WEB_APP_URL", "http://localhost:3000");
+  vi.stubEnv("CHAT_SERVER_PUBLIC_URL", "http://localhost:4000");
   await runMigrations();
   const alice = await upsertUserFromGithub({ githubId: "test-auth-alice", username: "alice", displayName: "Alice" });
   const bob = await upsertUserFromGithub({ githubId: "test-auth-bob", username: "bob", displayName: "Bob" });
@@ -51,6 +56,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await closePool();
+  vi.unstubAllEnvs();
 });
 
 // Alice creates the workspace; Bob joins it with the join code (live chat
