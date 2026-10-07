@@ -19,6 +19,9 @@
 }
 
 .marketing-secondary-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 46px;
   padding: 0 16px;
   border: 1px solid var(--border-strong);
@@ -28,6 +31,7 @@
   font: inherit;
   font-size: 13px;
   font-weight: 700;
+  text-decoration: none;
 }
 
 .marketing-secondary-cta:hover {

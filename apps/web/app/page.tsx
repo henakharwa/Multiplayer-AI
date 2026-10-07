@@ -259,12 +259,12 @@ export default function HomePage() {
               >
                 Create your workspace
               </button>
-              <button
+              <a
                 className="marketing-secondary-cta"
-                onClick={() => document.getElementById("demo")?.scrollIntoView({ behavior: "smooth" })}
+                href="/brag.mp4"
               >
                 Watch demo
-              </button>
+              </a>
             </div>
             <button
               className="home-text-action"
