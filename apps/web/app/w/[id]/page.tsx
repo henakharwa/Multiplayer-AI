@@ -1148,13 +1148,22 @@ export default function WorkspaceRoomPage() {
           <div className="workspace-side-section workspace-members">
             <div className="workspace-side-heading">
               <span>In this workspace</span>
-              {workspaceRole === "admin" ? (
-                <button className="workspace-manage-members" onClick={() => setShowAccessManager(true)}>
-                  Manage
-                </button>
-              ) : (
-                <span>{workspaceRole}</span>
-              )}
+              <span className="workspace-side-heading-actions">
+                {workspaceRole && (
+                  <span
+                    className={`workspace-role-badge ${workspaceRole}`}
+                    data-testid="workspace-role-badge"
+                    title={`Your role: ${workspaceRole === "admin" ? "Admin" : "Editor"}`}
+                  >
+                    {workspaceRole === "admin" ? "Admin" : "Editor"}
+                  </span>
+                )}
+                {workspaceRole === "admin" && (
+                  <button className="workspace-manage-members" onClick={() => setShowAccessManager(true)}>
+                    Manage
+                  </button>
+                )}
+              </span>
             </div>
             {chat.workspaceParticipants.map((p) => (
               <div className="participant" key={p.clientId} data-testid="participant">
@@ -1186,7 +1195,14 @@ export default function WorkspaceRoomPage() {
             {initialsForName(displayName)}
           </span>
           <span>
-            <strong>{displayName}</strong>
+            <strong>
+              {displayName}
+              {workspaceRole && (
+                <span className={`workspace-role-badge ${workspaceRole}`} data-testid="account-role-badge">
+                  {workspaceRole === "admin" ? "Admin" : "Editor"}
+                </span>
+              )}
+            </strong>
             <small>{user.username}</small>
           </span>
           <button
