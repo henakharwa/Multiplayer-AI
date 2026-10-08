@@ -22,6 +22,7 @@ const blank: WorkspaceMemoryInput = {
   sourceUrl: "",
   freshUntil: "",
 };
+type BuilderStep = "entry" | "source" | "review";
 function dateInput(value: string | null) {
   return value ? value.slice(0, 10) : "";
 }
@@ -40,7 +41,8 @@ export default function MemoryPage() {
   const [selected, setSelected] = useState<WorkspaceMemory | null>(null);
   const [draft, setDraft] = useState<WorkspaceMemoryInput>(blank);
   const [filter, setFilter] = useState<"all" | "knowledge" | "decision">("all");
-  const [builderStep, setBuilderStep] = useState<"entry" | "source" | "review">("entry");
+  const [builderStep, setBuilderStep] = useState<BuilderStep>("entry");
+  const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
@@ -55,6 +57,7 @@ export default function MemoryPage() {
   function edit(memory: WorkspaceMemory) {
     setSelected(memory);
     setBuilderStep("entry");
+    setStepErrors({});
     setDraft({
       kind: memory.kind,
       title: memory.title,
@@ -83,6 +86,26 @@ export default function MemoryPage() {
       setSaving(false);
     }
   }
+  const clearStepError = (field: string) =>
+    setStepErrors((current) => {
+      const remaining = { ...current };
+      delete remaining[field];
+      return remaining;
+    });
+  const validateEntry = () => {
+    const errors: Record<string, string> = {};
+    if (!draft.title.trim()) errors.title = "Enter a title before continuing.";
+    if (!draft.content.trim()) errors.content = "Add the memory content before continuing.";
+    setStepErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+  const moveToStep = (step: BuilderStep) => {
+    if (step !== "entry" && !validateEntry()) {
+      setBuilderStep("entry");
+      return;
+    }
+    setBuilderStep(step);
+  };
   async function remove() {
     if (
       !selected ||
@@ -186,7 +209,7 @@ export default function MemoryPage() {
                 type="button"
                 key={step}
                 className={builderStep === step ? "active" : ""}
-                onClick={() => setBuilderStep(step)}
+                onClick={() => moveToStep(step)}
               >
                 <span>{index + 1}</span>
                 {label}
@@ -199,8 +222,13 @@ export default function MemoryPage() {
                 <p>STEP 1 · MEMORY</p>
                 <h3>Capture durable context</h3>
                 <small>Save a decision or knowledge the entire workspace can rely on.</small>
+                {Object.keys(stepErrors).length > 0 && (
+                  <p className="builder-validation-summary" role="alert">
+                    Please complete the required fields before continuing.
+                  </p>
+                )}
                 <label>
-                  Type
+                  Type <span className="required-marker">Required</span>
                   <select
                     value={draft.kind}
                     onChange={(e) => setDraft({ ...draft, kind: e.target.value as WorkspaceMemoryInput["kind"] })}
@@ -210,23 +238,36 @@ export default function MemoryPage() {
                   </select>
                 </label>
                 <label>
-                  Title
+                  Title <span className="required-marker">Required</span>
                   <input
                     value={draft.title}
-                    onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                    onChange={(e) => {
+                      setDraft({ ...draft, title: e.target.value });
+                      clearStepError("title");
+                    }}
                     placeholder={
                       draft.kind === "decision" ? "Use release branch main" : "Production deployment process"
                     }
+                    aria-invalid={Boolean(stepErrors.title)}
+                    className={stepErrors.title ? "input-invalid" : ""}
                   />
+                  {stepErrors.title && <span className="field-validation-error">{stepErrors.title}</span>}
                 </label>
                 <label>
-                  {draft.kind === "decision" ? "Decision and rationale" : "What the team should know"}
+                  {draft.kind === "decision" ? "Decision and rationale" : "What the team should know"}{" "}
+                  <span className="required-marker">Required</span>
                   <textarea
                     rows={8}
                     value={draft.content}
-                    onChange={(e) => setDraft({ ...draft, content: e.target.value })}
+                    onChange={(e) => {
+                      setDraft({ ...draft, content: e.target.value });
+                      clearStepError("content");
+                    }}
                     placeholder="Write the durable context an agent and teammate can rely on."
+                    aria-invalid={Boolean(stepErrors.content)}
+                    className={stepErrors.content ? "input-invalid" : ""}
                   />
+                  {stepErrors.content && <span className="field-validation-error">{stepErrors.content}</span>}
                 </label>
               </>
             )}
@@ -237,7 +278,7 @@ export default function MemoryPage() {
                 <small>Sources improve trust. A review date tells agents when to verify the information.</small>
                 <div className="memory-two-columns">
                   <label>
-                    Source title
+                    Source title <span className="optional-marker">Optional</span>
                     <input
                       value={draft.sourceTitle ?? ""}
                       onChange={(e) => setDraft({ ...draft, sourceTitle: e.target.value })}
@@ -245,7 +286,7 @@ export default function MemoryPage() {
                     />
                   </label>
                   <label>
-                    Source URL
+                    Source URL <span className="optional-marker">Optional</span>
                     <input
                       type="url"
                       value={draft.sourceUrl ?? ""}
@@ -255,7 +296,7 @@ export default function MemoryPage() {
                   </label>
                 </div>
                 <label>
-                  Review by
+                  Review by <span className="optional-marker">Optional</span>
                   <input
                     type="date"
                     value={draft.freshUntil ?? ""}
@@ -310,9 +351,10 @@ export default function MemoryPage() {
               <button
                 type="button"
                 className="primary-button"
-                onClick={() =>
-                  setBuilderStep(({ entry: "source", source: "review", review: "review" } as const)[builderStep])
-                }
+                onClick={() => {
+                  if (!validateEntry()) return;
+                  setBuilderStep(({ entry: "source", source: "review", review: "review" } as const)[builderStep]);
+                }}
               >
                 Continue
               </button>

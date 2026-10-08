@@ -763,17 +763,30 @@
 }
 
 .agent-builder-stage .required-marker,
-.agent-builder-stage .field-validation-error {
+.agent-builder-stage .field-validation-error,
+.workflow-builder-stage .required-marker,
+.workflow-builder-stage .field-validation-error,
+.memory-builder-stage .required-marker,
+.memory-builder-stage .field-validation-error {
   color: var(--danger-strong);
 }
 
-.agent-builder-stage .required-marker {
+.agent-builder-stage .required-marker,
+.workflow-builder-stage .required-marker,
+.memory-builder-stage .required-marker,
+.optional-marker {
   margin-left: 4px;
   font-size: 11px;
   font-weight: 800;
 }
 
-.agent-builder-stage .field-validation-error {
+.optional-marker {
+  color: var(--text-muted);
+}
+
+.agent-builder-stage .field-validation-error,
+.workflow-builder-stage .field-validation-error,
+.memory-builder-stage .field-validation-error {
   display: block;
   margin-top: 5px;
   font-size: 11px;
@@ -781,6 +794,17 @@
 }
 
 .agent-validation-summary {
+  margin: 13px 0 -2px;
+  padding: 9px 10px;
+  border: 1px solid #efb4ae;
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.builder-validation-summary {
   margin: 13px 0 -2px;
   padding: 9px 10px;
   border: 1px solid #efb4ae;
@@ -813,7 +837,16 @@
 
 .agent-builder-stage input.input-invalid,
 .agent-builder-stage select.input-invalid,
-.agent-builder-stage textarea.input-invalid {
+.agent-builder-stage textarea.input-invalid,
+.workflow-builder-stage input.input-invalid,
+.workflow-builder-stage select.input-invalid,
+.workflow-builder-stage textarea.input-invalid,
+.memory-builder-stage input.input-invalid,
+.memory-builder-stage select.input-invalid,
+.memory-builder-stage textarea.input-invalid,
+.artifact-form input.input-invalid,
+.artifact-form select.input-invalid,
+.artifact-form textarea.input-invalid {
   border-color: var(--danger);
   box-shadow: 0 0 0 3px rgba(214, 59, 59, 0.12);
 }

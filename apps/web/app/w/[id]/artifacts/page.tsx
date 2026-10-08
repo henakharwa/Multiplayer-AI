@@ -135,6 +135,7 @@ export default function ArtifactsPage() {
   const [selected, setSelected] = useState<WorkspaceArtifact | null>(null);
   const [draft, setDraft] = useState<WorkspaceArtifactInput>(empty);
   const [builderStep, setBuilderStep] = useState<"setup" | "compose" | "review">("setup");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [comments, setComments] = useState<WorkspaceArtifactComment[]>([]);
   const [versions, setVersions] = useState<WorkspaceArtifactVersion[]>([]);
   const [comment, setComment] = useState("");
@@ -389,8 +390,7 @@ export default function ArtifactsPage() {
       setBuilderStep((step) => (step === "review" ? "compose" : "setup"));
       return;
     }
-    if (builderStep === "setup" && !draft.title.trim()) {
-      setError("Add a title before continuing to Compose.");
+    if (builderStep === "setup" && !validateSetup()) {
       return;
     }
     if (builderStep === "setup") {
@@ -398,13 +398,41 @@ export default function ArtifactsPage() {
       setError("");
       return;
     }
-    if (builderStep === "compose" && !draft.content.trim()) {
-      setError("Add notes or generate a draft before continuing to Review.");
+    if (builderStep === "compose" && !validateCompose()) {
       return;
     }
     setBuilderStep("review");
     setError("");
   }
+  const clearFieldError = (field: string) =>
+    setFieldErrors((current) => {
+      const remaining = { ...current };
+      delete remaining[field];
+      return remaining;
+    });
+  const validateSetup = () => {
+    const errors: Record<string, string> = {};
+    if (!draft.title.trim()) errors.title = "Enter an artifact title before continuing.";
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+  const validateCompose = () => {
+    const errors: Record<string, string> = {};
+    if (!draft.content.trim()) errors.content = "Add artifact content before continuing.";
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+  const moveToBuilderStep = (step: "setup" | "compose" | "review") => {
+    if (step !== "setup" && !validateSetup()) {
+      setBuilderStep("setup");
+      return;
+    }
+    if (step === "review" && !validateCompose()) {
+      setBuilderStep("compose");
+      return;
+    }
+    setBuilderStep(step);
+  };
   async function refreshDashboard() {
     if (blockUnmanaged()) return;
     if (!selected) return;
@@ -636,7 +664,7 @@ export default function ArtifactsPage() {
             draft={draft}
             members={members}
             step={builderStep}
-            onStepChange={setBuilderStep}
+            onStepChange={moveToBuilderStep}
           />
           {!(
             (draft.type === "plan" && draft.status === "published" && !planEditing) ||
@@ -648,7 +676,7 @@ export default function ArtifactsPage() {
               <section className="artifact-setup-fields">
                 <div className="artifact-two-columns">
                   <label>
-                    Type
+                    Type <span className="required-marker">Required</span>
                     <select
                       value={draft.type}
                       onChange={(e) => setDraft({ ...draft, type: e.target.value as WorkspaceArtifactInput["type"] })}
@@ -661,7 +689,7 @@ export default function ArtifactsPage() {
                     </select>
                   </label>
                   <label>
-                    Status
+                    Status <span className="required-marker">Required</span>
                     <select
                       value={draft.status}
                       onChange={(e) =>
@@ -685,15 +713,21 @@ export default function ArtifactsPage() {
                   </label>
                 </div>
                 <label>
-                  Title
+                  Title <span className="required-marker">Required</span>
                   <input
                     value={draft.title}
-                    onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                    onChange={(e) => {
+                      setDraft({ ...draft, title: e.target.value });
+                      clearFieldError("title");
+                    }}
                     placeholder="Release readiness plan"
+                    aria-invalid={Boolean(fieldErrors.title)}
+                    className={fieldErrors.title ? "input-invalid" : ""}
                   />
+                  {fieldErrors.title && <span className="field-validation-error">{fieldErrors.title}</span>}
                 </label>
                 <label>
-                  Summary
+                  Summary <span className="optional-marker">Optional</span>
                   <input
                     value={draft.summary}
                     onChange={(e) => setDraft({ ...draft, summary: e.target.value })}
@@ -701,7 +735,7 @@ export default function ArtifactsPage() {
                   />
                 </label>
                 <label>
-                  Owner
+                  Owner <span className="optional-marker">Optional</span>
                   <select
                     value={draft.ownerUserId ?? ""}
                     onChange={(e) => setDraft({ ...draft, ownerUserId: e.target.value || null })}
@@ -731,7 +765,7 @@ export default function ArtifactsPage() {
                   </div>
                   <div className="artifact-assistant">
                     <label>
-                      Assistant focus
+                      Assistant focus <span className="optional-marker">Optional</span>
                       <input
                         value={assistantPrompt}
                         onChange={(event) => setAssistantPrompt(event.target.value)}
@@ -788,7 +822,7 @@ export default function ArtifactsPage() {
               ) : draft.type === "release_notes" ? (
                 <>
                   <label>
-                    Version / tag
+                    Version / tag <span className="optional-marker">Optional</span>
                     <input
                       value={draft.releaseVersion ?? ""}
                       onChange={(e) => setDraft({ ...draft, releaseVersion: e.target.value || null })}
@@ -857,13 +891,19 @@ export default function ArtifactsPage() {
                 />
               )}
               <label>
-                Notes and context
+                Notes and context <span className="required-marker">Required</span>
                 <textarea
                   rows={draft.type === "dashboard" ? 4 : 11}
                   value={draft.content}
-                  onChange={(e) => setDraft({ ...draft, content: e.target.value })}
+                  onChange={(e) => {
+                    setDraft({ ...draft, content: e.target.value });
+                    clearFieldError("content");
+                  }}
                   placeholder="Write the shared artifact. Use headings and checklist items where helpful."
+                  aria-invalid={Boolean(fieldErrors.content)}
+                  className={fieldErrors.content ? "input-invalid" : ""}
                 />
+                {fieldErrors.content && <span className="field-validation-error">{fieldErrors.content}</span>}
               </label>
             </>
           )}

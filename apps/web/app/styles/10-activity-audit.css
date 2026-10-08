@@ -1,6 +1,18 @@
 /* Part of the global stylesheet, split in original order (see app/layout.tsx). */
 
 /* Artifact builder navigation */
+.artifact-form .required-marker,
+.artifact-form .field-validation-error {
+  color: var(--danger-strong);
+}
+
+.artifact-form .field-validation-error {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
 .artifact-builder-steps {
   display: flex;
   gap: 5px;

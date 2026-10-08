@@ -34,6 +34,7 @@ const triggers: Array<{ value: WorkflowTrigger; label: string; help: string }> =
   { value: "slack_mention", label: "Slack mention", help: "Run when the workspace is mentioned in Slack." },
 ];
 const agentKinds = ["project", "github", "slack", "linear", "notion", "figma"] as const;
+type BuilderStep = "identity" | "execution" | "delivery" | "governance" | "review";
 const empty: WorkflowInput = {
   name: "",
   description: "",
@@ -121,9 +122,8 @@ export default function WorkflowsPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused" | "attention">("all");
   const [showTestLab, setShowTestLab] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [builderStep, setBuilderStep] = useState<"identity" | "execution" | "delivery" | "governance" | "review">(
-    "identity",
-  );
+  const [builderStep, setBuilderStep] = useState<BuilderStep>("identity");
+  const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
 
   const access = useWorkspaceAccess(workspaceId);
   const dialog = useDialog();
@@ -143,6 +143,7 @@ export default function WorkflowsPage() {
   async function select(workflow: WorkspaceWorkflow) {
     setSelected(workflow);
     setBuilderStep("identity");
+    setStepErrors({});
     setError("");
     setNotice("");
     // The checkpoint used to be stored as a sentence in the instructions; it is now a saved setting, so drop that legacy sentence from the editor.
@@ -184,6 +185,50 @@ export default function WorkflowsPage() {
       setSaving(false);
     }
   }
+  const clearStepError = (field: string) =>
+    setStepErrors((current) => {
+      const remaining = { ...current };
+      delete remaining[field];
+      return remaining;
+    });
+  const validateRequiredFields = (throughStep: BuilderStep) => {
+    const errors: Record<string, string> = {};
+    const stepIndex = ["identity", "execution", "delivery", "governance", "review"].indexOf(throughStep);
+    if (!draft.name.trim()) errors.name = "Enter a workflow name before continuing.";
+    if (stepIndex >= 1 && !draft.instructions.trim()) errors.instructions = "Add instructions before continuing.";
+    setStepErrors(errors);
+    const firstInvalidStep: BuilderStep | null = errors.name ? "identity" : errors.instructions ? "execution" : null;
+    return { valid: !firstInvalidStep, firstInvalidStep };
+  };
+  const moveToStep = (nextStep: BuilderStep) => {
+    const nextIndex = ["identity", "execution", "delivery", "governance", "review"].indexOf(nextStep);
+    if (nextIndex > 0) {
+      const validation = validateRequiredFields(nextStep === "execution" ? "identity" : "execution");
+      if (!validation.valid) {
+        setBuilderStep(validation.firstInvalidStep!);
+        return;
+      }
+    }
+    setBuilderStep(nextStep);
+  };
+  const continueBuilder = () => {
+    const validation = validateRequiredFields(builderStep);
+    if (!validation.valid) {
+      setBuilderStep(validation.firstInvalidStep!);
+      return;
+    }
+    setBuilderStep(
+      (
+        {
+          identity: "execution",
+          execution: "delivery",
+          delivery: "governance",
+          governance: "review",
+          review: "review",
+        } as const
+      )[builderStep],
+    );
+  };
   async function run(
     trigger: "manual" | "github_issue" | "github_status" | "slack_mention" = "manual",
     sampleEvent?: string,
@@ -225,6 +270,7 @@ export default function WorkflowsPage() {
       await deleteWorkspaceWorkflow(workspaceId, selected.id);
       setSelected(null);
       setDraft(empty);
+      setStepErrors({});
       setRuns([]);
       await refresh();
     } catch (err) {
@@ -315,6 +361,7 @@ export default function WorkflowsPage() {
               onClick={() => {
                 setSelected(null);
                 setDraft(template.value);
+                setStepErrors({});
                 setRuns([]);
                 setNotice(`Loaded the ${template.label} template.`);
               }}
@@ -336,6 +383,7 @@ export default function WorkflowsPage() {
               onClick={() => {
                 setSelected(null);
                 setDraft(empty);
+                setStepErrors({});
                 setRuns([]);
                 setError("");
                 setNotice("");
@@ -481,7 +529,7 @@ export default function WorkflowsPage() {
                 type="button"
                 key={step}
                 className={builderStep === step ? "active" : ""}
-                onClick={() => setBuilderStep(step)}
+                onClick={() => moveToStep(step)}
               >
                 <span>{index + 1}</span>
                 {label}
@@ -495,17 +543,28 @@ export default function WorkflowsPage() {
                   <p className="workflow-stage-kicker">STEP 1 · IDENTITY</p>
                   <h3>Name the recurring outcome</h3>
                   <small>Use a clear name and summary so teammates understand what this automation delivers.</small>
+                  {stepErrors.name && (
+                    <p className="builder-validation-summary" role="alert">
+                      Please complete the required name before continuing.
+                    </p>
+                  )}
                   <label>
-                    Name
+                    Name <span className="required-marker">Required</span>
                     <input
                       value={draft.name}
-                      onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                      onChange={(e) => {
+                        setDraft({ ...draft, name: e.target.value });
+                        clearStepError("name");
+                      }}
                       placeholder="Weekly release readiness"
                       autoFocus
+                      aria-invalid={Boolean(stepErrors.name)}
+                      className={stepErrors.name ? "input-invalid" : ""}
                     />
+                    {stepErrors.name && <span className="field-validation-error">{stepErrors.name}</span>}
                   </label>
                   <label>
-                    Description
+                    Description <span className="optional-marker">Optional</span>
                     <input
                       value={draft.description}
                       onChange={(e) => setDraft({ ...draft, description: e.target.value })}
@@ -521,14 +580,27 @@ export default function WorkflowsPage() {
                   <small>
                     Select a specialist or a published custom agent, then define the instructions for each run.
                   </small>
+                  {stepErrors.instructions && (
+                    <p className="builder-validation-summary" role="alert">
+                      Please complete the required instructions before continuing.
+                    </p>
+                  )}
                   <label>
-                    Instructions
+                    Instructions <span className="required-marker">Required</span>
                     <textarea
                       rows={7}
                       value={draft.instructions}
-                      onChange={(e) => setDraft({ ...draft, instructions: e.target.value })}
+                      onChange={(e) => {
+                        setDraft({ ...draft, instructions: e.target.value });
+                        clearStepError("instructions");
+                      }}
                       placeholder="Review open pull requests, checks, and release blockers. Share a concise update."
+                      aria-invalid={Boolean(stepErrors.instructions)}
+                      className={stepErrors.instructions ? "input-invalid" : ""}
                     />
+                    {stepErrors.instructions && (
+                      <span className="field-validation-error">{stepErrors.instructions}</span>
+                    )}
                   </label>
                   <div className="workflow-two-columns">
                     <fieldset className="workflow-agent-picker">
@@ -767,23 +839,7 @@ export default function WorkflowsPage() {
               Back
             </button>
             {builderStep !== "review" ? (
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() =>
-                  setBuilderStep(
-                    (
-                      {
-                        identity: "execution",
-                        execution: "delivery",
-                        delivery: "governance",
-                        governance: "review",
-                        review: "review",
-                      } as const
-                    )[builderStep],
-                  )
-                }
-              >
+              <button type="button" className="primary-button" onClick={continueBuilder}>
                 Continue
               </button>
             ) : (
