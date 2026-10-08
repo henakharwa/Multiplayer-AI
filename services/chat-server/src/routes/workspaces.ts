@@ -55,6 +55,8 @@ export function registerWorkspacesRoutes({ app, deps, webAppUrl, requireRole }: 
       console.error(JSON.stringify({ level: "error", event: "workspace_invitation_email_failed", workspaceId, error: message }));
       const publicError = /EAUTH|Invalid login|Username and Password not accepted/i.test(message)
         ? "Gmail rejected the sign-in. Check the Gmail address and use a new Google App Password."
+        : /Outbound email is not configured/i.test(message)
+          ? "Email delivery is not configured. Set RESEND_API_KEY and EMAIL_FROM_ADDRESS, or the GMAIL_SMTP_* or GMAIL_API_* settings, then redeploy."
         : /invalid_grant|Token has been expired or revoked/i.test(message)
           ? "Gmail API access has expired or been revoked. Generate a new GMAIL_API_REFRESH_TOKEN (publish the Google OAuth app to Production so it stops expiring) and update it in Render."
           : /invalid_client|unauthorized_client/i.test(message)

@@ -41,7 +41,9 @@ export interface Mailer {
 export function defaultMailerConfig(): MailerConfig {
   return {
     resendApiKey: process.env.RESEND_API_KEY || undefined,
-    fromAddress: process.env.EMAIL_FROM_ADDRESS || (process.env.GMAIL_SMTP_USER ? `Nexus <${process.env.GMAIL_SMTP_USER}>` : "Nexus <onboarding@resend.dev>"),
+    fromAddress:
+      process.env.EMAIL_FROM_ADDRESS ||
+      (process.env.GMAIL_SMTP_USER ? `Nexus <${process.env.GMAIL_SMTP_USER}>` : "Nexus <onboarding@resend.dev>"),
     gmailUser: process.env.GMAIL_SMTP_USER || undefined,
     gmailAppPassword: process.env.GMAIL_SMTP_APP_PASSWORD || undefined,
     gmailApiClientId: process.env.GMAIL_API_CLIENT_ID || undefined,
@@ -92,8 +94,12 @@ async function sendViaGmailApi(config: MailerConfig, email: OutgoingEmail): Prom
     }),
     signal: AbortSignal.timeout(15_000),
   });
-  const tokenBody = await tokenResponse.json().catch(() => ({})) as { access_token?: string; error_description?: string };
-  if (!tokenResponse.ok || !tokenBody.access_token) throw new Error(`Gmail API token refresh failed: ${tokenBody.error_description ?? tokenResponse.status}`);
+  const tokenBody = (await tokenResponse.json().catch(() => ({}))) as {
+    access_token?: string;
+    error_description?: string;
+  };
+  if (!tokenResponse.ok || !tokenBody.access_token)
+    throw new Error(`Gmail API token refresh failed: ${tokenBody.error_description ?? tokenResponse.status}`);
   // RFC 2822 message, then Gmail's URL-safe base64 encoding. Encode the
   // subject to prevent untrusted workspace names from becoming headers.
   const subject = `=?UTF-8?B?${Buffer.from(email.subject, "utf8").toString("base64")}?=`;
@@ -115,19 +121,20 @@ async function sendViaGmailApi(config: MailerConfig, email: OutgoingEmail): Prom
   if (!sendResponse.ok) throw new Error(`Gmail API send failed: ${sendResponse.status}`);
 }
 
-// The always-works default: prints the email (link included) to this
-// server's own terminal instead of sending it. Real enough to develop
-// and test against without any provider account -- click the printed
-// link yourself. A production deployment should set RESEND_API_KEY (or
-// swap this file for another provider) instead of relying on this.
+// The development fallback prints the email (link included) to the server
+// terminal. Production must use a real provider; otherwise the caller needs
+// a clear failure instead of a misleading delivery success message.
 function sendViaConsole(email: OutgoingEmail): void {
   console.log(
     `\n[mailer] RESEND_API_KEY not set -- printing this email instead of sending it:\n` +
-    `  To: ${email.to}\n  Subject: ${email.subject}\n\n${email.text}\n`
+      `  To: ${email.to}\n  Subject: ${email.subject}\n\n${email.text}\n`,
   );
 }
 
-export function createMailer(config: MailerConfig = defaultMailerConfig()): Mailer {
+export function createMailer(
+  config: MailerConfig = defaultMailerConfig(),
+  production = process.env.NODE_ENV === "production",
+): Mailer {
   if (config.gmailUser && config.gmailApiClientId && config.gmailApiClientSecret && config.gmailApiRefreshToken) {
     return { send: (email) => sendViaGmailApi(config, email) };
   }
@@ -136,6 +143,13 @@ export function createMailer(config: MailerConfig = defaultMailerConfig()): Mail
   }
   if (config.resendApiKey) {
     return { send: (email) => sendViaResend(config, email) };
+  }
+  if (production) {
+    return {
+      send: async () => {
+        throw new Error("Outbound email is not configured. Set RESEND_API_KEY or Gmail mailer credentials.");
+      },
+    };
   }
   return { send: async (email) => sendViaConsole(email) };
 }
