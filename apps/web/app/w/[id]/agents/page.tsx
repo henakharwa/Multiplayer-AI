@@ -21,6 +21,7 @@ import {
 const providers = ["github", "slack", "linear", "notion", "figma"] as const;
 const bases = ["project", ...providers] as const;
 type Base = (typeof bases)[number];
+type BuilderStep = "identity" | "behavior" | "knowledge" | "tools" | "review";
 const blank = {
   name: "",
   baseAgent: "project" as Base,
@@ -42,9 +43,8 @@ export default function AgentsPage() {
   const [publishedOnly, setPublishedOnly] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [directoryFilter, setDirectoryFilter] = useState<"all" | "published" | "draft" | "favorites">("all");
-  const [builderStep, setBuilderStep] = useState<"identity" | "behavior" | "knowledge" | "tools" | "review">(
-    "identity",
-  );
+  const [builderStep, setBuilderStep] = useState<BuilderStep>("identity");
+  const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
   const dialog = useDialog();
   const access = useWorkspaceAccess(id);
   const canChange = access.can("createAgents");
@@ -119,6 +119,7 @@ export default function AgentsPage() {
   function edit(agent: WorkspaceAgent) {
     setSelected(agent);
     setBuilderStep("identity");
+    setStepErrors({});
     setDraft({
       name: agent.name,
       baseAgent: agent.baseAgent,
@@ -150,6 +151,11 @@ export default function AgentsPage() {
   }
   async function publish() {
     if (!selected) return;
+    if (!draft.instructions.trim()) {
+      setBuilderStep("behavior");
+      setStepErrors({ instructions: "Add instructions before publishing this agent." });
+      return;
+    }
     setSaving(true);
     try {
       const agent = await publishWorkspaceAgent(id, selected.id);
@@ -179,6 +185,7 @@ export default function AgentsPage() {
       await deleteWorkspaceAgent(id, selected.id);
       setSelected(null);
       setDraft(blank);
+      setStepErrors({});
       setVersions([]);
       await refresh();
     } catch (e) {
@@ -188,6 +195,26 @@ export default function AgentsPage() {
     }
   }
   const providerCount = new Set(agents.flatMap((agent) => agent.approvedProviders)).size;
+  const validateIdentity = () => {
+    const nextErrors: Record<string, string> = {};
+    if (!draft.name.trim()) nextErrors.name = "Enter an agent name before continuing.";
+    if (!draft.baseAgent) nextErrors.baseAgent = "Choose a base specialist before continuing.";
+    setStepErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+  const clearStepError = (field: string) =>
+    setStepErrors((current) => {
+      const remaining = { ...current };
+      delete remaining[field];
+      return remaining;
+    });
+  const moveToStep = (nextStep: BuilderStep) => {
+    if (nextStep !== "identity" && !validateIdentity()) {
+      setBuilderStep("identity");
+      return;
+    }
+    setBuilderStep(nextStep);
+  };
   const selectedContext = [
     draft.baseAgent === "project" ? "Workspace context" : `${draft.baseAgent} specialist`,
     draft.knowledge.trim() ? "Saved knowledge" : "No knowledge added",
@@ -249,6 +276,7 @@ export default function AgentsPage() {
               onClick={() => {
                 setSelected(null);
                 setVersions([]);
+                setStepErrors({});
                 setDraft({
                   ...blank,
                   name: blueprint.name,
@@ -276,6 +304,7 @@ export default function AgentsPage() {
                 setSelected(null);
                 setDraft(blank);
                 setVersions([]);
+                setStepErrors({});
               }}
             >
               New agent
@@ -381,7 +410,7 @@ export default function AgentsPage() {
                 type="button"
                 key={step}
                 className={builderStep === step ? "active" : ""}
-                onClick={() => setBuilderStep(step)}
+                onClick={() => moveToStep(step)}
               >
                 <span>{index + 1}</span>
                 {label}
@@ -395,27 +424,54 @@ export default function AgentsPage() {
                   <p className="agent-stage-kicker">STEP 1 · IDENTITY</p>
                   <h3>Give this agent a clear role</h3>
                   <small>A role and specialist help teammates understand when to use it.</small>
+                  {Object.keys(stepErrors).length > 0 && (
+                    <p className="agent-validation-summary" role="alert">
+                      Please complete the required fields before continuing.
+                    </p>
+                  )}
                   <label>
-                    Name (required)
+                    Name <span className="required-marker">Required</span>
                     <input
                       value={draft.name}
-                      onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                      onChange={(e) => {
+                        setDraft({ ...draft, name: e.target.value });
+                        clearStepError("name");
+                      }}
                       placeholder="Release coordinator"
                       autoFocus
                       required
+                      aria-invalid={Boolean(stepErrors.name)}
+                      aria-describedby={stepErrors.name ? "agent-name-error" : undefined}
+                      className={stepErrors.name ? "input-invalid" : ""}
                     />
+                    {stepErrors.name && (
+                      <span className="field-validation-error" id="agent-name-error">
+                        {stepErrors.name}
+                      </span>
+                    )}
                   </label>
                   <label>
-                    Base specialist (required)
+                    Base specialist <span className="required-marker">Required</span>
                     <select
                       value={draft.baseAgent}
-                      onChange={(e) => setDraft({ ...draft, baseAgent: e.target.value as Base })}
+                      onChange={(e) => {
+                        setDraft({ ...draft, baseAgent: e.target.value as Base });
+                        clearStepError("baseAgent");
+                      }}
                       required
+                      aria-invalid={Boolean(stepErrors.baseAgent)}
+                      aria-describedby={stepErrors.baseAgent ? "agent-base-error" : undefined}
+                      className={stepErrors.baseAgent ? "input-invalid" : ""}
                     >
                       {bases.map((base) => (
                         <option key={base}>{base}</option>
                       ))}
                     </select>
+                    {stepErrors.baseAgent && (
+                      <span className="field-validation-error" id="agent-base-error">
+                        {stepErrors.baseAgent}
+                      </span>
+                    )}
                   </label>
                 </>
               )}
@@ -425,13 +481,24 @@ export default function AgentsPage() {
                   <h3>Define how it should work</h3>
                   <small>Write the instructions that guide every conversation.</small>
                   <label>
-                    Instructions (required to publish)
+                    Instructions <span className="required-marker">Required to publish</span>
                     <textarea
                       value={draft.instructions}
-                      onChange={(e) => setDraft({ ...draft, instructions: e.target.value })}
+                      onChange={(e) => {
+                        setDraft({ ...draft, instructions: e.target.value });
+                        clearStepError("instructions");
+                      }}
                       placeholder="How this agent should work with the team."
                       rows={7}
+                      aria-invalid={Boolean(stepErrors.instructions)}
+                      aria-describedby={stepErrors.instructions ? "agent-instructions-error" : undefined}
+                      className={stepErrors.instructions ? "input-invalid" : ""}
                     />
+                    {stepErrors.instructions && (
+                      <span className="field-validation-error" id="agent-instructions-error">
+                        {stepErrors.instructions}
+                      </span>
+                    )}
                   </label>
                   <label>
                     Model (optional)
@@ -552,7 +619,8 @@ export default function AgentsPage() {
               <button
                 type="button"
                 className="primary-button"
-                onClick={() =>
+                onClick={() => {
+                  if (builderStep === "identity" && !validateIdentity()) return;
                   setBuilderStep(
                     (
                       {
@@ -563,8 +631,8 @@ export default function AgentsPage() {
                         review: "review",
                       } as const
                     )[builderStep],
-                  )
-                }
+                  );
+                }}
               >
                 Continue
               </button>
@@ -574,12 +642,7 @@ export default function AgentsPage() {
               </button>
             )}
             {selected && (
-              <button
-                className="secondary-button"
-                onClick={publish}
-                disabled={saving || !canPublish || !draft.instructions.trim()}
-                title={!draft.instructions.trim() ? "Add instructions before publishing this agent." : undefined}
-              >
+              <button className="secondary-button" onClick={publish} disabled={saving || !canPublish}>
                 Publish version
               </button>
             )}

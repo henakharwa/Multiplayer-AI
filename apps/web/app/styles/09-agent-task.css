@@ -755,6 +755,42 @@
   font-weight: 750;
 }
 
+.agent-builder-stage .access-readonly > label {
+  display: block;
+  margin-top: 20px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.agent-builder-stage .required-marker,
+.agent-builder-stage .field-validation-error {
+  color: var(--danger-strong);
+}
+
+.agent-builder-stage .required-marker {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.agent-builder-stage .field-validation-error {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.agent-validation-summary {
+  margin: 13px 0 -2px;
+  padding: 9px 10px;
+  border: 1px solid #efb4ae;
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .agent-builder-stage input,
 .agent-builder-stage select,
 .agent-builder-stage textarea {
@@ -773,6 +809,13 @@
 
 .agent-builder-stage textarea {
   resize: vertical;
+}
+
+.agent-builder-stage input.input-invalid,
+.agent-builder-stage select.input-invalid,
+.agent-builder-stage textarea.input-invalid {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(214, 59, 59, 0.12);
 }
 
 .agent-builder-stage fieldset {
