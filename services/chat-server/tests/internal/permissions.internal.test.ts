@@ -87,7 +87,11 @@ describe("PM-03 conditional Editor features", () => {
   });
   it("basic: publishAgents gates publishing separately from building", async () => {
     await grantEditor(ws.id, { createAgents: true, publishAgents: false });
-    const agent = await as(editor).post(`/workspaces/${ws.id}/agents`, { name: "Publisher test", baseAgent: "project" });
+    const agent = await as(editor).post(`/workspaces/${ws.id}/agents`, {
+      name: "Publisher test",
+      baseAgent: "project",
+      instructions: "Review the workspace and publish a concise status update.",
+    });
     expect((await as(editor).post(`/workspaces/${ws.id}/agents/${agent.body.id}/publish`)).status).toBe(403);
     await grantEditor(ws.id, { publishAgents: true });
     expect((await as(editor).post(`/workspaces/${ws.id}/agents/${agent.body.id}/publish`)).status).toBe(200);
