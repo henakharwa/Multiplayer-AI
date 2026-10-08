@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import type { WorkspaceAgent, WorkspaceAgentVersion } from "@mai-chat/shared-types";
 import { AccessNotice } from "../../../_components/AccessNotice";
 import { useWorkspaceAccess } from "../../../../lib/useWorkspaceAccess";
+import { missingRequiredFields } from "../../../../lib/builder-validation";
 import {
   describeError,
   getWorkspacePreference,
@@ -198,11 +199,12 @@ export default function AgentsPage() {
   const validateRequiredFields = (throughStep: BuilderStep) => {
     const nextErrors: Record<string, string> = {};
     const stepIndex = ["identity", "behavior", "knowledge", "tools", "review"].indexOf(throughStep);
+    const missingIdentity = missingRequiredFields({ name: draft.name, baseAgent: draft.baseAgent });
     if (stepIndex >= 0) {
-      if (!draft.name.trim()) nextErrors.name = "Enter an agent name before continuing.";
-      if (!draft.baseAgent) nextErrors.baseAgent = "Choose a base specialist before continuing.";
+      if (missingIdentity.includes("name")) nextErrors.name = "Enter an agent name before continuing.";
+      if (missingIdentity.includes("baseAgent")) nextErrors.baseAgent = "Choose a base specialist before continuing.";
     }
-    if (stepIndex >= 1 && !draft.instructions.trim()) {
+    if (stepIndex >= 1 && missingRequiredFields({ instructions: draft.instructions }).includes("instructions")) {
       nextErrors.instructions = "Add instructions before continuing.";
     }
     setStepErrors(nextErrors);

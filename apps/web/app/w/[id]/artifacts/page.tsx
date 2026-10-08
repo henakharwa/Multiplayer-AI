@@ -41,6 +41,7 @@ import { TaskListVisual } from "../../../_components/TaskListVisual";
 import { ArtifactSharingControls } from "../../../_components/ArtifactSharingControls";
 import { useWorkspaceUser } from "../../../_components/WorkspaceAuth";
 import { useWorkspaceAccess } from "../../../../lib/useWorkspaceAccess";
+import { missingRequiredFields } from "../../../../lib/builder-validation";
 import { ArtifactCatalog, ArtifactList, artifactLabels } from "../../../_components/ArtifactCatalog";
 import { ArtifactBuilderChrome } from "../../../_components/ArtifactBuilderChrome";
 import { ArtifactHistoryPanel } from "../../../_components/ArtifactHistoryPanel";
@@ -412,13 +413,15 @@ export default function ArtifactsPage() {
     });
   const validateSetup = () => {
     const errors: Record<string, string> = {};
-    if (!draft.title.trim()) errors.title = "Enter an artifact title before continuing.";
+    if (missingRequiredFields({ title: draft.title }).includes("title"))
+      errors.title = "Enter an artifact title before continuing.";
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
   const validateCompose = () => {
     const errors: Record<string, string> = {};
-    if (!draft.content.trim()) errors.content = "Add artifact content before continuing.";
+    if (missingRequiredFields({ content: draft.content }).includes("content"))
+      errors.content = "Add artifact content before continuing.";
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };

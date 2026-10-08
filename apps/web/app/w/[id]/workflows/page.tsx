@@ -13,6 +13,7 @@ import type {
 } from "@mai-chat/shared-types";
 import { AccessNotice } from "../../../_components/AccessNotice";
 import { useWorkspaceAccess } from "../../../../lib/useWorkspaceAccess";
+import { missingRequiredFields } from "../../../../lib/builder-validation";
 import {
   describeError,
   createWorkspaceWorkflow,
@@ -194,8 +195,9 @@ export default function WorkflowsPage() {
   const validateRequiredFields = (throughStep: BuilderStep) => {
     const errors: Record<string, string> = {};
     const stepIndex = ["identity", "execution", "delivery", "governance", "review"].indexOf(throughStep);
-    if (!draft.name.trim()) errors.name = "Enter a workflow name before continuing.";
-    if (stepIndex >= 1 && !draft.instructions.trim()) errors.instructions = "Add instructions before continuing.";
+    const missing = missingRequiredFields({ name: draft.name, instructions: draft.instructions });
+    if (missing.includes("name")) errors.name = "Enter a workflow name before continuing.";
+    if (stepIndex >= 1 && missing.includes("instructions")) errors.instructions = "Add instructions before continuing.";
     setStepErrors(errors);
     const firstInvalidStep: BuilderStep | null = errors.name ? "identity" : errors.instructions ? "execution" : null;
     return { valid: !firstInvalidStep, firstInvalidStep };

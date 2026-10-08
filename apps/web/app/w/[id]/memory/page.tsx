@@ -13,6 +13,7 @@ import {
   updateWorkspaceMemory,
   type WorkspaceMemoryInput,
 } from "../../../../lib/api";
+import { missingRequiredFields } from "../../../../lib/builder-validation";
 
 const blank: WorkspaceMemoryInput = {
   kind: "knowledge",
@@ -94,8 +95,9 @@ export default function MemoryPage() {
     });
   const validateEntry = () => {
     const errors: Record<string, string> = {};
-    if (!draft.title.trim()) errors.title = "Enter a title before continuing.";
-    if (!draft.content.trim()) errors.content = "Add the memory content before continuing.";
+    const missing = missingRequiredFields({ title: draft.title, content: draft.content });
+    if (missing.includes("title")) errors.title = "Enter a title before continuing.";
+    if (missing.includes("content")) errors.content = "Add the memory content before continuing.";
     setStepErrors(errors);
     return Object.keys(errors).length === 0;
   };
