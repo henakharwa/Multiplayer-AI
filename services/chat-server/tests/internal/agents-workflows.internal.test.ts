@@ -47,6 +47,12 @@ describe("AG-01 agent builder", () => {
     const versions = (await request(app).get(`${agents()}/${agent.id}/versions`).set("Cookie", editor.cookie)).body;
     expect(versions.map((v: { version: number }) => v.version).sort()).toEqual([1, 2]);
   });
+  it("requires instructions before publishing a draft agent", async () => {
+    const agent = (await request(app).post(agents()).set("Cookie", admin.cookie).send({ name: "Needs behavior", baseAgent: "project" })).body;
+    const published = await request(app).post(`${agents()}/${agent.id}/publish`).set("Cookie", admin.cookie);
+    expect(published.status).toBe(400);
+    expect(published.body.error).toMatch(/Instructions are required/);
+  });
   it("edge: unknown and malformed agent ids are 404", async () => {
     expect((await request(app).patch(`${agents()}/${NIL_UUID}`).set("Cookie", admin.cookie).send({ name: "x" })).status).toBe(404);
     expect((await request(app).post(`${agents()}/bad/publish`).set("Cookie", admin.cookie)).status).toBe(404);

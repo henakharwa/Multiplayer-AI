@@ -396,19 +396,21 @@ export default function AgentsPage() {
                   <h3>Give this agent a clear role</h3>
                   <small>A role and specialist help teammates understand when to use it.</small>
                   <label>
-                    Name
+                    Name (required)
                     <input
                       value={draft.name}
                       onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                       placeholder="Release coordinator"
                       autoFocus
+                      required
                     />
                   </label>
                   <label>
-                    Base specialist
+                    Base specialist (required)
                     <select
                       value={draft.baseAgent}
                       onChange={(e) => setDraft({ ...draft, baseAgent: e.target.value as Base })}
+                      required
                     >
                       {bases.map((base) => (
                         <option key={base}>{base}</option>
@@ -423,7 +425,7 @@ export default function AgentsPage() {
                   <h3>Define how it should work</h3>
                   <small>Write the instructions that guide every conversation.</small>
                   <label>
-                    Instructions
+                    Instructions (required to publish)
                     <textarea
                       value={draft.instructions}
                       onChange={(e) => setDraft({ ...draft, instructions: e.target.value })}
@@ -432,7 +434,7 @@ export default function AgentsPage() {
                     />
                   </label>
                   <label>
-                    Model
+                    Model (optional)
                     <select value={draft.model} onChange={(e) => setDraft({ ...draft, model: e.target.value })}>
                       {models.map((model) => (
                         <option key={model} value={model}>
@@ -451,7 +453,7 @@ export default function AgentsPage() {
                     Add standards, terminology, policies, or reference material that should shape its responses.
                   </small>
                   <label>
-                    Knowledge
+                    Knowledge (optional)
                     <textarea
                       value={draft.knowledge}
                       onChange={(e) => setDraft({ ...draft, knowledge: e.target.value })}
@@ -470,7 +472,7 @@ export default function AgentsPage() {
                     changes.
                   </small>
                   <fieldset>
-                    <legend>Approved tools</legend>
+                    <legend>Approved tools (optional)</legend>
                     {providers.map((provider) => (
                       <label className="check-row" key={provider}>
                         <span>{provider}</span>
@@ -572,7 +574,12 @@ export default function AgentsPage() {
               </button>
             )}
             {selected && (
-              <button className="secondary-button" onClick={publish} disabled={saving || !canPublish}>
+              <button
+                className="secondary-button"
+                onClick={publish}
+                disabled={saving || !canPublish || !draft.instructions.trim()}
+                title={!draft.instructions.trim() ? "Add instructions before publishing this agent." : undefined}
+              >
                 Publish version
               </button>
             )}

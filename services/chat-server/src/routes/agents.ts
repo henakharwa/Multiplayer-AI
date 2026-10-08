@@ -39,6 +39,9 @@ export function registerAgentsRoutes({ app, requireRole, requirePermission }: Ro
   });
   app.post("/workspaces/:id/agents/:agentId/publish", async (req: Request, res: Response) => {
     if (!(await requirePermission(req, res, "publishAgents"))) return;
+    const draft = await db.getWorkspaceAgent(paramString(req.params.id), paramString(req.params.agentId));
+    if (!draft) return res.status(404).json({ error: "Agent not found." });
+    if (!draft.instructions.trim()) return res.status(400).json({ error: "Instructions are required before publishing an agent." });
     const agent = await db.publishWorkspaceAgent(paramString(req.params.id), paramString(req.params.agentId), req.user!.id);
     if (!agent) return res.status(404).json({ error: "Agent not found." });
     await db.recordAuditEvent({ workspaceId: agent.workspaceId, eventType: "agent.published", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} published ${agent.name} version ${agent.publishedVersion}` });
