@@ -206,7 +206,7 @@ export default function AgentsPage() {
       nextErrors.instructions = "Add instructions before continuing.";
     }
     setStepErrors(nextErrors);
-    const firstInvalidStep =
+    const firstInvalidStep: BuilderStep | null =
       nextErrors.name || nextErrors.baseAgent ? "identity" : nextErrors.instructions ? "behavior" : null;
     return { valid: !firstInvalidStep, firstInvalidStep };
   };
