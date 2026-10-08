@@ -195,12 +195,20 @@ export default function AgentsPage() {
     }
   }
   const providerCount = new Set(agents.flatMap((agent) => agent.approvedProviders)).size;
-  const validateIdentity = () => {
+  const validateRequiredFields = (throughStep: BuilderStep) => {
     const nextErrors: Record<string, string> = {};
-    if (!draft.name.trim()) nextErrors.name = "Enter an agent name before continuing.";
-    if (!draft.baseAgent) nextErrors.baseAgent = "Choose a base specialist before continuing.";
+    const stepIndex = ["identity", "behavior", "knowledge", "tools", "review"].indexOf(throughStep);
+    if (stepIndex >= 0) {
+      if (!draft.name.trim()) nextErrors.name = "Enter an agent name before continuing.";
+      if (!draft.baseAgent) nextErrors.baseAgent = "Choose a base specialist before continuing.";
+    }
+    if (stepIndex >= 1 && !draft.instructions.trim()) {
+      nextErrors.instructions = "Add instructions before continuing.";
+    }
     setStepErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+    const firstInvalidStep =
+      nextErrors.name || nextErrors.baseAgent ? "identity" : nextErrors.instructions ? "behavior" : null;
+    return { valid: !firstInvalidStep, firstInvalidStep };
   };
   const clearStepError = (field: string) =>
     setStepErrors((current) => {
@@ -209,8 +217,29 @@ export default function AgentsPage() {
       return remaining;
     });
   const moveToStep = (nextStep: BuilderStep) => {
-    if (nextStep !== "identity" && !validateIdentity()) {
-      setBuilderStep("identity");
+    const stepIndex = ["identity", "behavior", "knowledge", "tools", "review"].indexOf(nextStep);
+    if (stepIndex > 0) {
+      const validation = validateRequiredFields(nextStep === "behavior" ? "identity" : "behavior");
+      if (!validation.valid) {
+        setBuilderStep(validation.firstInvalidStep!);
+        return;
+      }
+    }
+    setBuilderStep(nextStep);
+  };
+  const continueBuilder = () => {
+    const nextStep = (
+      {
+        identity: "behavior",
+        behavior: "knowledge",
+        knowledge: "tools",
+        tools: "review",
+        review: "review",
+      } as const
+    )[builderStep];
+    const validation = validateRequiredFields(builderStep);
+    if (!validation.valid) {
+      setBuilderStep(validation.firstInvalidStep!);
       return;
     }
     setBuilderStep(nextStep);
@@ -481,7 +510,12 @@ export default function AgentsPage() {
                   <h3>Define how it should work</h3>
                   <small>Write the instructions that guide every conversation.</small>
                   <label>
-                    Instructions <span className="required-marker">Required to publish</span>
+                    Instructions <span className="required-marker">Required</span>
+                    {stepErrors.instructions && (
+                      <p className="agent-validation-summary" role="alert">
+                        Please complete the required instructions before continuing.
+                      </p>
+                    )}
                     <textarea
                       value={draft.instructions}
                       onChange={(e) => {
@@ -616,24 +650,7 @@ export default function AgentsPage() {
               Back
             </button>
             {builderStep !== "review" ? (
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => {
-                  if (builderStep === "identity" && !validateIdentity()) return;
-                  setBuilderStep(
-                    (
-                      {
-                        identity: "behavior",
-                        behavior: "knowledge",
-                        knowledge: "tools",
-                        tools: "review",
-                        review: "review",
-                      } as const
-                    )[builderStep],
-                  );
-                }}
-              >
+              <button type="button" className="primary-button" onClick={continueBuilder}>
                 Continue
               </button>
             ) : (
