@@ -131,6 +131,13 @@ export async function leaveWorkspace(workspaceId: string): Promise<void> {
   if (!res.ok) await parseJsonOrThrow(res);
 }
 
+export async function deleteWorkspace(workspaceId: string): Promise<void> {
+  const res = await authenticatedFetch(`${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) await parseJsonOrThrow(res);
+}
+
 export async function sendWorkspaceInvitation(
   workspaceId: string,
   input: { email: string; role: WorkspaceRole },

@@ -39,11 +39,10 @@ export function registerMembersRoutes({ app, requireRole }: RouteContext): void 
     if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: "invalid workspace id" });
     const role = await db.getWorkspaceRole(workspaceId, req.user!.id);
     if (!role) return res.status(404).json({ error: "member not found" });
-    if (role === "admin") {
-      const members = await db.listWorkspaceMembersWithRoles(workspaceId);
-      if (members.length > 1 && members.filter((member) => member.role === "admin").length === 1) {
-        return res.status(409).json({ error: "Make another member an Admin before leaving. A workspace must keep at least one admin." });
-      }
+    if (role !== "admin") return res.status(403).json({ error: "Editors cannot leave a workspace. Ask an Admin to remove you instead." });
+    const members = await db.listWorkspaceMembersWithRoles(workspaceId);
+    if (members.length > 1 && members.filter((member) => member.role === "admin").length === 1) {
+      return res.status(409).json({ error: "Make another member an Admin before leaving. A workspace must keep at least one admin." });
     }
     if (!(await db.removeWorkspaceMemberAndPersonalIntegrations(workspaceId, req.user!.id))) {
       return res.status(404).json({ error: "member not found" });

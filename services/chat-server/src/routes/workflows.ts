@@ -29,7 +29,7 @@ export function registerWorkflowsRoutes({ app, requireRole, requirePermission }:
     res.json(await db.listWorkspaceWorkflows(paramString(req.params.id)));
   });
   app.post("/workspaces/:id/workflows", async (req: Request, res: Response) => {
-    if (!(await requirePermission(req, res, "createAgents"))) return;
+    if (!(await requirePermission(req, res, "manageWorkflows"))) return;
     const input = workflowInput(req.body ?? {});
     if (!input.name.trim() || !input.instructions.trim()) return res.status(400).json({ error: "A workflow name and instructions are required." });
     if (input.name.trim().length > 120) return res.status(400).json({ error: "Workflow names can be up to 120 characters." });
@@ -40,7 +40,7 @@ export function registerWorkflowsRoutes({ app, requireRole, requirePermission }:
     res.status(201).json(workflow);
   });
   app.patch("/workspaces/:id/workflows/:workflowId", async (req: Request, res: Response) => {
-    if (!(await requirePermission(req, res, "createAgents"))) return;
+    if (!(await requirePermission(req, res, "manageWorkflows"))) return;
     const input = workflowInput(req.body ?? {});
     if (!input.name.trim() || !input.instructions.trim()) return res.status(400).json({ error: "A workflow name and instructions are required." });
     if (input.name.trim().length > 120) return res.status(400).json({ error: "Workflow names can be up to 120 characters." });
@@ -52,7 +52,7 @@ export function registerWorkflowsRoutes({ app, requireRole, requirePermission }:
     res.json(workflow);
   });
   app.delete("/workspaces/:id/workflows/:workflowId", async (req: Request, res: Response) => {
-    if (!(await requirePermission(req, res, "createAgents"))) return;
+    if (!(await requirePermission(req, res, "manageWorkflows"))) return;
     const workflow = await db.deleteWorkspaceWorkflow(paramString(req.params.id), paramString(req.params.workflowId));
     if (!workflow) return res.status(404).json({ error: "Workflow not found." });
     await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.deleted", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} deleted workflow ${workflow.name}` });
@@ -96,8 +96,8 @@ export function registerWorkflowsRoutes({ app, requireRole, requirePermission }:
   });
   app.post("/workspaces/:id/workflows/:workflowId/run", async (req: Request, res: Response) => {
     // Running a workflow is a workflow change: Admins by default, Editors
-    // only with the createAgents permission.
-    if (!(await requirePermission(req, res, "createAgents"))) return;
+    // only with the manageWorkflows permission.
+    if (!(await requirePermission(req, res, "manageWorkflows"))) return;
     const workflow = await db.getWorkspaceWorkflow(paramString(req.params.id), paramString(req.params.workflowId));
     if (!workflow) return res.status(404).json({ error: "Workflow not found." });
     const requestedTrigger = req.body?.trigger;

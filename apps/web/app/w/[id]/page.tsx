@@ -28,6 +28,7 @@ import {
   updateWorkspaceMemberRole,
   removeWorkspaceMember,
   leaveWorkspace,
+  deleteWorkspace,
   listWorkspaceInvitations,
   revokeWorkspaceInvitation,
   disconnectIntegration,
@@ -73,6 +74,9 @@ function permissionLabel(permission: string): string {
         connectTools: "Connect and manage tools",
         createAgents: "Create agents",
         publishAgents: "Publish agents",
+        manageWorkflows: "Manage workflows",
+        manageMemory: "Manage workspace memory",
+        manageArtifacts: "Manage artifacts",
         approveActions: "Approve actions",
         github: "Use GitHub",
         slack: "Use Slack",
@@ -363,6 +367,24 @@ export default function WorkspaceRoomPage() {
       router.replace("/");
     } catch (err) {
       setLoadError(describeError(err, "Could not leave the workspace."));
+    }
+  }
+
+  async function deleteCurrentWorkspace() {
+    if (
+      !(await dialog.confirm({
+        title: `Delete ${workspace?.name ?? "this workspace"}?`,
+        message: "This permanently removes every conversation, member, integration, workflow, memory entry, artifact, and audit record in this workspace.",
+        confirmLabel: "Delete workspace",
+        danger: true,
+      }))
+    )
+      return;
+    try {
+      await deleteWorkspace(workspaceId);
+      router.replace("/");
+    } catch (err) {
+      setLoadError(describeError(err, "Could not delete the workspace."));
     }
   }
 
@@ -1241,9 +1263,16 @@ export default function WorkspaceRoomPage() {
                 Manage access
               </button>
             )}
-            <button className="workspace-invite workspace-leave" onClick={() => void leaveCurrentWorkspace()}>
-              Leave workspace
-            </button>
+            {workspaceRole === "admin" && (
+              <>
+                <button className="workspace-invite workspace-leave" onClick={() => void leaveCurrentWorkspace()}>
+                  Leave workspace
+                </button>
+                <button className="workspace-invite workspace-leave" onClick={() => void deleteCurrentWorkspace()}>
+                  Delete workspace
+                </button>
+              </>
+            )}
           </div>
         </header>
 

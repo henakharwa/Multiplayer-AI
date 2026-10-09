@@ -6,7 +6,13 @@ import { aiArtifactDraft, workspaceDashboardSnapshot, workspaceReleaseNotesDraft
 import type { Request, Response } from "express";
 import type { RouteContext } from "./context.js";
 
-export function registerArtifactsRoutes({ app, deps, requireRole }: RouteContext): void {
+export function registerArtifactsRoutes({ app, deps, requireRole, requirePermission }: RouteContext): void {
+  // Reading, presence, and comments remain shared review capabilities.
+  // Every other state-changing artifact action is governed by the policy.
+  app.use("/workspaces/:id/artifacts", async (req: Request, res: Response, next) => {
+    if (["GET", "HEAD", "OPTIONS"].includes(req.method) || /\/(comments|presence)$/.test(req.path)) return next();
+    if (await requirePermission(req, res, "manageArtifacts")) next();
+  });
   async function canManageArtifact(req: Request, artifactId: string) {
     const workspaceId = paramString(req.params.id); const artifact = await db.getWorkspaceArtifact(workspaceId, artifactId);
     if (!artifact) return { artifact: null, allowed: false };

@@ -36,6 +36,9 @@ const PERMISSIONS: Array<[keyof WorkspacePermissions, string]> = [
   ["connectTools", "Connect and manage tools"],
   ["createAgents", "Create agents"],
   ["publishAgents", "Publish agents"],
+  ["manageWorkflows", "Manage workflows"],
+  ["manageMemory", "Manage workspace memory"],
+  ["manageArtifacts", "Manage artifacts"],
   ["approveActions", "Approve actions"],
   ["github", "Use GitHub"],
   ["slack", "Use Slack"],
@@ -416,7 +419,7 @@ export default function IntegrationsPage() {
 
       {activeTab === "access" && policy && (
         <section className="integration-panel permission-panel">
-          <h2>Tool and agent permissions</h2>
+          <h2>Workspace permissions</h2>
           {workspaceRole === "admin" ? (
             <>
               <p className="hint">

@@ -5,7 +5,7 @@ import { parseWorkspaceMemoryInput } from "../input-parsers.js";
 import type { Request, Response } from "express";
 import type { RouteContext } from "./context.js";
 
-export function registerMemoryRoutes({ app, requireRole }: RouteContext): void {
+export function registerMemoryRoutes({ app, requireRole, requirePermission }: RouteContext): void {
   async function canManageMemory(req: Request, memoryId: string) {
     const workspaceId = paramString(req.params.id);
     const memory = await db.getWorkspaceMemory(workspaceId, memoryId);
@@ -20,7 +20,7 @@ export function registerMemoryRoutes({ app, requireRole }: RouteContext): void {
     res.json(await db.listWorkspaceMemory(paramString(req.params.id)));
   });
   app.post("/workspaces/:id/memory", async (req: Request, res: Response) => {
-    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    if (!(await requirePermission(req, res, "manageMemory"))) return;
     let input;
     try { input = parseWorkspaceMemoryInput(req.body ?? {}); } catch (error) { return res.status(400).json({ error: errMessage(error) }); }
     if (!input.title.trim() || !input.content.trim()) return res.status(400).json({ error: "A memory title and content are required." });
@@ -30,7 +30,7 @@ export function registerMemoryRoutes({ app, requireRole }: RouteContext): void {
     res.status(201).json(memory);
   });
   app.patch("/workspaces/:id/memory/:memoryId", async (req: Request, res: Response) => {
-    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    if (!(await requirePermission(req, res, "manageMemory"))) return;
     const access = await canManageMemory(req, paramString(req.params.memoryId));
     if (!access.memory) return res.status(404).json({ error: "Memory not found." });
     if (!access.allowed) return res.status(403).json({ error: "Only workspace members can edit this entry." });
@@ -44,7 +44,7 @@ export function registerMemoryRoutes({ app, requireRole }: RouteContext): void {
     res.json(memory);
   });
   app.delete("/workspaces/:id/memory/:memoryId", async (req: Request, res: Response) => {
-    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    if (!(await requirePermission(req, res, "manageMemory"))) return;
     const access = await canManageMemory(req, paramString(req.params.memoryId));
     if (!access.memory) return res.status(404).json({ error: "Memory not found." });
     if (!access.allowed) return res.status(403).json({ error: "Only workspace members can delete this entry." });

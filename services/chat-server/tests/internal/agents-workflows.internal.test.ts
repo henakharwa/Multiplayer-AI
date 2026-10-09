@@ -125,14 +125,14 @@ describe("WF-01 workflows", () => {
     expect((await request(app).get(`${workflows()}/bad/runs`).set("Cookie", admin.cookie)).status).toBe(404);
     expect((await request(app).delete(`${workflows()}/bad`).set("Cookie", admin.cookie)).status).toBe(404);
   });
-  it("security: Editors need createAgents to change or run workflows", async () => {
+  it("security: Editors need manageWorkflows to change or run workflows", async () => {
     const wf = (await request(app).post(workflows()).set("Cookie", admin.cookie).send({ name: "Guarded", instructions: "i" })).body;
     expect((await request(app).get(workflows()).set("Cookie", editor.cookie)).status).toBe(200);
     expect((await request(app).post(`${workflows()}/${wf.id}/run`).set("Cookie", editor.cookie)).status).toBe(403);
     expect((await request(app).patch(`${workflows()}/${wf.id}`).set("Cookie", editor.cookie).send({ name: "x", instructions: "y" })).status).toBe(403);
-    await grantEditor(ws.id, { createAgents: true });
+    await grantEditor(ws.id, { manageWorkflows: true });
     expect((await request(app).post(`${workflows()}/${wf.id}/run`).set("Cookie", editor.cookie)).status).toBe(202);
-    await grantEditor(ws.id, { createAgents: false });
+    await grantEditor(ws.id, { manageWorkflows: false });
   });
 });
 

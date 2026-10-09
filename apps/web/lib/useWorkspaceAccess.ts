@@ -8,8 +8,11 @@ export type WorkspacePermission = keyof WorkspacePermissions;
 
 export const PERMISSION_LABELS: Record<WorkspacePermission, string> = {
   connectTools: "Connect and manage tools",
-  createAgents: "Create agents and workflows",
+  createAgents: "Create agents",
   publishAgents: "Publish agents",
+  manageWorkflows: "Manage workflows",
+  manageMemory: "Manage workspace memory",
+  manageArtifacts: "Manage artifacts",
   approveActions: "Approve actions",
   github: "Use GitHub",
   slack: "Use Slack",

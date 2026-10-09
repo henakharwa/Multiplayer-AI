@@ -6,8 +6,10 @@ import type {
 import { getPool } from "./pool.js";
 
 
-const DEFAULT_ADMIN_PERMISSIONS: WorkspacePermissions = { connectTools: true, createAgents: true, publishAgents: true, approveActions: true, github: true, slack: true, linear: true, notion: true, figma: true };
-const DEFAULT_EDITOR_PERMISSIONS: WorkspacePermissions = { connectTools: true, createAgents: false, publishAgents: false, approveActions: false, github: true, slack: true, linear: true, notion: true, figma: true };
+const DEFAULT_ADMIN_PERMISSIONS: WorkspacePermissions = { connectTools: true, createAgents: true, publishAgents: true, manageWorkflows: true, manageMemory: true, manageArtifacts: true, approveActions: true, github: true, slack: true, linear: true, notion: true, figma: true };
+// Keep the capabilities Editors already had by default (memory and artifact
+// management), while workflows remain an Admin-granted capability.
+const DEFAULT_EDITOR_PERMISSIONS: WorkspacePermissions = { connectTools: true, createAgents: false, publishAgents: false, manageWorkflows: false, manageMemory: true, manageArtifacts: true, approveActions: false, github: true, slack: true, linear: true, notion: true, figma: true };
 
 function sanitizePermissions(value: unknown, fallback: WorkspacePermissions): WorkspacePermissions {
   const source = value && typeof value === "object" ? value as Record<string, unknown> : {};

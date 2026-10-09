@@ -14,6 +14,8 @@ import {
   type WorkspaceMemoryInput,
 } from "../../../../lib/api";
 import { missingRequiredFields } from "../../../../lib/builder-validation";
+import { AccessNotice } from "../../../_components/AccessNotice";
+import { useWorkspaceAccess } from "../../../../lib/useWorkspaceAccess";
 
 const blank: WorkspaceMemoryInput = {
   kind: "knowledge",
@@ -48,6 +50,8 @@ export default function MemoryPage() {
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
   const dialog = useDialog();
+  const access = useWorkspaceAccess(workspaceId);
+  const canChange = access.can("manageMemory");
   const refresh = async () => setMemories(await listWorkspaceMemory(workspaceId));
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -147,6 +151,7 @@ export default function MemoryPage() {
           <div className="section-heading">
             <h2>Memory</h2>
             <button
+              disabled={!canChange}
               onClick={() => {
                 setSelected(null);
                 setDraft(blank);
@@ -363,14 +368,14 @@ export default function MemoryPage() {
             ) : (
               <button
                 className="primary-button"
-                disabled={saving || !draft.title.trim() || !draft.content.trim()}
+                disabled={saving || !canChange || !draft.title.trim() || !draft.content.trim()}
                 onClick={() => void save()}
               >
                 {saving ? "Saving…" : selected ? "Save changes" : "Save memory"}
               </button>
             )}
             {selected && (
-              <button className="agent-delete-button" disabled={saving} onClick={() => void remove()}>
+              <button className="agent-delete-button" disabled={saving || !canChange} onClick={() => void remove()}>
                 Delete
               </button>
             )}
@@ -383,6 +388,12 @@ export default function MemoryPage() {
           )}
           {error && <p className="error-text">{error}</p>}
           {notice && <p className="success-text">{notice}</p>}
+          <AccessNotice
+            workspaceId={workspaceId}
+            access={access}
+            permission="manageMemory"
+            message="Creating, editing, or deleting workspace memory requires the “Manage workspace memory” permission. You can still read saved memory."
+          />
           {selected?.sourceUrl && (
             <a className="memory-source-link" href={selected.sourceUrl} target="_blank" rel="noreferrer">
               Open cited source ↗

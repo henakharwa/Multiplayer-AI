@@ -195,6 +195,12 @@ export async function getWorkspaceByJoinCode(joinCode: string): Promise<Workspac
   return result.rows[0] ? toWorkspace(result.rows[0]) : null;
 }
 
+/** Deletes the workspace and all workspace-scoped data through database cascades. */
+export async function deleteWorkspace(workspaceId: string): Promise<boolean> {
+  const result = await getPool().query("DELETE FROM workspaces WHERE id = $1", [workspaceId]);
+  return result.rowCount === 1;
+}
+
 // A user's home screen only needs workspaces they are already a recorded
 // member of; it must not become a directory of every workspace in the app.
 export async function listWorkspacesForUser(userId: string): Promise<import("@mai-chat/shared-types").WorkspaceMembership[]> {

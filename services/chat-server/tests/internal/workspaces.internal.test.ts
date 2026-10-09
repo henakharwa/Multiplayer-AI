@@ -151,11 +151,18 @@ describe("WS-05 members and roles", () => {
     expect((await request(app).patch(`/workspaces/${ws.id}/members/${NIL_UUID}`).set("Cookie", admin.cookie).send({ role: "editor" })).status).toBe(404);
     expect((await request(app).delete(`/workspaces/${ws.id}/members/not-a-uuid`).set("Cookie", admin.cookie)).status).toBe(404);
   });
-  it("basic: an Editor leaves, loses access, and the workspace disappears from their list", async () => {
+  it("security: an Editor cannot leave and must be removed by an Admin", async () => {
     const ws = await makeWorkspace(app, admin, [editor]);
-    expect((await request(app).delete(`/workspaces/${ws.id}/membership`).set("Cookie", editor.cookie)).status).toBe(204);
+    expect((await request(app).delete(`/workspaces/${ws.id}/membership`).set("Cookie", editor.cookie)).status).toBe(403);
+    expect((await request(app).get(`/workspaces/${ws.id}`).set("Cookie", editor.cookie)).status).toBe(200);
+    expect((await request(app).delete(`/workspaces/${ws.id}/members/${editor.id}`).set("Cookie", admin.cookie)).status).toBe(204);
     expect((await request(app).get(`/workspaces/${ws.id}`).set("Cookie", editor.cookie)).status).toBe(403);
-    expect((await request(app).get("/workspaces").set("Cookie", editor.cookie)).body.some((w: { id: string }) => w.id === ws.id)).toBe(false);
+  });
+  it("basic: an Admin can permanently delete a workspace", async () => {
+    const ws = await makeWorkspace(app, admin, [editor]);
+    expect((await request(app).delete(`/workspaces/${ws.id}`).set("Cookie", editor.cookie)).status).toBe(403);
+    expect((await request(app).delete(`/workspaces/${ws.id}`).set("Cookie", admin.cookie)).status).toBe(204);
+    expect((await request(app).get(`/workspaces/${ws.id}`).set("Cookie", admin.cookie)).status).toBe(404);
   });
   it("security: Editors cannot change roles or remove members", async () => {
     const ws = await makeWorkspace(app, admin, [editor]);

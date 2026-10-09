@@ -30,7 +30,7 @@ describe("PM-01 effective access", () => {
     expect(Object.values(a.body.permissions).every(Boolean)).toBe(true);
     const e = await as(editor).get(`/workspaces/${ws.id}/access`);
     expect(e.body.role).toBe("editor");
-    expect(e.body.permissions).toMatchObject({ createAgents: false, publishAgents: false, approveActions: false, connectTools: true });
+    expect(e.body.permissions).toMatchObject({ createAgents: false, publishAgents: false, manageWorkflows: false, manageMemory: true, manageArtifacts: true, approveActions: false, connectTools: true });
   });
   it("security: outsiders get 403 on every shared read", async () => {
     for (const path of ["access", "members", "permissions", "tasks", "memory", "artifacts", "agents", "workflows", "workflow-runs", "integrations", "audit", "conversations", "observability/retention"]) {
@@ -75,15 +75,27 @@ describe("PM-02 Admin-only features", () => {
 });
 
 describe("PM-03 conditional Editor features", () => {
-  it("basic: createAgents gates agent and workflow building for Editors", async () => {
+  it("basic: createAgents gates agents and manageWorkflows gates workflows for Editors", async () => {
     const agentBody = { name: "Helper", baseAgent: "project" };
     const workflowBody = { name: "Daily", instructions: "Summarise the day", trigger: "manual" };
     expect((await as(editor).post(`/workspaces/${ws.id}/agents`, agentBody)).status).toBe(403);
     expect((await as(editor).post(`/workspaces/${ws.id}/workflows`, workflowBody)).status).toBe(403);
     await grantEditor(ws.id, { createAgents: true });
     expect((await as(editor).post(`/workspaces/${ws.id}/agents`, agentBody)).status).toBe(201);
+    expect((await as(editor).post(`/workspaces/${ws.id}/workflows`, workflowBody)).status).toBe(403);
+    await grantEditor(ws.id, { manageWorkflows: true });
     expect((await as(editor).post(`/workspaces/${ws.id}/workflows`, workflowBody)).status).toBe(201);
-    await grantEditor(ws.id, { createAgents: false });
+    await grantEditor(ws.id, { createAgents: false, manageWorkflows: false });
+  });
+  it("basic: memory and artifact management can be revoked separately", async () => {
+    const memory = { title: "Release process", content: "Review before deployment." };
+    const artifact = { type: "plan", status: "draft", title: "Release plan", content: "## Review" };
+    expect((await as(editor).post(`/workspaces/${ws.id}/memory`, memory)).status).toBe(201);
+    expect((await as(editor).post(`/workspaces/${ws.id}/artifacts`, artifact)).status).toBe(201);
+    await grantEditor(ws.id, { manageMemory: false, manageArtifacts: false });
+    expect((await as(editor).post(`/workspaces/${ws.id}/memory`, memory)).status).toBe(403);
+    expect((await as(editor).post(`/workspaces/${ws.id}/artifacts`, artifact)).status).toBe(403);
+    await grantEditor(ws.id, { manageMemory: true, manageArtifacts: true });
   });
   it("basic: publishAgents gates publishing separately from building", async () => {
     await grantEditor(ws.id, { createAgents: true, publishAgents: false });

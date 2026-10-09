@@ -121,6 +121,9 @@ export interface WorkspacePermissions {
   connectTools: boolean;
   createAgents: boolean;
   publishAgents: boolean;
+  manageWorkflows: boolean;
+  manageMemory: boolean;
+  manageArtifacts: boolean;
   approveActions: boolean;
   github: boolean;
   slack: boolean;

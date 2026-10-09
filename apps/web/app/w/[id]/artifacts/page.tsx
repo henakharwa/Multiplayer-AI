@@ -41,6 +41,7 @@ import { TaskListVisual } from "../../../_components/TaskListVisual";
 import { ArtifactSharingControls } from "../../../_components/ArtifactSharingControls";
 import { useWorkspaceUser } from "../../../_components/WorkspaceAuth";
 import { useWorkspaceAccess } from "../../../../lib/useWorkspaceAccess";
+import { AccessNotice } from "../../../_components/AccessNotice";
 import { missingRequiredFields } from "../../../../lib/builder-validation";
 import { ArtifactCatalog, ArtifactList, artifactLabels } from "../../../_components/ArtifactCatalog";
 import { ArtifactBuilderChrome } from "../../../_components/ArtifactBuilderChrome";
@@ -154,13 +155,18 @@ export default function ArtifactsPage() {
   const user = useWorkspaceUser();
   const access = useWorkspaceAccess(workspaceId);
   const dialog = useDialog();
-  // Every member can create, comment on, and review artifacts. Editing,
-  // publishing, versions, and the public link of an existing artifact belong
-  // to its author; Admins can manage any artifact (Artifact administration).
-  const canManageSelected = !selected || access.isAdmin || selected.createdByUserId === user.id;
+  // Permission policy governs every changing action. Among permitted Editors,
+  // an existing artifact stays editable only by its author; Admins can manage any.
+  const canManageArtifacts = access.can("manageArtifacts");
+  const canManageSelected =
+    canManageArtifacts && (!selected || access.isAdmin || selected.createdByUserId === user.id);
   const blockUnmanaged = () => {
     if (canManageSelected) return false;
-    setError("Only the artifact author or an Admin can change this artifact.");
+    setError(
+      canManageArtifacts
+        ? "Only the artifact author or an Admin can change this artifact."
+        : "Managing artifacts requires the “Manage artifacts” permission.",
+    );
     return true;
   };
   const refresh = async () => setArtifacts(await listWorkspaceArtifacts(workspaceId));
@@ -1022,11 +1028,18 @@ export default function ArtifactsPage() {
           {!canManageSelected && (
             <div className="access-notice" role="note">
               <span>
-                You can view, comment on, and review this artifact. Only its author or an Admin can edit, publish,
-                restore versions, or manage its public link.
+                {canManageArtifacts
+                  ? "You can view, comment on, and review this artifact. Only its author or an Admin can edit, publish, restore versions, or manage its public link."
+                  : "You can view this artifact. Ask an Admin for the Manage artifacts permission to make changes."}
               </span>
             </div>
           )}
+          <AccessNotice
+            workspaceId={workspaceId}
+            access={access}
+            permission="manageArtifacts"
+            message="Creating, editing, generating, sharing, or deleting artifacts requires the “Manage artifacts” permission. You can still view artifacts."
+          />
           {selected && selected.type !== "dashboard" && viewers.length > 0 && (
             <p className="dashboard-viewers">Also viewing now: {viewers.map((viewer) => viewer.name).join(", ")}</p>
           )}

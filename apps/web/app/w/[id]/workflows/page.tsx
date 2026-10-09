@@ -129,8 +129,8 @@ export default function WorkflowsPage() {
   const access = useWorkspaceAccess(workspaceId);
   const dialog = useDialog();
   // Create, edit, delete, enable, schedule, and run: Admins by default,
-  // Editors with the createAgents permission. Viewing is shared.
-  const canChange = access.can("createAgents");
+  // Editors with the manageWorkflows permission. Viewing is shared.
+  const canChange = access.can("manageWorkflows");
   const refresh = async () => setWorkflows(await listWorkspaceWorkflows(workspaceId));
   useEffect(() => {
     void Promise.all([
@@ -862,8 +862,8 @@ export default function WorkflowsPage() {
           <AccessNotice
             workspaceId={workspaceId}
             access={access}
-            permission="createAgents"
-            message="Creating, editing, deleting, enabling, scheduling, or running workflows requires the “Create agents and workflows” permission. You can still view definitions, run history, and diagnostics."
+            permission="manageWorkflows"
+            message="Creating, editing, deleting, enabling, scheduling, or running workflows requires the “Manage workflows” permission. You can still view definitions, run history, and diagnostics."
           />
           {error && <p className="error-text">{error}</p>}
           {notice && <p className="success-text">{notice}</p>}

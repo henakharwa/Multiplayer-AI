@@ -214,8 +214,8 @@ ALTER TABLE integrations ADD CONSTRAINT integrations_connection_scope_check CHEC
 -- so an integration can be available without being available to every role.
 CREATE TABLE IF NOT EXISTS workspace_permission_policies (
   workspace_id UUID PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
-  admin_permissions JSONB NOT NULL DEFAULT '{"connectTools":true,"createAgents":true,"publishAgents":true,"approveActions":true,"github":true,"slack":true,"linear":true,"notion":true,"figma":true}'::jsonb,
-  editor_permissions JSONB NOT NULL DEFAULT '{"connectTools":true,"createAgents":false,"publishAgents":false,"approveActions":false,"github":true,"slack":true,"linear":true,"notion":true,"figma":true}'::jsonb,
+  admin_permissions JSONB NOT NULL DEFAULT '{"connectTools":true,"createAgents":true,"publishAgents":true,"manageWorkflows":true,"manageMemory":true,"manageArtifacts":true,"approveActions":true,"github":true,"slack":true,"linear":true,"notion":true,"figma":true}'::jsonb,
+  editor_permissions JSONB NOT NULL DEFAULT '{"connectTools":true,"createAgents":false,"publishAgents":false,"manageWorkflows":false,"manageMemory":true,"manageArtifacts":true,"approveActions":false,"github":true,"slack":true,"linear":true,"notion":true,"figma":true}'::jsonb,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

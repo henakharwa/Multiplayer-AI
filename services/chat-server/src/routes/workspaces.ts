@@ -166,6 +166,12 @@ export function registerWorkspacesRoutes({ app, deps, webAppUrl, requireRole }: 
     res.json(workspace);
   });
 
+  app.delete("/workspaces/:id", async (req: Request, res: Response) => {
+    if (!(await requireRole(req, res, ["admin"]))) return;
+    if (!(await db.deleteWorkspace(paramString(req.params.id)))) return res.status(404).json({ error: "not found" });
+    res.status(204).end();
+  });
+
   app.get("/workspaces/:id/members", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const workspaceId = paramString(req.params.id);
