@@ -203,17 +203,21 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isOpenAiApi(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl).hostname.toLowerCase() === "api.openai.com";
+  } catch {
+    return false;
+  }
+}
+
 function completionTokenLimit(config: Omit<LlmConfig, "fallback">): Record<string, number> {
   // OpenAI's newer reasoning models reject the legacy `max_tokens` field
   // and require `max_completion_tokens`. Other OpenAI-compatible services
   // (including the free fallback providers supported by this app) commonly
   // still expect `max_tokens`, so only switch the wire format for OpenAI.
-  try {
-    if (new URL(config.baseUrl).hostname.toLowerCase() === "api.openai.com") {
-      return { max_completion_tokens: config.maxTokens };
-    }
-  } catch {
-    // Let fetch report an invalid configured endpoint with its normal error.
+  if (isOpenAiApi(config.baseUrl)) {
+    return { max_completion_tokens: config.maxTokens };
   }
   return { max_tokens: config.maxTokens };
 }
@@ -245,7 +249,16 @@ async function requestChatCompletion(config: Omit<LlmConfig, "fallback">, messag
           model: config.model,
           messages,
           ...completionTokenLimit(config),
-          ...(tools.length > 0 ? { tools, tool_choice: "auto" } : {}),
+          ...(tools.length > 0
+            ? {
+                tools,
+                tool_choice: "auto",
+                // GPT-6 Luna's Chat Completions endpoint supports function
+                // tools only with reasoning disabled. Its default reasoning
+                // setting otherwise makes the request fail before a reply.
+                ...(isOpenAiApi(config.baseUrl) ? { reasoning_effort: "none" } : {}),
+              }
+            : {}),
         }),
         // See LLM_FETCH_TIMEOUT_MS's comment -- without this, Node's
         // default dispatcher aborts a slow-but-working local-model

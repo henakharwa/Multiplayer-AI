@@ -53,4 +53,26 @@ describe("paid LLM fallback", () => {
     expect(request.max_completion_tokens).toBe(128);
     expect(request).not.toHaveProperty("max_tokens");
   });
+
+  it("disables reasoning for OpenAI tool calls required by GPT-6 Luna", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "OpenAI reply" } }] }), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await chatCompletion(
+      { ...primary, baseUrl: "https://api.openai.com/v1", fallback: undefined },
+      [{ role: "user", content: "hello" }],
+      [
+        {
+          type: "function",
+          function: { name: "lookup", description: "Look up a value", parameters: { type: "object" } },
+        },
+      ]
+    );
+
+    const request = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(request.reasoning_effort).toBe("none");
+    expect(request.tool_choice).toBe("auto");
+  });
 });
