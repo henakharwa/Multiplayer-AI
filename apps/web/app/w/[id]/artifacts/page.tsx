@@ -158,8 +158,7 @@ export default function ArtifactsPage() {
   // Permission policy governs every changing action. Among permitted Editors,
   // an existing artifact stays editable only by its author; Admins can manage any.
   const canManageArtifacts = access.can("manageArtifacts");
-  const canManageSelected =
-    canManageArtifacts && (!selected || access.isAdmin || selected.createdByUserId === user.id);
+  const canManageSelected = canManageArtifacts && (!selected || access.isAdmin || selected.createdByUserId === user.id);
   const blockUnmanaged = () => {
     if (canManageSelected) return false;
     setError(

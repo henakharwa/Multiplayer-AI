@@ -374,7 +374,8 @@ export default function WorkspaceRoomPage() {
     if (
       !(await dialog.confirm({
         title: `Delete ${workspace?.name ?? "this workspace"}?`,
-        message: "This permanently removes every conversation, member, integration, workflow, memory entry, artifact, and audit record in this workspace.",
+        message:
+          "This permanently removes every conversation, member, integration, workflow, memory entry, artifact, and audit record in this workspace.",
         confirmLabel: "Delete workspace",
         danger: true,
       }))
