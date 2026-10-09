@@ -203,6 +203,21 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function completionTokenLimit(config: Omit<LlmConfig, "fallback">): Record<string, number> {
+  // OpenAI's newer reasoning models reject the legacy `max_tokens` field
+  // and require `max_completion_tokens`. Other OpenAI-compatible services
+  // (including the free fallback providers supported by this app) commonly
+  // still expect `max_tokens`, so only switch the wire format for OpenAI.
+  try {
+    if (new URL(config.baseUrl).hostname.toLowerCase() === "api.openai.com") {
+      return { max_completion_tokens: config.maxTokens };
+    }
+  } catch {
+    // Let fetch report an invalid configured endpoint with its normal error.
+  }
+  return { max_tokens: config.maxTokens };
+}
+
 async function requestChatCompletion(config: Omit<LlmConfig, "fallback">, messages: ChatMessage[], tools: ToolDefinition[]): Promise<ChatMessage> {
   const url = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
 
@@ -229,7 +244,7 @@ async function requestChatCompletion(config: Omit<LlmConfig, "fallback">, messag
         body: JSON.stringify({
           model: config.model,
           messages,
-          max_tokens: config.maxTokens,
+          ...completionTokenLimit(config),
           ...(tools.length > 0 ? { tools, tool_choice: "auto" } : {}),
         }),
         // See LLM_FETCH_TIMEOUT_MS's comment -- without this, Node's

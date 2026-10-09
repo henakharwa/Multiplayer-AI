@@ -36,4 +36,21 @@ describe("paid LLM fallback", () => {
   it("does not treat a normal rate limit as exhausted credit", () => {
     expect(isCreditExhaustion(new LlmHttpError(429, "Too Many Requests", "Please try again in 5s.", "https://provider.example"))).toBe(false);
   });
+
+  it("uses max_completion_tokens for OpenAI's current chat-completions models", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "OpenAI reply" } }] }), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await chatCompletion(
+      { ...primary, baseUrl: "https://api.openai.com/v1", fallback: undefined },
+      [{ role: "user", content: "hello" }],
+      []
+    );
+
+    const request = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(request.max_completion_tokens).toBe(128);
+    expect(request).not.toHaveProperty("max_tokens");
+  });
 });
