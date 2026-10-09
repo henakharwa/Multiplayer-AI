@@ -1009,6 +1009,9 @@ export default function WorkspaceRoomPage() {
             <Link href={`/w/${workspaceId}/workflows`}>
               <ActivityGlyph /> Workflows
             </Link>
+            <Link href={`/w/${workspaceId}/tasks`}>
+              <TasksGlyph /> Tasks
+            </Link>
             <Link href={`/w/${workspaceId}/memory`}>
               <MemoryGlyph /> Memory
             </Link>
@@ -2084,6 +2087,21 @@ function MemoryGlyph() {
         fill="none"
         stroke="currentColor"
         strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function TasksGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="4" y="3.5" width="16" height="17" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="m7.5 9 1.5 1.5L11.5 7M13 9h4M7.5 15 9 16.5l2.5-3.5M13 15h4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
     </svg>
