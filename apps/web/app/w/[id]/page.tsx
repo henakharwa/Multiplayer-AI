@@ -98,6 +98,16 @@ function AgentGlyph() {
     </svg>
   );
 }
+function WorkspaceAgentGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="4" y="7" width="16" height="12" rx="3" fill="none" stroke="currentColor" strokeWidth="2" />
+      <circle cx="9" cy="13" r="1.4" fill="currentColor" />
+      <circle cx="15" cy="13" r="1.4" fill="currentColor" />
+      <path d="M12 3v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 // Same GitHub octocat / Slack four-color marks used on the Integrations
 // settings page (apps/web/app/w/[id]/integrations/page.tsx) -- kept as
@@ -998,16 +1008,16 @@ export default function WorkspaceRoomPage() {
               <PlugGlyph /> Integrations
             </Link>
             <Link href={`/w/${workspaceId}/observability`}>
-              <ActivityGlyph /> Observability
+              <ObserveGlyph /> Observability
             </Link>
             <Link href={`/w/${workspaceId}/notifications`}>
               <BellGlyph /> Notifications
             </Link>
             <Link href={`/w/${workspaceId}/agents`}>
-              <AgentGlyph /> Agents
+              <WorkspaceAgentGlyph /> Agents
             </Link>
             <Link href={`/w/${workspaceId}/workflows`}>
-              <ActivityGlyph /> Workflows
+              <WorkflowGlyph /> Workflows
             </Link>
             <Link href={`/w/${workspaceId}/tasks`}>
               <TasksGlyph /> Tasks
@@ -2088,6 +2098,30 @@ function MemoryGlyph() {
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function ObserveGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 18V6m5 12v-7m5 7V4m5 14v-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M3 20h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+function WorkflowGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="6" cy="6" r="2" fill="none" stroke="currentColor" strokeWidth="2" />
+      <circle cx="18" cy="12" r="2" fill="none" stroke="currentColor" strokeWidth="2" />
+      <circle cx="6" cy="18" r="2" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M8 6h4a4 4 0 0 1 4 4M8 18h4a4 4 0 0 0 4-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
       />
     </svg>
   );
