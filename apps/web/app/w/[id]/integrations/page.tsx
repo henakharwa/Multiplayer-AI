@@ -16,6 +16,7 @@ import {
   connectGithub,
   connectRemoteMcp,
   githubOAuthStartUrl,
+  providerOAuthStartUrl,
   slackOAuthStartUrl,
   listIntegrations,
   listWorkspaceAgents,
@@ -628,7 +629,12 @@ export default function IntegrationsPage() {
           <>
             {(["linear", "notion", "figma"] as const).map((provider) => {
               const setup = remoteSetup[provider];
-              const connected = integrations.find((item) => item.type === provider);
+              const connections = integrations.filter(
+                (item): item is Extract<IntegrationConfig, { type: "linear" | "notion" | "figma" }> =>
+                  item.type === provider,
+              );
+              const connected = connections.find((item) => item.ownerUserId === user.id);
+              const teammateConnections = connections.filter((item) => item.ownerUserId !== user.id);
               const open = remoteSetupOpen === provider;
               return (
                 <article className="integration-panel remote-integration-card" key={provider}>
@@ -680,11 +686,28 @@ export default function IntegrationsPage() {
                       className="btn"
                       type="button"
                       disabled={!canConnect}
+                      onClick={() => {
+                        window.location.href = providerOAuthStartUrl(workspaceId, provider);
+                      }}
+                    >
+                      {connected ? "Reconnect my account" : `Connect ${provider[0].toUpperCase() + provider.slice(1)}`}
+                    </button>
+                    <button
+                      className="btn secondary"
+                      type="button"
+                      disabled={!canConnect}
                       onClick={() => setRemoteSetupOpen(open ? null : provider)}
                     >
-                      {connected ? "Manage connection" : `Connect ${provider[0].toUpperCase() + provider.slice(1)}`}
+                      Manual setup
                     </button>
                   </div>
+                  {connected && <p className="hint">Your account: {connected.accountName ?? "connected"}.</p>}
+                  {teammateConnections.length > 0 && (
+                    <p className="hint">
+                      Also connected by teammates:{" "}
+                      {teammateConnections.map((item) => item.connectedByName ?? "Workspace member").join(", ")}.
+                    </p>
+                  )}
                   {open && canConnect && (
                     <form
                       className="remote-advanced-form"

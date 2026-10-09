@@ -102,6 +102,26 @@ describe("IN-01 integrations", () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
   });
+  it("basic: each member can connect a separate account for every provider", async () => {
+    for (const member of [admin, editor]) {
+      const github = await request(app).post(`/workspaces/${ws.id}/integrations/github`).set("Cookie", member.cookie).send({ owner: member.displayName.toLowerCase(), repo: "project", token: `github-token-${member.id}`, connectionScope: "shared" });
+      expect(github.status).toBe(201);
+      expect(github.body).toMatchObject({ type: "github", ownerUserId: member.id, connectionScope: "personal" });
+      await db.upsertSlackIntegration({ workspaceId: ws.id, teamName: `${member.displayName}'s Slack`, token: `slack-token-${member.id}`, ownerUserId: member.id });
+      for (const provider of ["linear", "notion", "figma"] as const) {
+        const remote = await request(app).post(`/workspaces/${ws.id}/integrations/${provider}/mcp`).set("Cookie", member.cookie).send({ endpoint: `https://${provider}.example.test/mcp`, token: `${provider}-token-${member.id}` });
+        expect(remote.status).toBe(201);
+        expect(remote.body).toMatchObject({ type: provider, ownerUserId: member.id, connectionScope: "personal" });
+      }
+    }
+    const connections = (await request(app).get(`/workspaces/${ws.id}/integrations`).set("Cookie", admin.cookie)).body;
+    expect(connections).toHaveLength(10);
+    for (const provider of ["github", "slack", "linear", "notion", "figma"]) {
+      const accounts = connections.filter((connection: { type: string }) => connection.type === provider);
+      expect(accounts).toHaveLength(2);
+      expect(accounts.map((connection: { ownerUserId: string }) => connection.ownerUserId).sort()).toEqual([admin.id, editor.id].sort());
+    }
+  });
   it("edge: testing an unknown connection is a 404", async () => {
     for (const key of ["github", "nope", NIL_UUID]) {
       expect((await request(app).post(`/workspaces/${ws.id}/integrations/${key}/test`).set("Cookie", admin.cookie)).status).toBe(404);

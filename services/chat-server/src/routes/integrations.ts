@@ -64,8 +64,9 @@ export function registerIntegrationsRoutes({ app, deps, requireRole, requirePerm
     } catch (err) {
       return res.status(400).json({ error: `could not verify GitHub access: ${errMessage(err)}` });
     }
-    const connectionName = typeof req.body?.connectionName === "string" ? req.body.connectionName.trim().slice(0, 80) : "Shared connection";
-    const connectionScope = req.body?.connectionScope === "personal" ? "personal" : "shared";
+    // One account per provider per workspace member, including this manual fallback.
+    const connectionName = "My GitHub";
+    const connectionScope = "personal" as const;
     const config = await db.upsertGithubIntegration({ workspaceId: paramString(req.params.id), owner, repo, token, connectionName: connectionName || "Shared connection", connectionScope, ownerUserId: req.user!.id });
     await db.recordAuditEvent({
       workspaceId: paramString(req.params.id),
@@ -89,7 +90,7 @@ export function registerIntegrationsRoutes({ app, deps, requireRole, requirePerm
     const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
     if (!endpoint.startsWith("https://") || !token) return res.status(400).json({ error: "HTTPS MCP endpoint and token are required" });
     try {
-      const config = await db.upsertRemoteMcpIntegration({ workspaceId, type: provider, endpoint, token });
+      const config = await db.upsertRemoteMcpIntegration({ workspaceId, type: provider, endpoint, token, ownerUserId: req.user!.id });
       res.status(201).json(config);
     } catch (error) { res.status(400).json({ error: errMessage(error) }); }
   });

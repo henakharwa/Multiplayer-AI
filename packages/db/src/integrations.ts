@@ -126,15 +126,17 @@ export async function upsertSlackIntegration(input: {
   };
 }
 
-export async function upsertRemoteMcpIntegration(input: { workspaceId: string; type: "linear" | "notion" | "figma"; endpoint: string; token: string; accountName?: string }): Promise<import("@mai-chat/shared-types").RemoteMcpIntegrationConfig> {
+// Each remote-provider account belongs to the workspace member who connected it.
+export async function upsertRemoteMcpIntegration(input: { workspaceId: string; type: "linear" | "notion" | "figma"; endpoint: string; token: string; ownerUserId: string; accountName?: string }): Promise<import("@mai-chat/shared-types").RemoteMcpIntegrationConfig> {
+  const accountKey = `personal:${input.ownerUserId}:${input.type}`;
   const result = await getPool().query(
-    `INSERT INTO integrations (workspace_id, type, owner, team_name, encrypted_token, account_key) VALUES ($1, $2, $3, $4, $5, 'shared')
-     ON CONFLICT (workspace_id, type, account_key) DO UPDATE SET owner = $3, team_name = $4, encrypted_token = $5, connected_at = now()
+    `INSERT INTO integrations (workspace_id, type, owner, team_name, encrypted_token, connection_name, connection_scope, owner_user_id, account_key) VALUES ($1, $2, $3, $4, $5, $6, 'personal', $7, $8)
+     ON CONFLICT (workspace_id, type, account_key) DO UPDATE SET owner = $3, team_name = $4, encrypted_token = $5, connection_name = $6, connection_scope = 'personal', owner_user_id = $7, connected_at = now()
      RETURNING id, workspace_id, type, connection_name, connection_scope, owner_user_id, owner, team_name, connected_at`,
-    [input.workspaceId, input.type, input.endpoint, input.accountName ?? null, encryptToken(input.token)]
+    [input.workspaceId, input.type, input.endpoint, input.accountName ?? null, encryptToken(input.token), input.accountName?.trim() || `My ${input.type[0].toUpperCase()}${input.type.slice(1)}`, input.ownerUserId, accountKey]
   );
   const row = result.rows[0];
-  return { id: row.id, type: row.type, workspaceId: row.workspace_id, connectionName: row.connection_name, connectionScope: row.connection_scope, ownerUserId: row.owner_user_id ?? undefined, endpoint: row.owner, accountName: row.team_name ?? undefined, connected: true, connectedAt: row.connected_at.toISOString() };
+  return { id: row.id, type: row.type, workspaceId: row.workspace_id, connectionName: row.connection_name, connectionScope: row.connection_scope, ownerUserId: row.owner_user_id, endpoint: row.owner, accountName: row.team_name ?? undefined, connected: true, connectedAt: row.connected_at.toISOString() };
 }
 
 // Client-safe listing -- never includes the decrypted token.

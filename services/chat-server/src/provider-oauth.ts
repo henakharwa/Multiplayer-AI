@@ -47,11 +47,11 @@ export function registerProviderOAuthRoutes(app: Express): void {
     if (!role || !(await db.hasWorkspacePermission(workspaceId, role, "connectTools"))) return res.status(403).json({ error: "You do not have permission to connect this tool." });
     const oauth = config(kind); const info = infoFor(kind);
     if (!oauth.clientId || !oauth.clientSecret || !info.endpoint) return res.status(503).json({ error: `${kind} account login needs ${kind.toUpperCase()}_OAUTH_CLIENT_ID and ${kind.toUpperCase()}_OAUTH_CLIENT_SECRET${kind === "figma" ? `, plus FIGMA_MCP_URL` : ""} configured on the server.` });
-    const state = randomUUID(); await db.saveOAuthPendingState(state, "provider", { workspaceId, provider: kind }, new Date(Date.now() + 600_000));
+    const state = randomUUID(); await db.saveOAuthPendingState(state, "provider", { workspaceId, provider: kind, userId: req.user!.id }, new Date(Date.now() + 600_000));
     const url = new URL(info.authorize); url.searchParams.set("client_id", oauth.clientId); url.searchParams.set("redirect_uri", oauth.redirectUri); url.searchParams.set("response_type", "code"); url.searchParams.set("state", state); if (kind === "notion") url.searchParams.set("owner", "user"); if (info.scope) url.searchParams.set("scope", info.scope); res.redirect(url.toString());
   });
   app.get("/auth/mcp/:provider/callback", async (req: Request, res: Response) => {
-    const kind = provider(String(req.params.provider)); const state = typeof req.query.state === "string" ? req.query.state : ""; const code = typeof req.query.code === "string" ? req.query.code : ""; const pending = await db.consumeOAuthPendingState<{ workspaceId: string; provider: Provider }>(state, "provider");
+    const kind = provider(String(req.params.provider)); const state = typeof req.query.state === "string" ? req.query.state : ""; const code = typeof req.query.code === "string" ? req.query.code : ""; const pending = await db.consumeOAuthPendingState<{ workspaceId: string; provider: Provider; userId: string }>(state, "provider");
     if (!kind || !pending || pending.provider !== kind || !code) return res.status(400).send("This connection link expired. Please return to the workspace and try again.");
     const oauth = config(kind); const info = infoFor(kind);
     const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: oauth.redirectUri });
@@ -68,7 +68,7 @@ export function registerProviderOAuthRoutes(app: Express): void {
     }
     const result = await response.json().catch(() => ({})) as { access_token?: string; error_description?: string; error?: string; workspace_name?: string };
     if (!response.ok || !result.access_token) return res.redirect(back(kind, pending.workspaceId, "error", result.error_description ?? result.error ?? "Account login failed."));
-    await db.upsertRemoteMcpIntegration({ workspaceId: pending.workspaceId, type: kind, endpoint: info.endpoint, token: result.access_token, accountName: await connectedAccountName(kind, result.access_token, result) });
+    await db.upsertRemoteMcpIntegration({ workspaceId: pending.workspaceId, type: kind, endpoint: info.endpoint, token: result.access_token, ownerUserId: pending.userId, accountName: await connectedAccountName(kind, result.access_token, result) });
     res.redirect(back(kind, pending.workspaceId, "connected"));
   });
 }
