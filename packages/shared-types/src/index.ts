@@ -686,7 +686,12 @@ export type AuditEventType =
   // comment. Gives "who's driving this" a durable, searchable trail
   // (docs/spec.md: "so who's driving this stays visible"), on top of the
   // handoff message itself being visible live in the chat.
-  | "handoff.directed";
+  | "handoff.directed"
+  // Archiving, restoring and deleting a conversation are Admin-only and
+  // recorded so a removed or hidden chat always has an attributable trail.
+  | "conversation.archived"
+  | "conversation.restored"
+  | "conversation.deleted";
 
 export interface AuditEvent {
   id: string;

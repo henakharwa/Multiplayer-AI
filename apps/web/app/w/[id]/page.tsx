@@ -1089,21 +1089,25 @@ export default function WorkspaceRoomPage() {
                           >
                             {conversation.pinnedAt ? "Unpin chat" : "Pin chat"}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void changeConversation(conversation, { archived: !conversation.archivedAt })
-                            }
-                          >
-                            {conversation.archivedAt ? "Restore chat" : "Archive chat"}
-                          </button>
-                          <button
-                            type="button"
-                            className="danger"
-                            onClick={() => void removeConversation(conversation)}
-                          >
-                            Delete chat
-                          </button>
+                          {workspaceRole === "admin" && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void changeConversation(conversation, { archived: !conversation.archivedAt })
+                                }
+                              >
+                                {conversation.archivedAt ? "Restore chat" : "Archive chat"}
+                              </button>
+                              <button
+                                type="button"
+                                className="danger"
+                                onClick={() => void removeConversation(conversation)}
+                              >
+                                Delete chat
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>

@@ -48,9 +48,18 @@ export function registerConversationsRoutes({ app, requireRole }: RouteContext):
     if (title !== null && (!title || title.length > 100)) return res.status(400).json({ error: "title must be between 1 and 100 characters" });
     let conversation = await db.getConversation(workspaceId, conversationId);
     if (!conversation) return res.status(404).json({ error: "conversation not found" });
+    // Archiving and restoring are Admin-only. Check before applying any part
+    // of the update so an Editor's request never changes the title or pin.
+    if (archived !== null && (await db.getWorkspaceRole(workspaceId, req.user!.id)) !== "admin") {
+      return res.status(403).json({ error: "Only Admins can archive or restore conversations." });
+    }
+    const wasArchived = Boolean(conversation.archivedAt);
     if (title !== null) conversation = await db.renameConversation(workspaceId, conversationId, title);
     if (pinned !== null) conversation = await db.setConversationPinned(workspaceId, conversationId, pinned);
     if (archived !== null) conversation = await db.setConversationArchived(workspaceId, conversationId, archived);
+    if (archived !== null && archived !== wasArchived && conversation) {
+      await db.recordAuditEvent({ workspaceId, eventType: archived ? "conversation.archived" : "conversation.restored", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} ${archived ? "archived" : "restored"} conversation ${conversation.title}` });
+    }
     res.json(conversation);
   });
 
@@ -60,7 +69,12 @@ export function registerConversationsRoutes({ app, requireRole }: RouteContext):
     const conversationId = paramString(req.params.conversationId);
     if (!UUID_RE.test(workspaceId) || !UUID_RE.test(conversationId)) return res.status(400).json({ error: "invalid conversation id" });
     if (!(await db.getWorkspaceById(workspaceId))) return res.status(404).json({ error: "not found" });
-    if (!(await db.deleteConversation(workspaceId, conversationId))) return res.status(404).json({ error: "conversation not found" });
+    // Deleting removes every member's messages and pending approvals, so it
+    // is Admin-only.
+    if ((await db.getWorkspaceRole(workspaceId, req.user!.id)) !== "admin") return res.status(403).json({ error: "Only Admins can delete conversations." });
+    const existing = await db.getConversation(workspaceId, conversationId);
+    if (!existing || !(await db.deleteConversation(workspaceId, conversationId))) return res.status(404).json({ error: "conversation not found" });
+    await db.recordAuditEvent({ workspaceId, eventType: "conversation.deleted", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} deleted conversation ${existing.title}` });
     let conversations = await db.listConversations(workspaceId);
     // Keep every workspace immediately usable: deleting its final chat
     // creates one fresh blank conversation instead of leaving a dead view.

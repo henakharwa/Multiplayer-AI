@@ -46,6 +46,22 @@ describe("CV-02 rename, pin, archive", () => {
     const archived = await request(app).patch(`${base()}/${created.id}`).set("Cookie", admin.cookie).send({ archived: true });
     expect(archived.body.archivedAt).toBeTruthy();
   });
+  it("security: Editors cannot archive or restore, and a rejected request changes nothing", async () => {
+    const created = (await request(app).post(base()).set("Cookie", editor.cookie).send({ title: "Keep" })).body;
+    const archive = await request(app).patch(`${base()}/${created.id}`).set("Cookie", editor.cookie).send({ archived: true, title: "Changed" });
+    expect(archive.status).toBe(403);
+    expect(archive.body.error).toMatch(/Only Admins can archive/);
+    const unchanged = await db.getConversation(ws.id, created.id);
+    expect(unchanged?.archivedAt).toBeNull();
+    expect(unchanged?.title).toBe("Keep");
+    await request(app).patch(`${base()}/${created.id}`).set("Cookie", admin.cookie).send({ archived: true });
+    expect((await request(app).patch(`${base()}/${created.id}`).set("Cookie", editor.cookie).send({ archived: false })).status).toBe(403);
+    expect((await request(app).patch(`${base()}/${created.id}`).set("Cookie", admin.cookie).send({ archived: false })).body.archivedAt).toBeNull();
+    for (const eventType of ["conversation.archived", "conversation.restored"] as const) {
+      const events = await db.listAuditEvents(ws.id, { eventType });
+      expect(events.some((event) => event.summary === "Admin " + eventType.split(".")[1] + " conversation Keep" && event.actorUserId === admin.id)).toBe(true);
+    }
+  });
   it("edge: blank or >100 character titles are 400; wrong types are ignored", async () => {
     expect((await request(app).patch(`${base()}/${ws.conversationId}`).set("Cookie", admin.cookie).send({ title: "  " })).status).toBe(400);
     expect((await request(app).patch(`${base()}/${ws.conversationId}`).set("Cookie", admin.cookie).send({ title: "y".repeat(101) })).status).toBe(400);
@@ -67,9 +83,18 @@ describe("CV-02 rename, pin, archive", () => {
 describe("CV-03 delete conversations", () => {
   it("basic: deleting returns the remaining list", async () => {
     const extra = (await request(app).post(base()).set("Cookie", admin.cookie).send({ title: "Delete me" })).body;
-    const res = await request(app).delete(`${base()}/${extra.id}`).set("Cookie", editor.cookie);
+    const res = await request(app).delete(`${base()}/${extra.id}`).set("Cookie", admin.cookie);
     expect(res.status).toBe(200);
     expect(res.body.map((c: { id: string }) => c.id)).not.toContain(extra.id);
+    const audit = await db.listAuditEvents(ws.id, { eventType: "conversation.deleted" });
+    expect(audit.some((event) => event.summary.includes("Delete me") && event.actorUserId === admin.id)).toBe(true);
+  });
+  it("security: Editors cannot delete a conversation, even one they created", async () => {
+    const own = (await request(app).post(base()).set("Cookie", editor.cookie).send({ title: "Editor chat" })).body;
+    const res = await request(app).delete(`${base()}/${own.id}`).set("Cookie", editor.cookie);
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/Only Admins can delete/);
+    expect(await db.getConversation(ws.id, own.id)).toBeTruthy();
   });
   it("edge: deleting the final conversation leaves one fresh blank conversation", async () => {
     const solo = await makeWorkspace(app, admin);

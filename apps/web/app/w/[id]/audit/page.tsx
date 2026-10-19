@@ -53,6 +53,9 @@ const EVENT_TYPE_LABELS: Record<AuditEventType, string> = {
   "action.cancelled": "Action cancelled",
   "action.failed": "Action failed",
   "handoff.directed": "Handed off to a teammate",
+  "conversation.archived": "Conversation archived",
+  "conversation.restored": "Conversation restored",
+  "conversation.deleted": "Conversation deleted",
 };
 
 function formatTimestamp(iso: string): string {
