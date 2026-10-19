@@ -7,6 +7,7 @@ import type { CreateServerDeps } from "./server.js";
 import { getRemoteMcpClient } from "./remote-mcp-pool.js";
 import { listMcpToolExecutors } from "./mcp-tools.js";
 import { buildNotionTools } from "./notion-tools.js";
+import { buildFigmaTools } from "./figma-tools.js";
 
 type ActionAgentKind = "project" | "github" | "slack" | "linear" | "notion" | "figma";
 
@@ -102,6 +103,15 @@ export async function buildToolsForWorkspace(workspaceId: string, deps: CreateSe
         const notionTools = buildNotionTools(credential.token);
         tools.push(...notionTools);
         remoteAgentTools.notion.push(...notionTools);
+      }
+    } else if (integration.type === "figma") {
+      // Figma's REST API accepts personal access tokens and OAuth tokens;
+      // its hosted MCP server rejects personal tokens. See figma-tools.ts.
+      const credential = await db.getIntegrationCredential(workspaceId, "figma", integration.id);
+      if (credential?.token) {
+        const figmaTools = buildFigmaTools(credential.token);
+        tools.push(...figmaTools);
+        remoteAgentTools.figma.push(...figmaTools);
       }
     } else {
       const credential = await db.getIntegrationCredential(workspaceId, integration.type, integration.id);

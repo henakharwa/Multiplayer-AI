@@ -716,23 +716,35 @@ export default function IntegrationsPage() {
                         void connectRemote(provider);
                       }}
                     >
+                      {provider === "linear" ? (
+                        <label>
+                          HTTPS MCP endpoint
+                          <input
+                            type="url"
+                            value={setup.endpoint}
+                            onChange={(event) =>
+                              setRemoteSetup((current) => ({
+                                ...current,
+                                [provider]: { ...current[provider], endpoint: event.target.value },
+                              }))
+                            }
+                            placeholder="https://mcp.linear.app/mcp"
+                            required
+                          />
+                        </label>
+                      ) : (
+                        <p className="hint">
+                          {provider === "figma"
+                            ? "Paste a Figma personal access token (Figma → Settings → Security). It is checked with Figma before it is saved."
+                            : "Paste a Notion internal integration secret, and share your pages with that integration in Notion."}
+                        </p>
+                      )}
                       <label>
-                        HTTPS MCP endpoint
-                        <input
-                          type="url"
-                          value={setup.endpoint}
-                          onChange={(event) =>
-                            setRemoteSetup((current) => ({
-                              ...current,
-                              [provider]: { ...current[provider], endpoint: event.target.value },
-                            }))
-                          }
-                          placeholder="https://mcp.example.com"
-                          required
-                        />
-                      </label>
-                      <label>
-                        Access token
+                        {provider === "figma"
+                          ? "Personal access token"
+                          : provider === "notion"
+                            ? "Integration secret"
+                            : "Access token"}
                         <input
                           type="password"
                           value={setup.token}

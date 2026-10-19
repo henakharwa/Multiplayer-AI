@@ -21,6 +21,7 @@ export function makeDeps(overrides: Partial<CreateServerDeps> = {}): CreateServe
     githubOAuthDeps: { exchangeCodeForToken: async () => ({ error: "not used" }), listRepositoriesForToken: async () => [] },
     slackOAuthConfig: { clientId: "", clientSecret: "", redirectUri: "", webAppUrl: "http://localhost:3000" },
     slackOAuthDeps: { exchangeCodeForToken: async () => ({ error: "not used" }) },
+    figmaTokenVerifier: async () => ({ handle: "figma-test-user" }),
     ...overrides,
   };
 }

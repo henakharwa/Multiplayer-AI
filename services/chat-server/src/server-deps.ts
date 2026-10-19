@@ -54,6 +54,10 @@ export interface CreateServerDeps {
   // fallback the way GitHub has one).
   slackOAuthConfig: SlackOAuthConfig;
   slackOAuthDeps: SlackOAuthDeps;
+  // Checks a pasted Figma token against Figma's REST API before it is saved
+  // (Integrations → Figma → Manual setup). Defaults to figma-tools.ts's
+  // verifyFigmaToken; injectable so tests never call api.figma.com.
+  figmaTokenVerifier?: (token: string) => Promise<{ handle?: string; email?: string }>;
 }
 
 // Real implementation of githubMcpToolsFactory above -- spawns (or, for an

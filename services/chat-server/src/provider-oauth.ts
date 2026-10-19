@@ -6,14 +6,11 @@ type Provider = "linear" | "notion" | "figma";
 const providerInfo: Record<Provider, { authorize: string; token: string; endpoint: string; scope: string }> = {
   linear: { authorize: "https://linear.app/oauth/authorize", token: "https://api.linear.app/oauth/token", endpoint: "https://mcp.linear.app/mcp", scope: "read,write" },
   notion: { authorize: "https://api.notion.com/v1/oauth/authorize", token: "https://api.notion.com/v1/oauth/token", endpoint: "notion-rest", scope: "" },
-  figma: { authorize: "https://www.figma.com/oauth", token: "https://api.figma.com/v1/oauth/token", endpoint: process.env.FIGMA_MCP_URL ?? "", scope: "file_content:read,file_comments:write,current_user:read" },
+  // Figma tools call the REST API directly (figma-tools.ts), so no MCP URL is needed.
+  figma: { authorize: "https://www.figma.com/oauth", token: "https://api.figma.com/v1/oauth/token", endpoint: "https://api.figma.com/v1", scope: "file_content:read,file_comments:read,file_comments:write,current_user:read" },
 };
-// Environment files are loaded by index.ts after ES modules are evaluated,
-// so resolve configurable endpoints at request time instead of capturing an
-// empty value while this module is first imported.
 function infoFor(kind: Provider) {
-  const info = providerInfo[kind];
-  return kind === "figma" ? { ...info, endpoint: process.env.FIGMA_MCP_URL ?? "" } : info;
+  return providerInfo[kind];
 }
 function provider(value: string): Provider | null { return value === "linear" || value === "notion" || value === "figma" ? value : null; }
 function config(kind: Provider) { const prefix = kind.toUpperCase(); const publicUrl = process.env.CHAT_SERVER_PUBLIC_URL ?? `http://localhost:${process.env.CHAT_SERVER_PORT ?? 4000}`; return { clientId: process.env[`${prefix}_OAUTH_CLIENT_ID`] ?? "", clientSecret: process.env[`${prefix}_OAUTH_CLIENT_SECRET`] ?? "", redirectUri: `${publicUrl}/auth/mcp/${kind}/callback`, webAppUrl: process.env.WEB_APP_URL ?? "http://localhost:3000" }; }
@@ -46,7 +43,7 @@ export function registerProviderOAuthRoutes(app: Express): void {
     const role = await db.getWorkspaceRole(workspaceId, req.user!.id);
     if (!role || !(await db.hasWorkspacePermission(workspaceId, role, "connectTools"))) return res.status(403).json({ error: "You do not have permission to connect this tool." });
     const oauth = config(kind); const info = infoFor(kind);
-    if (!oauth.clientId || !oauth.clientSecret || !info.endpoint) return res.status(503).json({ error: `${kind} account login needs ${kind.toUpperCase()}_OAUTH_CLIENT_ID and ${kind.toUpperCase()}_OAUTH_CLIENT_SECRET${kind === "figma" ? `, plus FIGMA_MCP_URL` : ""} configured on the server.` });
+    if (!oauth.clientId || !oauth.clientSecret || !info.endpoint) return res.status(503).json({ error: `${kind} account login needs ${kind.toUpperCase()}_OAUTH_CLIENT_ID and ${kind.toUpperCase()}_OAUTH_CLIENT_SECRET configured on the server.` });
     const state = randomUUID(); await db.saveOAuthPendingState(state, "provider", { workspaceId, provider: kind, userId: req.user!.id }, new Date(Date.now() + 600_000));
     const url = new URL(info.authorize); url.searchParams.set("client_id", oauth.clientId); url.searchParams.set("redirect_uri", oauth.redirectUri); url.searchParams.set("response_type", "code"); url.searchParams.set("state", state); if (kind === "notion") url.searchParams.set("owner", "user"); if (info.scope) url.searchParams.set("scope", info.scope); res.redirect(url.toString());
   });

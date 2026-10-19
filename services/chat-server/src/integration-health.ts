@@ -7,6 +7,7 @@ import type { IntegrationConfig, RemoteMcpIntegrationConfig } from "@mai-chat/sh
 import { errMessage } from "./http-utils.js";
 import { getRemoteMcpClient } from "./remote-mcp-pool.js";
 import { listMcpToolExecutors } from "./mcp-tools.js";
+import { verifyFigmaToken } from "./figma-tools.js";
 
 export type IntegrationHealth = { status: "ok" | "needs_setup" | "failed"; message: string };
 
@@ -53,6 +54,19 @@ async function checkNotion(workspaceId: string, integration: IntegrationConfig):
   return { status: "failed", message: `Notion returned HTTP ${res.status}.` };
 }
 
+async function checkFigma(workspaceId: string, integration: IntegrationConfig): Promise<IntegrationHealth> {
+  const credential = await db.getIntegrationCredential(workspaceId, "figma", integration.id);
+  if (!credential?.token) return { status: "failed", message: "No Figma credential is stored for this connection. Reconnect Figma." };
+  try {
+    const me = await verifyFigmaToken(credential.token);
+    return { status: "ok", message: `Connected: Figma accepted the stored token${me.handle ? ` for ${me.handle}` : ""}.` };
+  } catch (error) {
+    const message = errMessage(error);
+    if (/refused access/i.test(message)) return { status: "failed", message: "Figma rejected the stored token. Update the connection with a valid personal access token." };
+    throw error;
+  }
+}
+
 async function checkRemoteMcp(workspaceId: string, integration: RemoteMcpIntegrationConfig): Promise<IntegrationHealth> {
   const credential = await db.getIntegrationCredential(workspaceId, integration.type, integration.id);
   if (!credential?.token || !integration.endpoint) return { status: "failed", message: "This connection is missing its endpoint or token. Update the connection." };
@@ -68,6 +82,7 @@ export async function testIntegrationConnection(workspaceId: string, integration
     if (integration.type === "github") return await checkGithub(workspaceId, integration);
     if (integration.type === "slack") return await checkSlack(workspaceId, integration);
     if (integration.type === "notion") return await checkNotion(workspaceId, integration);
+    if (integration.type === "figma") return await checkFigma(workspaceId, integration);
     return await checkRemoteMcp(workspaceId, integration);
   } catch (error) {
     const message = errMessage(error);

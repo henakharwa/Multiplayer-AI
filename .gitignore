@@ -7,3 +7,8 @@ dist/
 .env.oracle
 !.env.example
 *.log
+
+Workspace codes.txt
+Claude outputs/
+brag-output/
+_to_delete/

@@ -2,6 +2,7 @@
 import * as db from "@mai-chat/db";
 import { UUID_RE, errMessage, paramString } from "../http-utils.js";
 import { testIntegrationConnection } from "../integration-health.js";
+import { FIGMA_API, verifyFigmaToken } from "../figma-tools.js";
 import { registerGithubOAuthRoutes } from "../github-oauth.js";
 import { registerSlackOAuthRoutes } from "../slack-oauth.js";
 import type { Request, Response } from "express";
@@ -86,11 +87,25 @@ export function registerIntegrationsRoutes({ app, deps, requireRole, requirePerm
     const workspaceId = paramString(req.params.id);
     const provider = paramString(req.params.provider);
     if (provider !== "linear" && provider !== "notion" && provider !== "figma") return res.status(404).json({ error: "unknown MCP provider" });
-    const endpoint = typeof req.body?.endpoint === "string" ? req.body.endpoint.trim() : "";
+    // Notion and Figma are called through their REST APIs with the token
+    // directly (notion-tools.ts, figma-tools.ts), so only Linear needs an
+    // MCP endpoint; the other two fall back to their API base URL.
+    const requestedEndpoint = typeof req.body?.endpoint === "string" ? req.body.endpoint.trim() : "";
+    const endpoint = requestedEndpoint || (provider === "notion" ? "https://api.notion.com/v1" : provider === "figma" ? FIGMA_API : "");
     const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
-    if (!endpoint.startsWith("https://") || !token) return res.status(400).json({ error: "HTTPS MCP endpoint and token are required" });
+    if (!token) return res.status(400).json({ error: "An access token is required" });
+    if (!endpoint.startsWith("https://")) return res.status(400).json({ error: "An HTTPS MCP endpoint is required" });
+    let accountName: string | undefined;
+    if (provider === "figma") {
+      try {
+        const me = await (deps.figmaTokenVerifier ?? verifyFigmaToken)(token);
+        accountName = me.handle ?? me.email;
+      } catch (error) {
+        return res.status(400).json({ error: `Figma did not accept this token: ${errMessage(error)}` });
+      }
+    }
     try {
-      const config = await db.upsertRemoteMcpIntegration({ workspaceId, type: provider, endpoint, token, ownerUserId: req.user!.id });
+      const config = await db.upsertRemoteMcpIntegration({ workspaceId, type: provider, endpoint, token, ownerUserId: req.user!.id, accountName });
       res.status(201).json(config);
     } catch (error) { res.status(400).json({ error: errMessage(error) }); }
   });

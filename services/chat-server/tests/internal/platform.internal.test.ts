@@ -122,6 +122,20 @@ describe("IN-01 integrations", () => {
       expect(accounts.map((connection: { ownerUserId: string }) => connection.ownerUserId).sort()).toEqual([admin.id, editor.id].sort());
     }
   });
+  it("edge: a Figma token Figma rejects is refused and not saved; Notion and Figma need no endpoint", async () => {
+    const strictApp = newApp({ figmaTokenVerifier: async () => { throw new Error("Figma refused access: Invalid token."); } });
+    const before = (await request(app).get(`/workspaces/${ws.id}/integrations`).set("Cookie", admin.cookie)).body.length;
+    const rejected = await request(strictApp).post(`/workspaces/${ws.id}/integrations/figma/mcp`).set("Cookie", admin.cookie).send({ token: "figd_bad" });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.error).toMatch(/Figma did not accept this token/);
+    expect((await request(app).get(`/workspaces/${ws.id}/integrations`).set("Cookie", admin.cookie)).body).toHaveLength(before);
+    const figma = await request(app).post(`/workspaces/${ws.id}/integrations/figma/mcp`).set("Cookie", admin.cookie).send({ token: "figd_good" });
+    expect(figma.status).toBe(201);
+    expect(figma.body).toMatchObject({ type: "figma", endpoint: "https://api.figma.com/v1", accountName: "figma-test-user" });
+    const notion = await request(app).post(`/workspaces/${ws.id}/integrations/notion/mcp`).set("Cookie", admin.cookie).send({ token: "ntn_test" });
+    expect(notion.status).toBe(201);
+    expect((await request(app).post(`/workspaces/${ws.id}/integrations/linear/mcp`).set("Cookie", admin.cookie).send({ token: "lin_test" })).status).toBe(400);
+  });
   it("edge: testing an unknown connection is a 404", async () => {
     for (const key of ["github", "nope", NIL_UUID]) {
       expect((await request(app).post(`/workspaces/${ws.id}/integrations/${key}/test`).set("Cookie", admin.cookie)).status).toBe(404);
