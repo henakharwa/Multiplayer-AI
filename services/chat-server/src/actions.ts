@@ -260,8 +260,8 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
         workspaceId,
         conversationId: action.conversationId,
         kind: "action_completed",
-        text: `${actorName} completed: ${action.description}`,
-        excludeUserIds: rooms.participants(`${workspaceId}:${action.conversationId}`).flatMap((participant) => participant.userId ? [participant.userId] : []),
+        text: `${actorName} cancelled: ${action.description}`,
+        excludeUserIds: [req.user!.id, ...rooms.participants(`${workspaceId}:${action.conversationId}`).flatMap((participant) => participant.userId ? [participant.userId] : [])],
       });
       await db.recordAuditEvent({
         workspaceId,
@@ -341,6 +341,16 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
         content: `The requested action has completed: ${action.description}.`,
       });
       rooms.broadcast(`${workspaceId}:${action.conversationId}`, { type: "message", message: completionMessage });
+      // Members who are not watching this conversation learn the write
+      // actually happened (the cancel branch above sends the matching
+      // "cancelled" notification).
+      await db.notifyWorkspaceMembers({
+        workspaceId,
+        conversationId: action.conversationId,
+        kind: "action_completed",
+        text: `${actorName} confirmed and completed: ${action.description}`,
+        excludeUserIds: [req.user!.id, ...rooms.participants(`${workspaceId}:${action.conversationId}`).flatMap((participant) => participant.userId ? [participant.userId] : [])],
+      });
       await db.recordAuditEvent({
         workspaceId,
         eventType: "action.confirmed",
