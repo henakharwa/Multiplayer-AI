@@ -54,7 +54,7 @@ export function mcpToolToExecutor(client: Client, tool: McpTool): ToolExecutor {
     // as the fuller "here's exactly what you're about to run" detail.
     describe: mutates ? (args) => describeCall(tool, args) : undefined,
     preview: mutates ? (args) => previewCall(tool, args) : undefined,
-    execute: (args) => callMcpTool(client, tool.name, normalizeCompatibilityArgs(args)),
+    execute: (args) => callMcpTool(client, tool.name, normalizeCompatibilityArgs(args, tool.inputSchema as Record<string, unknown>)),
   };
 }
 
@@ -72,9 +72,20 @@ function compatibilitySchema(schema: Record<string, unknown>): Record<string, un
   return copy;
 }
 
-function normalizeCompatibilityArgs(args: Record<string, unknown>): Record<string, unknown> {
+// compatibilitySchema() lets the model send an enum value in either case.
+// Map each such value back to the exact spelling the tool's own schema
+// declares. GitHub's MCP tools are not consistent: list_issues expects
+// OPEN/CLOSED while list_pull_requests expects open/closed/all, so blindly
+// upper-casing `state` broke every pull-request listing.
+export function normalizeCompatibilityArgs(args: Record<string, unknown>, schema?: Record<string, unknown>): Record<string, unknown> {
+  const properties = (schema?.properties ?? {}) as Record<string, { enum?: unknown[] } | undefined>;
   const copy = { ...args };
-  if (typeof copy.state === "string") copy.state = copy.state.toUpperCase();
+  for (const [key, value] of Object.entries(copy)) {
+    const allowed = properties[key]?.enum;
+    if (typeof value !== "string" || !Array.isArray(allowed) || allowed.includes(value)) continue;
+    const match = allowed.find((item) => typeof item === "string" && item.toLowerCase() === value.toLowerCase());
+    if (typeof match === "string") copy[key] = match;
+  }
   return copy;
 }
 
@@ -142,6 +153,12 @@ async function callMcpTool(client: Client, name: string, args: Record<string, un
 const STANDARD_ISSUE_FIELDS = new Set(["title", "body", "labels", "assignees", "milestone", "state", "state_reason"]);
 
 export function normalizeGithubArguments(name: string, args: Record<string, unknown>): Record<string, unknown> {
+  // Models often pass ref "HEAD" to mean "the default branch". GitHub's MCP
+  // server cannot resolve that name; omitting ref reads the default branch.
+  if (name === "get_file_contents" && typeof args.ref === "string" && /^(refs\/heads\/)?HEAD$/i.test(args.ref.trim())) {
+    const { ref: _ref, ...rest } = args;
+    return rest;
+  }
   if (name !== "issue_write" || !args.issue_fields) return args;
   const normalized = { ...args };
   const customFields: unknown[] = [];

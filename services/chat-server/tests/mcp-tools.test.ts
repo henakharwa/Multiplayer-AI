@@ -94,6 +94,19 @@ describe("mcpToolToExecutor", () => {
     expect(callTool).toHaveBeenCalledWith({ name: "list_issues", arguments: { owner: "o", repo: "r", state: "OPEN" } });
   });
 
+  it("keeps each tool's own enum casing: list_pull_requests wants lowercase, so OPEN/ALL become open/all", async () => {
+    const callTool = vi.fn(async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const executor = mcpToolToExecutor(fakeClient({ callTool }), tool({
+      name: "list_pull_requests",
+      annotations: { readOnlyHint: true },
+      inputSchema: { type: "object", properties: { state: { type: "string", enum: ["open", "closed", "all"] } } },
+    }));
+    await executor.execute({ owner: "o", repo: "r", state: "open" });
+    expect(callTool).toHaveBeenLastCalledWith({ name: "list_pull_requests", arguments: { owner: "o", repo: "r", state: "open" } });
+    await executor.execute({ owner: "o", repo: "r", state: "ALL" });
+    expect(callTool).toHaveBeenLastCalledWith({ name: "list_pull_requests", arguments: { owner: "o", repo: "r", state: "all" } });
+  });
+
   it("execute() logs and throws when the MCP result is marked isError, using its text as the message", async () => {
     const callTool = vi.fn(async () => ({ content: [{ type: "text", text: "404: no such issue" }], isError: true }));
     const executor = mcpToolToExecutor(fakeClient({ callTool }), tool({ name: "issue_read", annotations: { readOnlyHint: true } }));
@@ -105,6 +118,11 @@ describe("mcpToolToExecutor", () => {
 });
 
 describe("normalizeGithubArguments", () => {
+  it("drops ref HEAD for get_file_contents so the default branch is read", () => {
+    expect(normalizeGithubArguments("get_file_contents", { owner: "o", repo: "r", path: "index.html", ref: "HEAD" })).toEqual({ owner: "o", repo: "r", path: "index.html" });
+    expect(normalizeGithubArguments("get_file_contents", { owner: "o", repo: "r", path: "a", ref: "refs/heads/HEAD" })).toEqual({ owner: "o", repo: "r", path: "a" });
+    expect(normalizeGithubArguments("get_file_contents", { owner: "o", repo: "r", path: "a", ref: "main" })).toEqual({ owner: "o", repo: "r", path: "a", ref: "main" });
+  });
   it("moves standard issue fields out of issue_fields while preserving custom fields", () => {
     expect(normalizeGithubArguments("issue_write", {
       method: "create",

@@ -176,11 +176,16 @@ function compactSchema(value: unknown): unknown {
 
 function scoreTool(tool: ToolExecutor, request: string): number {
   const haystack = `${tool.definition.function.name} ${tool.definition.function.description}`.toLowerCase();
-  const terms: string[] = request.toLowerCase().match(/[a-z0-9_]{3,}/g) ?? [];
-  // GitHub calls CI resources "Actions" and "workflow runs". Add those
-  // server terms when a workflow says "CI", so the read-only Actions tools
-  // are not displaced by unrelated zero-score tools in a tight tool budget.
-  const expandedTerms = terms.includes("ci") ? [...terms, "actions", "workflow", "runs"] : terms;
+  const lower = request.toLowerCase();
+  const terms: string[] = lower.match(/[a-z0-9_]{3,}/g) ?? [];
+  // Short abbreviations are below the 3-character word minimum above, so
+  // look for them explicitly. GitHub calls CI resources "Actions" and
+  // "workflow runs", and a "PR" is a pull request; without these, a request
+  // such as "Review PR #17 ... checks" could rank pull_request_read out of a
+  // tight tool budget.
+  const expandedTerms = [...terms];
+  if (/\bci\b/.test(lower)) expandedTerms.push("actions", "workflow", "runs");
+  if (/\bprs?\b/.test(lower)) expandedTerms.push("pull_request", "pull");
   return expandedTerms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
 }
 
@@ -354,8 +359,24 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
     }
   }
 
+  // Out of tool rounds. Rather than discarding everything the tools already
+  // returned, ask once more with no tools offered so the model must answer
+  // from what it has, and say what it could not check.
+  let finalReply = "I wasn't able to finish that within my turn budget -- try asking something narrower.";
+  try {
+    messages.push({
+      role: "user",
+      content:
+        "You have used all the tool calls available for this request. Do not call any more tools. Answer now using only the tool results above, and say briefly what you could not check.",
+    });
+    const final = await chat(config, messages, []);
+    providerPromptTokens += final.usage?.promptTokens ?? 0; providerCompletionTokens += final.usage?.completionTokens ?? 0; if (final.usage?.costUsd !== undefined) providerCostUsd = (providerCostUsd ?? 0) + final.usage.costUsd;
+    if (!final.tool_calls?.length && final.content?.trim()) finalReply = proposedWriteAction ? stripConfirmationBoilerplate(final.content) : final.content;
+  } catch (error) {
+    console.error(`[agent] final answer after the turn budget failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
   return {
-    reply: "I wasn't able to finish that within my turn budget -- try asking something narrower.",
+    reply: finalReply,
     toolCallsMade,
     toolTrace,
     providerPromptTokens,

@@ -81,6 +81,18 @@ describe("runAgentTurn", () => {
     expect(offeredTools).toContain("actions_list");
   });
 
+  it("ranks pull-request and Actions tools first when a request says PR or CI", () => {
+    const tools = [
+      fakeTool("get_me", async () => ({})),
+      fakeTool("list_issues", async () => ({})),
+      fakeTool("search_code", async () => ({})),
+      fakeTool("pull_request_read", async () => ({})),
+      fakeTool("actions_list", async () => ({})),
+    ];
+    expect(selectToolsForBudget(tools, "Review PR #17 and tell me if it is good", 5000)[0]?.definition.function.name).toBe("pull_request_read");
+    expect(selectToolsForBudget(tools, "Why is CI red?", 5000)[0]?.definition.function.name).toBe("actions_list");
+  });
+
   it("prioritizes issue_write when a workflow explicitly requests a governed issue", () => {
     const selected = selectToolsForBudget(
       [
@@ -225,6 +237,23 @@ describe("runAgentTurn", () => {
     const tools = [fakeTool("loopy", async () => "again")];
     const result = await runAgentTurn({ history: [{ role: "user", content: "loop" }], tools, chat, maxTurns: 2 });
     expect(result.reply).toContain("turn budget");
+    expect(result.toolCallsMade).toBe(2);
+  });
+
+  it("after the last tool round, answers from the results gathered so far instead of discarding them", async () => {
+    let calls = 0;
+    let finalToolsOffered: number | null = null;
+    const chat: LlmChatFn = async (_config, messages, tools) => {
+      calls++;
+      if (calls <= 2) return { role: "assistant", content: null, tool_calls: [{ id: `c${calls}`, type: "function", function: { name: "read_pr", arguments: "{}" } }] };
+      finalToolsOffered = tools.length;
+      expect(messages[messages.length - 1].content).toContain("Do not call any more tools");
+      return { role: "assistant", content: "PR #17 fixes test.py; I could not check its CI status." };
+    };
+    const tools = [fakeTool("read_pr", async () => "PR #17 changes test.py")];
+    const result = await runAgentTurn({ history: [{ role: "user", content: "review PR #17" }], tools, chat, maxTurns: 2 });
+    expect(result.reply).toBe("PR #17 fixes test.py; I could not check its CI status.");
+    expect(finalToolsOffered).toBe(0);
     expect(result.toolCallsMade).toBe(2);
   });
 
