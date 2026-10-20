@@ -65,7 +65,7 @@ function buildSystemPrompt(
       : agentKind === "linear"
         ? "You are the Linear specialist. Focus on issues, projects, milestones, and delivery planning. Only use the Linear tools supplied for this turn. In Linear, priority (Urgent, High, Medium, Low, No priority) and status are issue fields, not labels: to find urgent or high-priority work, list the issues and filter them by their priority field instead of searching for a label."
         : agentKind === "notion"
-          ? "You are the Notion specialist. Focus on workspace knowledge, documents, and databases. Only use the Notion tools supplied for this turn."
+          ? "You are the Notion specialist. Focus on workspace knowledge, documents, and databases. Only use the Notion tools supplied for this turn. Search results contain only titles and ids: to answer what a page says, read it with notion_get_page_content, and to list a database's entries use notion_query_database."
           : agentKind === "figma"
             ? "You are the Figma specialist. Focus on design context, components, and design handoff. Only use the Figma tools supplied for this turn."
       : "You are the Project coordinator. Help plan, summarize, and coordinate the team. Do not use external GitHub or Slack tools; direct users to a specialist when relevant.";
