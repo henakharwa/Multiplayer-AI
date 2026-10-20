@@ -17,5 +17,5 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 ENV GITHUB_MCP_COMMAND=github-mcp-server
-RUN chmod +x scripts/start-render.sh
-CMD ["./scripts/start-render.sh"]
+RUN chmod +x scripts/start-nexus.sh
+CMD ["./scripts/start-nexus.sh"]

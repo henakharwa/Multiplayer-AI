@@ -17,7 +17,7 @@ services:
   nexus:
     build:
       context: .
-      dockerfile: Dockerfile.render
+      dockerfile: Dockerfile.nexus
       args:
         NEXT_PUBLIC_CHAT_SERVER_URL: https://${NEXUS_DOMAIN}/api
         NEXT_PUBLIC_CHAT_SERVER_WS_URL: wss://${NEXUS_DOMAIN}/api
@@ -37,6 +37,10 @@ services:
     environment:
       PORT: "80"
       CADDY_CONFIG: /app/Caddyfile.oracle
+      # Caddy is the one proxy in front of the chat server. Without this,
+      # every request appears to come from 127.0.0.1 and per-IP sign-in,
+      # reset and join-code limits are shared by all users.
+      TRUST_PROXY_HOPS: "1"
       NEXUS_DOMAIN: ${NEXUS_DOMAIN:?Set NEXUS_DOMAIN in .env.oracle}
       DATABASE_URL: postgresql://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-multiplayer_ai}
       INTEGRATION_ENCRYPTION_KEY: ${INTEGRATION_ENCRYPTION_KEY:?Set INTEGRATION_ENCRYPTION_KEY in .env.oracle}

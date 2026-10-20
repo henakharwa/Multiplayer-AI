@@ -50,11 +50,11 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   const webAppUrl = (process.env.WEB_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "");
   const chatServerPublicUrl = (process.env.CHAT_SERVER_PUBLIC_URL ?? "http://localhost:4000").replace(/\/+$/, "");
   const publicApiPath = new URL(chatServerPublicUrl).pathname.replace(/\/+$/, "");
-  // Behind Render's proxy and the bundled Caddy proxy every request would
-  // otherwise appear to come from 127.0.0.1, so per-IP sign-in and reset
-  // limits would be shared by all users. Trust exactly the proxy hops in
-  // front of this process (2 on Render: Render's edge + Caddy).
-  const trustedProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? (process.env.RENDER ? 2 : 0));
+  // Behind the bundled Caddy proxy every request would otherwise appear to
+  // come from 127.0.0.1, so per-IP sign-in and reset limits would be shared
+  // by all users. Trust exactly the proxy hops in front of this process
+  // (TRUST_PROXY_HOPS=1 for the Oracle deployment: Caddy only).
+  const trustedProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? 0);
   if (Number.isInteger(trustedProxyHops) && trustedProxyHops > 0) app.set("trust proxy", trustedProxyHops);
   app.use(cors({ origin: webAppUrl, credentials: true }));
   app.use(express.json());

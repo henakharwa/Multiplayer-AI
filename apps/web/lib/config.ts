@@ -4,7 +4,7 @@
 // time to point anywhere. Without them:
 // - in development, the chat server is assumed at localhost:4000;
 // - in a production build, the app uses its own origin under /api, which
-//   is how the bundled Caddy proxy (Caddyfile) routes requests. It never
+//   is how the bundled Caddy proxy (Caddyfile.oracle) routes requests. It never
 //   silently falls back to localhost in production.
 function sameOriginApi(): { http: string; ws: string } | null {
   if (process.env.NODE_ENV !== "production" || typeof window === "undefined") return null;
