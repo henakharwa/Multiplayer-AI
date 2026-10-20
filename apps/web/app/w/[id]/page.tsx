@@ -51,7 +51,8 @@ import PendingActionCard from "../../_components/PendingActionCard";
 import { AccessNotice } from "../../_components/AccessNotice";
 import { useWorkspaceAccess } from "../../../lib/useWorkspaceAccess";
 import EmailVerificationBanner from "../../_components/EmailVerificationBanner";
-import { renderWithMentions, draftLooksLikeHandoff } from "../../../lib/mentionHighlight";
+import { draftLooksLikeHandoff } from "../../../lib/mentionHighlight";
+import { renderMessageContent } from "../../../lib/messageMarkdown";
 
 function roleLabel(role: string): string {
   if (role === "agent") return "Agent";
@@ -1460,7 +1461,7 @@ export default function WorkspaceRoomPage() {
                       )}
                     </div>
                     <div className="bubble">
-                      {renderWithMentions(
+                      {renderMessageContent(
                         m.content,
                         chat.participants.map((p) => p.displayName),
                       )}

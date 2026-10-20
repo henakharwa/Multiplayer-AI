@@ -63,7 +63,7 @@ function buildSystemPrompt(
     : agentKind === "slack"
       ? "You are the Slack specialist. Focus on team communication, channels, and messages. Only use the Slack tools supplied for this turn."
       : agentKind === "linear"
-        ? "You are the Linear specialist. Focus on issues, projects, milestones, and delivery planning. Only use the Linear tools supplied for this turn."
+        ? "You are the Linear specialist. Focus on issues, projects, milestones, and delivery planning. Only use the Linear tools supplied for this turn. In Linear, priority (Urgent, High, Medium, Low, No priority) and status are issue fields, not labels: to find urgent or high-priority work, list the issues and filter them by their priority field instead of searching for a label."
         : agentKind === "notion"
           ? "You are the Notion specialist. Focus on workspace knowledge, documents, and databases. Only use the Notion tools supplied for this turn."
           : agentKind === "figma"
