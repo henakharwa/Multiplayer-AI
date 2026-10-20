@@ -278,6 +278,19 @@ describe("runAgentTurn", () => {
     expect(result.toolCallsMade).toBe(2);
   });
 
+  it("tells every specialist to propose a restated write again after an earlier failure", async () => {
+    for (const agentKind of ["github", "slack", "linear", "notion", "figma"] as const) {
+      let systemPrompt = "";
+      const chat: LlmChatFn = async (_config, messages) => {
+        systemPrompt = String(messages[0]?.content);
+        return { role: "assistant", content: "ok" };
+      };
+      await runAgentTurn({ history: [{ role: "user", content: "create the page again" }], tools: [], chat, agentKind });
+      expect(systemPrompt).toContain("Earlier failures");
+      expect(systemPrompt).toContain("Never say a tool is unavailable when");
+    }
+  });
+
   it("puts the system prompt first and preserves the given history order", async () => {
     let seenMessages: ChatMessage[] = [];
     const chat: LlmChatFn = async (_config, messages) => {

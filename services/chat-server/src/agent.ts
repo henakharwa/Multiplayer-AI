@@ -142,6 +142,13 @@ or is happening. Instead, tell them to click Confirm on the pending
 action's card. Likewise, never invent or claim a confirmation happened
 that you weren't shown proof of via a tool result.
 
+When a user makes a write request again -- restating the action itself,
+not just saying "yes" or "go ahead" -- after an earlier attempt failed or
+was cancelled, propose it again by calling the write tool. Earlier failures
+in this conversation do not mean it will fail now: permissions, connections
+or the target may have changed since. Never say a tool is unavailable when
+it is in the tools supplied for this turn.
+
 ${memorySection}
 
 ${responseRule}`;
