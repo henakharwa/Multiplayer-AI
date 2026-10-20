@@ -84,16 +84,113 @@ interface FigmaComment {
   client_meta?: { node_id?: string } | null;
 }
 
-export function buildFigmaTools(token: string, fetchImpl: FetchLike = fetch): ToolExecutor[] {
+/** Accepts a team ID or a figma.com/files/team/<id>/... link. */
+export function parseFigmaTeamId(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) throw new Error("A Figma team link or team ID is required.");
+  const input = value.trim();
+  const match = input.match(/\/team\/(\d+)/) ?? input.match(/^(\d{5,})$/);
+  if (!match) throw new Error("That does not look like a Figma team link (figma.com/files/team/<id>/...) or a numeric team ID.");
+  return match[1];
+}
+
+interface FigmaProject { id: string | number; name: string }
+interface FigmaProjectFile { key: string; name: string; last_modified?: string }
+
+/** Lists a team's projects; also proves the token can see that team. */
+export async function listFigmaTeamProjects(token: string, teamId: string, fetchImpl: FetchLike = fetch): Promise<{ teamName?: string; projects: { id: string; name: string }[] }> {
+  const body = (await figmaRequest(token, `/teams/${encodeURIComponent(teamId)}/projects`, {}, fetchImpl)) as { name?: string; projects?: FigmaProject[] };
+  return { teamName: body.name, projects: (body.projects ?? []).map((project) => ({ id: String(project.id), name: project.name })) };
+}
+
+const fileLink = (key: string) => `https://www.figma.com/design/${key}`;
+
+// Figma refuses team/project listing for tokens from its public OAuth login.
+async function withTeamHint<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (/refused access/i.test(error instanceof Error ? error.message : "")) {
+      throw new Error("Figma refused to list this team's projects. Figma only allows that with a personal access token that has the \"Projects: read\" scope (Integrations → Figma → Manual setup). Files can still be opened by pasting their link.");
+    }
+    throw error;
+  }
+}
+const MAX_PROJECTS_SCANNED = 25;
+
+export function buildFigmaTools(token: string, fetchImpl: FetchLike = fetch, teamId?: string): ToolExecutor[] {
   const request = (path: string, init?: RequestInit) => figmaRequest(token, path, init, fetchImpl);
   const fileParam = { type: "string", description: "The Figma file URL (figma.com/design/...) or its file key." };
+  const teamFor = (args: Record<string, unknown>) => {
+    if (args.team !== undefined && args.team !== "") return parseFigmaTeamId(args.team);
+    if (teamId) return teamId;
+    throw new Error("No Figma team is set for this connection. Set one in Integrations → Figma → Team, or paste the file link (files in Drafts can only be opened by link).");
+  };
+  const listFiles = async (projectId: string) => {
+    const body = (await request(`/projects/${encodeURIComponent(projectId)}/files`)) as { name?: string; files?: FigmaProjectFile[] };
+    return (body.files ?? []).map((file) => ({ key: file.key, name: file.name, lastModified: file.last_modified, url: fileLink(file.key) }));
+  };
+  const teamParam = { type: "string", description: "Optional Figma team link or ID. Leave empty to use the team set for this connection." };
   return [
     {
       definition: {
         type: "function",
         function: {
+          name: "figma_list_projects",
+          description: "List the projects in the connected Figma team. Use figma_list_files to see a project's files, or figma_find_files to look a file up by name.",
+          parameters: { type: "object", properties: { team: teamParam } },
+        },
+      },
+      execute: async (args) => {
+        const team = teamFor(args);
+        return { teamId: team, ...(await withTeamHint(() => listFigmaTeamProjects(token, team, fetchImpl))) };
+      },
+    },
+    {
+      definition: {
+        type: "function",
+        function: {
+          name: "figma_list_files",
+          description: "List the design files in one Figma project, with each file's name, link and last modified time.",
+          parameters: { type: "object", properties: { project_id: { type: "string", description: "The project id from figma_list_projects." } }, required: ["project_id"] },
+        },
+      },
+      execute: async (args) => {
+        const projectId = typeof args.project_id === "string" || typeof args.project_id === "number" ? String(args.project_id).trim() : "";
+        if (!projectId) throw new Error("project_id is required");
+        return { projectId, files: await listFiles(projectId) };
+      },
+    },
+    {
+      definition: {
+        type: "function",
+        function: {
+          name: "figma_find_files",
+          description: "Find Figma files by name across all projects in the connected Figma team. Use this when the user names a file instead of pasting its link; pass the returned link to figma_get_file or figma_list_comments.",
+          parameters: { type: "object", properties: { name: { type: "string", description: "Part of the file name, e.g. \"dark mode\"." }, team: teamParam }, required: ["name"] },
+        },
+      },
+      execute: async (args) => {
+        const query = typeof args.name === "string" ? args.name.trim().toLowerCase() : "";
+        if (!query) throw new Error("name is required");
+        const team = teamFor(args);
+        const { teamName, projects } = await withTeamHint(() => listFigmaTeamProjects(token, team, fetchImpl));
+        const words = query.split(/[^a-z0-9]+/).filter(Boolean);
+        const matches: Array<{ key: string; name: string; lastModified?: string; url: string; project: string }> = [];
+        for (const project of projects.slice(0, MAX_PROJECTS_SCANNED)) {
+          for (const file of await listFiles(project.id)) {
+            const name = file.name.toLowerCase();
+            if (name.includes(query) || (words.length > 0 && words.every((word) => name.includes(word)))) matches.push({ ...file, project: project.name });
+          }
+        }
+        return { teamId: team, teamName, matches, projectsScanned: Math.min(projects.length, MAX_PROJECTS_SCANNED), note: "Files in personal Drafts are not part of a team and cannot be found this way." };
+      },
+    },
+    {
+      definition: {
+        type: "function",
+        function: {
           name: "figma_get_file",
-          description: "Read a Figma file: its name, last modified time, pages, top-level frames, and the text inside each frame. Ask the user for the file link if you do not have one.",
+          description: "Read a Figma file: its name, last modified time, pages, top-level frames, and the text inside each frame. If you only know the file's name, find its link with figma_find_files first; ask for the link only if that finds nothing.",
           parameters: { type: "object", properties: { file: fileParam }, required: ["file"] },
         },
       },

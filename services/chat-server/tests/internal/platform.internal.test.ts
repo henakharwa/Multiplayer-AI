@@ -136,6 +136,24 @@ describe("IN-01 integrations", () => {
     expect(notion.status).toBe(201);
     expect((await request(app).post(`/workspaces/${ws.id}/integrations/linear/mcp`).set("Cookie", admin.cookie).send({ token: "lin_test" })).status).toBe(400);
   });
+  it("basic/edge: a member saves the Figma team their own connection may browse, checked with Figma first", async () => {
+    const outsiderToTeam = newApp({ figmaTeamLoader: async () => { throw new Error("Figma refused access: Invalid scope."); } });
+    const teamApp = newApp({ figmaTeamLoader: async (_token, teamId) => ({ teamName: teamId === "1234567890" ? "Hena's team" : undefined }) });
+    // Editor has no Figma connection of their own in this workspace yet.
+    await db.getPool().query(`DELETE FROM integrations WHERE workspace_id = $1 AND type = 'figma' AND owner_user_id = $2`, [ws.id, editor.id]);
+    expect((await request(teamApp).post(`/workspaces/${ws.id}/integrations/figma/team`).set("Cookie", editor.cookie).send({ team: "1234567890" })).status).toBe(409);
+    expect((await request(teamApp).post(`/workspaces/${ws.id}/integrations/figma/team`).set("Cookie", admin.cookie).send({ team: "not a team" })).status).toBe(400);
+    const refused = await request(outsiderToTeam).post(`/workspaces/${ws.id}/integrations/figma/team`).set("Cookie", admin.cookie).send({ team: "1234567890" });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error).toMatch(/personal access token/);
+    const saved = await request(teamApp).post(`/workspaces/${ws.id}/integrations/figma/team`).set("Cookie", admin.cookie).send({ team: "https://www.figma.com/files/team/1234567890/all-projects" });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toEqual({ teamId: "1234567890", teamName: "Hena's team" });
+    const listing = (await request(app).get(`/workspaces/${ws.id}/integrations`).set("Cookie", admin.cookie)).body;
+    expect(listing.find((item: { type: string; ownerUserId: string }) => item.type === "figma" && item.ownerUserId === admin.id)).toMatchObject({ teamId: "1234567890", teamName: "Hena's team" });
+    const credential = await db.getIntegrationCredential(ws.id, "figma", listing.find((item: { type: string; ownerUserId: string; id: string }) => item.type === "figma" && item.ownerUserId === admin.id).id);
+    expect(credential?.repo?.split(":")[0]).toBe("1234567890");
+  });
   it("edge: testing an unknown connection is a 404", async () => {
     for (const key of ["github", "nope", NIL_UUID]) {
       expect((await request(app).post(`/workspaces/${ws.id}/integrations/${key}/test`).set("Cookie", admin.cookie)).status).toBe(404);

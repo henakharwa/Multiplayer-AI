@@ -58,6 +58,9 @@ export interface CreateServerDeps {
   // (Integrations → Figma → Manual setup). Defaults to figma-tools.ts's
   // verifyFigmaToken; injectable so tests never call api.figma.com.
   figmaTokenVerifier?: (token: string) => Promise<{ handle?: string; email?: string }>;
+  // Checks that a Figma token can open a team before it is saved as the
+  // team the agent may browse. Defaults to figma-tools.ts's listFigmaTeamProjects.
+  figmaTeamLoader?: (token: string, teamId: string) => Promise<{ teamName?: string }>;
 }
 
 // Real implementation of githubMcpToolsFactory above -- spawns (or, for an

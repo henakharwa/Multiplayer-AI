@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFigmaTools, figmaAuthHeaders, parseFigmaFileKey, summarizeFigmaFile, verifyFigmaToken } from "../src/figma-tools.js";
+import { buildFigmaTools, figmaAuthHeaders, parseFigmaFileKey, parseFigmaTeamId, summarizeFigmaFile, verifyFigmaToken } from "../src/figma-tools.js";
 
 type Call = { url: string; init: RequestInit };
 
@@ -86,4 +86,43 @@ describe("figma-tools", () => {
     const notFound = fakeFetch([{ status: 404, body: { status: 404, err: "Not found" } }]);
     await expect(tool(buildFigmaTools("figd_token", notFound.impl), "figma_get_file").execute({ file: "AbC123xyz9" })).rejects.toThrow(/could not find that file/);
   });
+
+  it("parses team links and numeric team ids", () => {
+    expect(parseFigmaTeamId("https://www.figma.com/files/team/1234567890123/project/55/Calc?fuid=1")).toBe("1234567890123");
+    expect(parseFigmaTeamId("1234567890123")).toBe("1234567890123");
+    expect(() => parseFigmaTeamId("my team")).toThrow(/does not look like/);
+  });
+
+  it("finds files by name across the connected team's projects", async () => {
+    const { impl, calls } = fakeFetch([
+      { body: { name: "Hena's team", projects: [{ id: 11, name: "Calculator" }, { id: 12, name: "Website" }] } },
+      { body: { files: [{ key: "AbC123xyz9", name: "Calculator – Dark Mode", last_modified: "2026-10-19" }, { key: "Zz", name: "Icons" }] } },
+      { body: { files: [{ key: "Yy", name: "Landing page" }] } },
+    ]);
+    const result = await tool(buildFigmaTools("figd_token", impl, "999"), "figma_find_files").execute({ name: "dark mode" });
+    expect(result).toMatchObject({ teamId: "999", teamName: "Hena's team", matches: [{ key: "AbC123xyz9", name: "Calculator – Dark Mode", project: "Calculator", url: "https://www.figma.com/design/AbC123xyz9" }] });
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://api.figma.com/v1/teams/999/projects",
+      "https://api.figma.com/v1/projects/11/files",
+      "https://api.figma.com/v1/projects/12/files",
+    ]);
+  });
+
+  it("lists projects and a project's files", async () => {
+    const { impl } = fakeFetch([
+      { body: { name: "Team", projects: [{ id: 11, name: "Calculator" }] } },
+      { body: { files: [{ key: "AbC123xyz9", name: "Calculator – Dark Mode" }] } },
+    ]);
+    const tools = buildFigmaTools("figd_token", impl, "999");
+    expect(await tool(tools, "figma_list_projects").execute({})).toEqual({ teamId: "999", teamName: "Team", projects: [{ id: "11", name: "Calculator" }] });
+    expect(await tool(tools, "figma_list_files").execute({ project_id: 11 })).toEqual({ projectId: "11", files: [{ key: "AbC123xyz9", name: "Calculator – Dark Mode", lastModified: undefined, url: "https://www.figma.com/design/AbC123xyz9" }] });
+  });
+
+  it("explains what to do when no team is set or Figma refuses team listing", async () => {
+    const noTeam = buildFigmaTools("figd_token", fakeFetch([]).impl);
+    await expect(tool(noTeam, "figma_find_files").execute({ name: "dark" })).rejects.toThrow(/No Figma team is set/);
+    const refused = buildFigmaTools("oauth-token", fakeFetch([{ status: 403, body: { status: 403, err: "Invalid scope" } }]).impl, "999");
+    await expect(tool(refused, "figma_list_projects").execute({})).rejects.toThrow(/personal access token that has the "Projects: read" scope/);
+  });
 });
+

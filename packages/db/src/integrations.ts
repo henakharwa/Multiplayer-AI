@@ -185,10 +185,28 @@ export async function listIntegrations(workspaceId: string): Promise<Integration
       connectedByName: row.connected_by_name ?? undefined,
       endpoint: row.owner,
       accountName: row.team_name ?? undefined,
+      ...(row.type === "figma" && row.repo ? figmaTeamFromColumn(row.repo) : {}),
       connected: true,
       connectedAt: row.connected_at.toISOString(),
     };
   });
+}
+
+// A Figma connection stores its chosen team in the otherwise unused `repo`
+// column as "<team id>" or "<team id>:<team name>".
+function figmaTeamFromColumn(value: string): { teamId: string; teamName?: string } {
+  const [teamId, ...name] = value.split(":");
+  return { teamId, teamName: name.join(":") || undefined };
+}
+
+/** Saves the Figma team a member's own Figma connection may browse. */
+export async function setFigmaTeam(input: { workspaceId: string; ownerUserId: string; teamId: string; teamName?: string }): Promise<boolean> {
+  const value = input.teamName ? `${input.teamId}:${input.teamName}` : input.teamId;
+  const result = await getPool().query(
+    `UPDATE integrations SET repo = $3 WHERE workspace_id = $1 AND type = 'figma' AND account_key = $2`,
+    [input.workspaceId, `personal:${input.ownerUserId}:figma`, value]
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 // Server-side only (the agent's tool implementations) -- decrypts the real

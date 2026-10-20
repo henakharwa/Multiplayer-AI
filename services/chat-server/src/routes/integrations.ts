@@ -2,7 +2,7 @@
 import * as db from "@mai-chat/db";
 import { UUID_RE, errMessage, paramString } from "../http-utils.js";
 import { testIntegrationConnection } from "../integration-health.js";
-import { FIGMA_API, verifyFigmaToken } from "../figma-tools.js";
+import { FIGMA_API, listFigmaTeamProjects, parseFigmaTeamId, verifyFigmaToken } from "../figma-tools.js";
 import { registerGithubOAuthRoutes } from "../github-oauth.js";
 import { registerSlackOAuthRoutes } from "../slack-oauth.js";
 import type { Request, Response } from "express";
@@ -108,6 +108,34 @@ export function registerIntegrationsRoutes({ app, deps, requireRole, requirePerm
       const config = await db.upsertRemoteMcpIntegration({ workspaceId, type: provider, endpoint, token, ownerUserId: req.user!.id, accountName });
       res.status(201).json(config);
     } catch (error) { res.status(400).json({ error: errMessage(error) }); }
+  });
+
+  // Figma's API cannot list a member's teams, so the member who connected
+  // Figma names one team whose projects and files the agent may browse.
+  // The team is checked with that member's own token before it is saved.
+  app.post("/workspaces/:id/integrations/figma/team", async (req: Request, res: Response) => {
+    if (!(await requirePermission(req, res, "connectTools"))) return;
+    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
+    const workspaceId = paramString(req.params.id);
+    let teamId: string;
+    try {
+      teamId = parseFigmaTeamId(req.body?.team);
+    } catch (error) {
+      return res.status(400).json({ error: errMessage(error) });
+    }
+    const own = (await db.listIntegrations(workspaceId)).find((integration) => integration.type === "figma" && integration.ownerUserId === req.user!.id);
+    const credential = own?.id ? await db.getIntegrationCredential(workspaceId, "figma", own.id) : null;
+    if (!own || !credential?.token) return res.status(409).json({ error: "Connect your Figma account first." });
+    let teamName: string | undefined;
+    try {
+      teamName = (await (deps.figmaTeamLoader ?? listFigmaTeamProjects)(credential.token, teamId)).teamName;
+    } catch (error) {
+      // Figma does not let apps connected through its public OAuth login use
+      // the projects endpoints; a personal access token with projects:read can.
+      return res.status(400).json({ error: `Figma could not list that team's projects with your connection (${errMessage(error)}). Figma only allows this with a personal access token that has the "Projects: read" scope: reconnect Figma with Manual setup, then set the team again.` });
+    }
+    await db.setFigmaTeam({ workspaceId, ownerUserId: req.user!.id, teamId, teamName: teamName?.replace(/:/g, " ") });
+    res.json({ teamId, teamName });
   });
 
   registerGithubOAuthRoutes(app, deps.githubOAuthConfig, deps.githubOAuthDeps);

@@ -15,6 +15,7 @@ import {
   describeError,
   connectGithub,
   connectRemoteMcp,
+  setFigmaTeam,
   githubOAuthStartUrl,
   providerOAuthStartUrl,
   slackOAuthStartUrl,
@@ -75,6 +76,12 @@ export default function IntegrationsPage() {
     figma: { endpoint: "", token: "", busy: false, error: "" },
   });
   const [remoteSetupOpen, setRemoteSetupOpen] = useState<"linear" | "notion" | "figma" | null>(null);
+  const [figmaTeam, setFigmaTeamInput] = useState("");
+  const [figmaTeamState, setFigmaTeamState] = useState<{ busy: boolean; error: string; saved: string }>({
+    busy: false,
+    error: "",
+    saved: "",
+  });
 
   const [owner, setOwner] = useState("");
   const [repo, setRepo] = useState("");
@@ -228,6 +235,18 @@ export default function IntegrationsPage() {
           error: describeError(reason, "Could not connect this provider."),
         },
       }));
+    }
+  }
+
+  async function saveFigmaTeam() {
+    setFigmaTeamState({ busy: true, error: "", saved: "" });
+    try {
+      const saved = await setFigmaTeam(workspaceId, figmaTeam.trim());
+      setFigmaTeamInput("");
+      setFigmaTeamState({ busy: false, error: "", saved: saved.teamName ?? saved.teamId });
+      await refresh();
+    } catch (reason) {
+      setFigmaTeamState({ busy: false, error: describeError(reason, "Could not save the Figma team."), saved: "" });
     }
   }
 
@@ -702,6 +721,36 @@ export default function IntegrationsPage() {
                     </button>
                   </div>
                   {connected && <p className="hint">Your account: {connected.accountName ?? "connected"}.</p>}
+                  {provider === "figma" && connected && canConnect && (
+                    <form
+                      className="remote-advanced-form"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void saveFigmaTeam();
+                      }}
+                    >
+                      <label>
+                        Figma team
+                        <input
+                          value={figmaTeam}
+                          onChange={(event) => setFigmaTeamInput(event.target.value)}
+                          placeholder="https://www.figma.com/files/team/1234567890/…"
+                          aria-describedby="figma-team-hint"
+                          required
+                        />
+                      </label>
+                      <p className="hint" id="figma-team-hint">
+                        {connected.teamId
+                          ? `Agents can browse ${connected.teamName ?? `team ${connected.teamId}`}. Paste another team link to change it.`
+                          : "Paste a team link so agents can find files by name. Files in Drafts can still be opened by link."}
+                      </p>
+                      <button className="btn" disabled={figmaTeamState.busy}>
+                        {figmaTeamState.busy ? "Checking…" : connected.teamId ? "Change team" : "Save team"}
+                      </button>
+                      {figmaTeamState.saved && <p className="hint">Saved: {figmaTeamState.saved}.</p>}
+                      {figmaTeamState.error && <p className="error-text">{figmaTeamState.error}</p>}
+                    </form>
+                  )}
                   {teammateConnections.length > 0 && (
                     <p className="hint">
                       Also connected by teammates:{" "}

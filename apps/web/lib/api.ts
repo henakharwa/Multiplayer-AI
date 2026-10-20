@@ -814,6 +814,19 @@ export async function connectRemoteMcp(
   return (await parseJsonOrThrow(res)) as IntegrationConfig;
 }
 
+/** Saves the Figma team (link or ID) the agent may browse with your Figma connection. */
+export async function setFigmaTeam(workspaceId: string, team: string): Promise<{ teamId: string; teamName?: string }> {
+  const res = await authenticatedFetch(
+    `${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/integrations/figma/team`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ team }),
+    },
+  );
+  return (await parseJsonOrThrow(res)) as { teamId: string; teamName?: string };
+}
+
 export function providerOAuthStartUrl(workspaceId: string, provider: "linear" | "notion" | "figma"): string {
   return `${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/integrations/${provider}/oauth/start`;
 }

@@ -403,6 +403,10 @@ export interface RemoteMcpIntegrationConfig {
   connectedByName?: string;
   endpoint: string;
   accountName?: string;
+  // Figma only: the team whose projects and files the agent may browse
+  // (Figma's API cannot list a user's teams or Drafts).
+  teamId?: string;
+  teamName?: string;
   connected: boolean;
   connectedAt: string;
 }

@@ -109,7 +109,8 @@ export async function buildToolsForWorkspace(workspaceId: string, deps: CreateSe
       // its hosted MCP server rejects personal tokens. See figma-tools.ts.
       const credential = await db.getIntegrationCredential(workspaceId, "figma", integration.id);
       if (credential?.token) {
-        const figmaTools = buildFigmaTools(credential.token);
+        // The chosen Figma team is stored as "<id>" or "<id>:<name>"; see db's setFigmaTeam.
+        const figmaTools = buildFigmaTools(credential.token, fetch, credential.repo?.split(":")[0] || undefined);
         tools.push(...figmaTools);
         remoteAgentTools.figma.push(...figmaTools);
       }
