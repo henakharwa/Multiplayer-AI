@@ -71,7 +71,7 @@ async function checkRemoteMcp(workspaceId: string, integration: RemoteMcpIntegra
   const credential = await db.getIntegrationCredential(workspaceId, integration.type, integration.id);
   if (!credential?.token || !integration.endpoint) return { status: "failed", message: "This connection is missing its endpoint or token. Update the connection." };
   const client = await getRemoteMcpClient(workspaceId, integration.type, integration.endpoint, credential.token);
-  const tools = await listMcpToolExecutors(client);
+  const tools = await listMcpToolExecutors(client, integration.type[0].toUpperCase() + integration.type.slice(1));
   return tools.length
     ? { status: "ok", message: `Connected: ${tools.length} tool${tools.length === 1 ? "" : "s"} available.` }
     : { status: "needs_setup", message: "Connected, but the server offered no tools. Check the token's scopes." };

@@ -118,7 +118,7 @@ export async function buildToolsForWorkspace(workspaceId: string, deps: CreateSe
       if (credential?.token && integration.endpoint) {
         try {
           const client = await getRemoteMcpClient(workspaceId, integration.type, integration.endpoint, credential.token);
-          const providerTools = await listMcpToolExecutors(client);
+          const providerTools = await listMcpToolExecutors(client, integration.type[0].toUpperCase() + integration.type.slice(1));
           tools.push(...providerTools);
           remoteAgentTools[integration.type].push(...providerTools);
         } catch (err) {

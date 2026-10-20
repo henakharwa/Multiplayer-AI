@@ -32,7 +32,10 @@ import type { ToolExecutor } from "./tools.js";
 // direction this project's own hand-written GithubToolSpec design always
 // used, and safer than silently letting an unclassified tool run
 // unconfirmed.
-export function mcpToolToExecutor(client: Client, tool: McpTool): ToolExecutor {
+// `provider` is the connected service's display name ("GitHub", "Slack",
+// "Linear", ...). It appears on the approval card and in error messages, so
+// a Slack post is never described as running "on GitHub".
+export function mcpToolToExecutor(client: Client, tool: McpTool, provider = "GitHub"): ToolExecutor {
   const mutates = tool.annotations?.readOnlyHint !== true;
   return {
     definition: {
@@ -52,9 +55,9 @@ export function mcpToolToExecutor(client: Client, tool: McpTool): ToolExecutor {
     // tool specs) -- these generic fallbacks are what the confirmation
     // card shows instead: describe() as the one-line headline, preview()
     // as the fuller "here's exactly what you're about to run" detail.
-    describe: mutates ? (args) => describeCall(tool, args) : undefined,
+    describe: mutates ? (args) => describeCall(tool, args, provider) : undefined,
     preview: mutates ? (args) => previewCall(tool, args) : undefined,
-    execute: (args) => callMcpTool(client, tool.name, normalizeCompatibilityArgs(args, tool.inputSchema as Record<string, unknown>)),
+    execute: (args) => callMcpTool(client, tool.name, normalizeCompatibilityArgs(args, tool.inputSchema as Record<string, unknown>), provider),
   };
 }
 
@@ -90,12 +93,12 @@ export function normalizeCompatibilityArgs(args: Record<string, unknown>, schema
 }
 
 /** Fetches this MCP client's full tool list and converts every one of them. */
-export async function listMcpToolExecutors(client: Client): Promise<ToolExecutor[]> {
+export async function listMcpToolExecutors(client: Client, provider = "GitHub"): Promise<ToolExecutor[]> {
   const { tools } = await client.listTools();
-  return tools.map((tool) => mcpToolToExecutor(client, tool as McpTool));
+  return tools.map((tool) => mcpToolToExecutor(client, tool as McpTool, provider));
 }
 
-function describeCall(tool: McpTool, args: Record<string, unknown>): string {
+function describeCall(tool: McpTool, args: Record<string, unknown>, provider: string): string {
   const label = tool.name.replace(/_/g, " ");
   // Several of github-mcp-server's tools are "mega-tools" that dispatch on
   // a `method` argument (e.g. issue_write's method can be "create",
@@ -104,7 +107,7 @@ function describeCall(tool: McpTool, args: Record<string, unknown>): string {
   // is what makes the confirmation card's headline actually specific
   // instead of just repeating the tool's name.
   const method = typeof args.method === "string" && args.method ? ` (${args.method})` : "";
-  return `Run "${label}"${method} on GitHub`;
+  return `Run "${label}"${method} on ${provider}`;
 }
 
 function previewCall(tool: McpTool, args: Record<string, unknown>): string {
@@ -122,7 +125,7 @@ function truncate(text: string, maxLen: number): string {
   return text.length <= maxLen ? text : `${text.slice(0, maxLen)}…`;
 }
 
-async function callMcpTool(client: Client, name: string, args: Record<string, unknown>): Promise<unknown> {
+async function callMcpTool(client: Client, name: string, args: Record<string, unknown>, provider: string): Promise<unknown> {
   const result = await client.callTool({ name, arguments: normalizeGithubArguments(name, args) });
   const content = Array.isArray((result as { content?: unknown }).content)
     ? ((result as { content: { type: string; text?: string }[] }).content)
@@ -132,7 +135,7 @@ async function callMcpTool(client: Client, name: string, args: Record<string, un
     .map((c) => c.text)
     .join("\n");
   if ((result as { isError?: boolean }).isError) {
-    const error = text || `GitHub MCP tool "${name}" reported an error`;
+    const error = text || `${provider} MCP tool "${name}" reported an error`;
     // The model receives this error as its tool result, but it may reduce
     // it to a vague apology in the chat. Keep a bounded server-side record
     // so a failed connected-tool request can be diagnosed without logging

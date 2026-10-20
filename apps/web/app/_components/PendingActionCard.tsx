@@ -24,10 +24,17 @@ export default function PendingActionCard({
 }) {
   const [busy, setBusy] = useState<"confirm" | "cancel" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // GitHub writes target owner/repo. Slack's MCP tools pass channel_id,
+  // older Slack tools passed channel, and Figma tools pass the file link.
+  const text = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null);
+  const channel = text(action.args.channel) ?? text(action.args.channel_id);
   const target =
     [action.args.owner, action.args.repo]
       .filter((value): value is string => typeof value === "string" && value.length > 0)
-      .join("/") || (typeof action.args.channel === "string" ? `#${action.args.channel}` : action.toolName);
+      .join("/") ||
+    (channel ? `#${channel.replace(/^#/, "")}` : null) ||
+    text(action.args.file) ||
+    action.toolName;
 
   async function handle(intent: "confirm" | "cancel") {
     setBusy(intent);

@@ -81,7 +81,7 @@ export async function defaultGithubMcpToolsFactory(opts: { workspaceId: string; 
     // deliberately provides a complete GITHUB_TOOLS override.
     tools: process.env.GITHUB_TOOLS || DEFAULT_GITHUB_TOOLS,
   });
-  return listMcpToolExecutors(client);
+  return listMcpToolExecutors(client, "GitHub");
 }
 
 // Real implementation of slackMcpToolsFactory above -- connects to (or
@@ -97,7 +97,7 @@ export async function defaultSlackMcpToolsFactory(opts: { workspaceId: string; a
     accessToken: opts.accessToken,
     serverUrl: process.env.SLACK_MCP_SERVER_URL || undefined,
   });
-  return listMcpToolExecutors(client);
+  return listMcpToolExecutors(client, "Slack");
 }
 
 // Centralized here (rather than read ad hoc at each call site) so tests can

@@ -140,6 +140,26 @@ describe("normalizeGithubArguments", () => {
   });
 });
 
+describe("approval card wording names the connected provider", () => {
+  it("describes a Slack or Linear write as running on that service, not GitHub", () => {
+    const slack = mcpToolToExecutor(fakeClient(), tool({ name: "slack_send_message", annotations: { readOnlyHint: false } }), "Slack");
+    expect(slack.describe?.({ channel_id: "C1", message: "hi" })).toBe('Run "slack send message" on Slack');
+    const linear = mcpToolToExecutor(fakeClient(), tool({ name: "save_issue", annotations: { readOnlyHint: false } }), "Linear");
+    expect(linear.describe?.({ method: "update" })).toBe('Run "save issue" (update) on Linear');
+  });
+
+  it("still defaults to GitHub for GitHub's own MCP tools", () => {
+    const github = mcpToolToExecutor(fakeClient(), tool({ name: "add_issue_comment", annotations: { readOnlyHint: false } }));
+    expect(github.describe?.({})).toBe('Run "add issue comment" on GitHub');
+  });
+
+  it("labels every tool from listMcpToolExecutors with the given provider", async () => {
+    const client = fakeClient({ listTools: async () => ({ tools: [{ name: "slack_send_message", inputSchema: { type: "object" }, annotations: { readOnlyHint: false } }] }) } as never);
+    const [executor] = await listMcpToolExecutors(client, "Slack");
+    expect(executor.describe?.({})).toBe('Run "slack send message" on Slack');
+  });
+});
+
 describe("listMcpToolExecutors", () => {
   it("converts every tool the client reports", async () => {
     const client = fakeClient({
