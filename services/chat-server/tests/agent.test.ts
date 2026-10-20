@@ -93,6 +93,27 @@ describe("runAgentTurn", () => {
     expect(selectToolsForBudget(tools, "Why is CI red?", 5000)[0]?.definition.function.name).toBe("actions_list");
   });
 
+  it("on a large Linear server, a 'move to Done and comment' request keeps the update, comment and status tools", () => {
+    const linearTool = (name: string, description: string): ToolExecutor => ({
+      definition: { type: "function", function: { name, description: `${description} in Linear. ${"Linear workspace details ".repeat(12)}`, parameters: { type: "object", properties: { id: { type: "string" } } } } },
+      execute: async () => ({}),
+    });
+    const filler = Array.from({ length: 60 }, (_, index) => linearTool(`list_thing_${index}`, `List thing ${index} for a team`));
+    const tools = [
+      ...filler.slice(0, 30),
+      linearTool("list_templates", "List templates for a team"),
+      linearTool("get_team", "Get a team"),
+      linearTool("save_issue", "Create or update an issue; set state, priority or assignee"),
+      linearTool("save_comment", "Create or update a comment on an issue"),
+      linearTool("list_issue_statuses", "List the workflow states for a team"),
+      linearTool("list_issues", "List issues"),
+      ...filler.slice(30),
+    ];
+    const selected = selectToolsForBudget(tools, 'Move "Write real unit tests" to Done in Linear and comment "Fixed by PR #17"', 1500).map((tool) => tool.definition.function.name);
+    expect(selected.length).toBeLessThan(tools.length);
+    expect(selected).toEqual(expect.arrayContaining(["save_issue", "save_comment", "list_issue_statuses"]));
+  });
+
   it("prioritizes issue_write when a workflow explicitly requests a governed issue", () => {
     const selected = selectToolsForBudget(
       [

@@ -8,7 +8,7 @@ import type { Participant } from "@mai-chat/shared-types";
 import { RoomRegistry } from "./rooms.js";
 import { createPostgresRoomBus, realtimeBusEnabled } from "./realtime-bus.js";
 import { toLlmHistory } from "./history.js";
-import { replyForResolvedActions, type AgentKind } from "./agent.js";
+import { replyForResolvedActions, stripConfirmationBoilerplate, type AgentKind } from "./agent.js";
 import { resolveLlmConfig } from "./llm-client.js";
 import { buildToolsForWorkspace, wrapForProposal, registerActionRoutes } from "./actions.js";
 import { parseMentions } from "./mentions.js";
@@ -320,7 +320,14 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       conversationId,
       role: "agent",
       authorName: configuredAgent?.name ?? (agentKind === "github" ? "GitHub Agent" : agentKind === "slack" ? "Slack Agent" : agentKind === "linear" ? "Linear Agent" : agentKind === "notion" ? "Notion Agent" : agentKind === "figma" ? "Figma Agent" : "Project Agent"),
-      content: resolvedReply ?? preferWorkspaceMemoryForRepositoryUnavailableWorkflow(result.reply, workspaceMemory, Boolean(workflowInstructions)),
+      // When the card was confirmed or cancelled before this turn finished,
+      // the confirm/cancel path has already posted the outcome. Keep the
+      // agent's own explanation (for example, what it could not do) without
+      // its stale "awaiting confirmation" wording, and fall back to the
+      // generic outcome line only when nothing else is left.
+      content: resolvedReply
+        ? stripConfirmationBoilerplate(result.reply).trim() || resolvedReply
+        : preferWorkspaceMemoryForRepositoryUnavailableWorkflow(result.reply, workspaceMemory, Boolean(workflowInstructions)),
     });
     rooms.broadcast(`${workspaceId}:${conversationId}`, { type: "message", message: agentMessage });
     rooms.broadcast(workspaceId, { type: "workspace_message", message: agentMessage });

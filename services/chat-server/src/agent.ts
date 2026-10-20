@@ -174,8 +174,22 @@ function compactSchema(value: unknown): unknown {
   );
 }
 
-function scoreTool(tool: ToolExecutor, request: string): number {
-  const haystack = `${tool.definition.function.name} ${tool.definition.function.description}`.toLowerCase();
+// Tools every request to a connected service is likely to need. A large
+// MCP server (Linear offers ~70 tools) cannot all fit the tool budget, and
+// these must not lose their place to niche tools such as list_templates.
+const CORE_TOOL_NAMES = new Set([
+  // GitHub
+  "list_issues", "issue_read", "issue_write", "add_issue_comment", "list_pull_requests", "pull_request_read",
+  // Linear
+  "get_issue", "save_issue", "list_comments", "save_comment", "list_issue_statuses", "list_projects",
+]);
+
+// Words that ask for a change of state ("move CAL-3 to Done", "mark it
+// done", "assign it to me") point at a provider's update tool, whose
+// description says "update"/"save", not the user's verb.
+const UPDATE_INTENT = /\b(move|moved|mark|set|change|update|close|done|complete|completed|reopen|assign|reassign|rename|prioriti[sz]e|status)\b/;
+
+function requestTerms(request: string): string[] {
   const lower = request.toLowerCase();
   const terms: string[] = lower.match(/[a-z0-9_]{3,}/g) ?? [];
   // Short abbreviations are below the 3-character word minimum above, so
@@ -183,10 +197,21 @@ function scoreTool(tool: ToolExecutor, request: string): number {
   // "workflow runs", and a "PR" is a pull request; without these, a request
   // such as "Review PR #17 ... checks" could rank pull_request_read out of a
   // tight tool budget.
-  const expandedTerms = [...terms];
-  if (/\bci\b/.test(lower)) expandedTerms.push("actions", "workflow", "runs");
-  if (/\bprs?\b/.test(lower)) expandedTerms.push("pull_request", "pull");
-  return expandedTerms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
+  if (/\bci\b/.test(lower)) terms.push("actions", "workflow", "runs");
+  if (/\bprs?\b/.test(lower)) terms.push("pull_request", "pull");
+  if (UPDATE_INTENT.test(lower)) terms.push("update", "save", "status");
+  return [...new Set(terms)];
+}
+
+function toolHaystack(tool: ToolExecutor): string {
+  return `${tool.definition.function.name} ${tool.definition.function.description}`.toLowerCase();
+}
+
+function scoreTool(haystack: string, name: string, terms: string[]): number {
+  const matches = terms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
+  // Half a point: a core tool outranks unrelated tools but never a tool that
+  // actually matches a word in the request.
+  return matches + (CORE_TOOL_NAMES.has(name) ? 0.5 : 0);
 }
 
 /**
@@ -196,8 +221,13 @@ function scoreTool(tool: ToolExecutor, request: string): number {
  * user request, then original order is used as a deterministic tie-break.
  */
 export function selectToolsForBudget(tools: ToolExecutor[], request: string, budgetTokens: number): ToolExecutor[] {
+  const haystacks = tools.map(toolHaystack);
+  // A word found in most tool descriptions ("linear" on a Linear server,
+  // "github", "the") cannot tell the tools apart; counting it only adds the
+  // same point everywhere and lets original order decide.
+  const terms = requestTerms(request).filter((term) => tools.length < 5 || haystacks.filter((haystack) => haystack.includes(term)).length <= tools.length * 0.6);
   const ranked = tools
-    .map((tool, index) => ({ tool, index, score: scoreTool(tool, request) }))
+    .map((tool, index) => ({ tool, index, score: scoreTool(haystacks[index], tool.definition.function.name, terms) }))
     .sort((a, b) => b.score - a.score || a.index - b.index);
   const selected: ToolExecutor[] = [];
   let used = 0;
