@@ -263,7 +263,8 @@
   font-size: 12px;
 }
 
-.task-board,
+/* Scoped to the artifact visual: the Tasks page has its own .task-board. */
+.task-visual .task-board,
 .task-sprint {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -271,7 +272,7 @@
   margin-top: 16px;
 }
 
-.task-board article,
+.task-visual .task-board article,
 .task-priority article,
 .task-sprint article,
 .task-owners article,
@@ -371,7 +372,7 @@
   .task-layout-picker > div {
     grid-template-columns: repeat(2, 1fr);
   }
-  .task-board,
+  .task-visual .task-board,
   .task-sprint,
   .task-priority,
   .task-owners {
