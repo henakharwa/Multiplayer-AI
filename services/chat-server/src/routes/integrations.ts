@@ -2,7 +2,7 @@
 import * as db from "@mai-chat/db";
 import { UUID_RE, errMessage, paramString } from "../http-utils.js";
 import { testIntegrationConnection } from "../integration-health.js";
-import { FIGMA_API, listFigmaTeamProjects, parseFigmaTeamId, verifyFigmaToken } from "../figma-tools.js";
+import { listFigmaTeamProjects, parseFigmaTeamId } from "../figma-tools.js";
 import { registerGithubOAuthRoutes } from "../github-oauth.js";
 import { registerSlackOAuthRoutes } from "../slack-oauth.js";
 import type { Request, Response } from "express";
@@ -48,67 +48,9 @@ export function registerIntegrationsRoutes({ app, deps, requireRole, requirePerm
     res.status(204).end();
   });
 
-  app.post("/workspaces/:id/integrations/github", async (req: Request, res: Response) => {
-    if (!(await requirePermission(req, res, "connectTools"))) return;
-    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
-    if (!UUID_RE.test(paramString(req.params.id))) return res.status(400).json({ error: "invalid workspace id" });
-    const workspace = await db.getWorkspaceById(paramString(req.params.id));
-    if (!workspace) return res.status(404).json({ error: "not found" });
-    const { owner, repo, token } = (req.body ?? {}) as Record<string, unknown>;
-    if (typeof owner !== "string" || typeof repo !== "string" || typeof token !== "string" || !owner || !repo || !token) {
-      return res.status(400).json({ error: "owner, repo, and token are all required" });
-    }
-    try {
-      // Verify the token actually works before saving it -- real
-      // validation against the live API, not trust-on-write.
-      await deps.githubClientFactory({ token, owner, repo }).listIssues("open", 1);
-    } catch (err) {
-      return res.status(400).json({ error: `could not verify GitHub access: ${errMessage(err)}` });
-    }
-    // One account per provider per workspace member, including this manual fallback.
-    const connectionName = "My GitHub";
-    const connectionScope = "personal" as const;
-    const config = await db.upsertGithubIntegration({ workspaceId: paramString(req.params.id), owner, repo, token, connectionName: connectionName || "Shared connection", connectionScope, ownerUserId: req.user!.id });
-    await db.recordAuditEvent({
-      workspaceId: paramString(req.params.id),
-      eventType: "integration.connected",
-      actorType: "user",
-      actorUserId: req.user!.id,
-      actorName: req.user!.displayName,
-      summary: `${req.user!.displayName} connected GitHub (${owner}/${repo})`,
-      metadata: { integration: "github", owner, repo },
-    });
-    res.status(201).json(config);
-  });
-
-  app.post("/workspaces/:id/integrations/:provider/mcp", async (req: Request, res: Response) => {
-    if (!(await requirePermission(req, res, "connectTools"))) return;
-    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
-    const workspaceId = paramString(req.params.id);
-    const provider = paramString(req.params.provider);
-    if (provider !== "linear" && provider !== "notion" && provider !== "figma") return res.status(404).json({ error: "unknown MCP provider" });
-    // Notion and Figma are called through their REST APIs with the token
-    // directly (notion-tools.ts, figma-tools.ts), so only Linear needs an
-    // MCP endpoint; the other two fall back to their API base URL.
-    const requestedEndpoint = typeof req.body?.endpoint === "string" ? req.body.endpoint.trim() : "";
-    const endpoint = requestedEndpoint || (provider === "notion" ? "https://api.notion.com/v1" : provider === "figma" ? FIGMA_API : "");
-    const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
-    if (!token) return res.status(400).json({ error: "An access token is required" });
-    if (!endpoint.startsWith("https://")) return res.status(400).json({ error: "An HTTPS MCP endpoint is required" });
-    let accountName: string | undefined;
-    if (provider === "figma") {
-      try {
-        const me = await (deps.figmaTokenVerifier ?? verifyFigmaToken)(token);
-        accountName = me.handle ?? me.email;
-      } catch (error) {
-        return res.status(400).json({ error: `Figma did not accept this token: ${errMessage(error)}` });
-      }
-    }
-    try {
-      const config = await db.upsertRemoteMcpIntegration({ workspaceId, type: provider, endpoint, token, ownerUserId: req.user!.id, accountName });
-      res.status(201).json(config);
-    } catch (error) { res.status(400).json({ error: errMessage(error) }); }
-  });
+  // Every provider connects only through its own login (OAuth): GitHub and
+  // Slack below, Linear/Notion/Figma in provider-oauth.ts. There is no
+  // pasted-token route, so a member never handles a raw provider token here.
 
   // Figma's API cannot list a member's teams, so the member who connected
   // Figma names one team whose projects and files the agent may browse.
@@ -130,9 +72,7 @@ export function registerIntegrationsRoutes({ app, deps, requireRole, requirePerm
     try {
       teamName = (await (deps.figmaTeamLoader ?? listFigmaTeamProjects)(credential.token, teamId)).teamName;
     } catch (error) {
-      // Figma does not let apps connected through its public OAuth login use
-      // the projects endpoints; a personal access token with projects:read can.
-      return res.status(400).json({ error: `Figma could not list that team's projects with your connection (${errMessage(error)}). Figma only allows this with a personal access token that has the "Projects: read" scope: reconnect Figma with Manual setup, then set the team again.` });
+      return res.status(400).json({ error: `Figma could not list that team's folders with your connection (${errMessage(error)}). Check the team link, make sure the Figma app's OAuth settings include the "folders:read" scope, then reconnect Figma and set the team again.` });
     }
     await db.setFigmaTeam({ workspaceId, ownerUserId: req.user!.id, teamId, teamName: teamName?.replace(/:/g, " ") });
     res.json({ teamId, teamName });

@@ -19,9 +19,9 @@ See `docs/spec.md` for the current product spec (idea, what's built, Phase 2 pla
   card a human must approve before anything actually happens (see
   `services/chat-server/src/actions.ts`).
 - GitHub-authenticated workspaces with shareable join links (see "Scope decisions"
-  below for why). GitHub connects via OAuth or a pasted personal access
-  token; Slack connects via OAuth only (see "Slack tools via MCP server"
-  below for why there's no pasted-token option for Slack).
+  below for why). Every tool -- GitHub, Slack, Linear, Notion and Figma --
+  connects only through its own OAuth login; there is no pasted-token
+  option.
 
 ## Architecture
 
@@ -79,9 +79,8 @@ Open **http://localhost:3000**, create a workspace, open the same URL (or
 use the join code) in a second browser/incognito window as a second person,
 and chat -- you'll see each other's messages and the agent's replies live.
 From the workspace's "Integrations settings" page you can log in with
-GitHub or Slack (or paste a GitHub personal access token instead, if you'd
-rather not grant OAuth access -- the server verifies it against the real
-API before saving it, a bad token is rejected, not silently stored).
+GitHub, Slack, Linear, Notion or Figma. Each tool connects through its own
+OAuth login only.
 
 `.env` is set up to run the agent against a local, free, open-source model
 by default -- see the next section for the one-time setup. If you'd rather
@@ -165,7 +164,7 @@ That's it -- no image to pull ahead of time (the first GitHub tool call
 after connecting a repo triggers `docker run`, which pulls
 `ghcr.io/github/github-mcp-server` automatically if it isn't local yet --
 that first call will be slower while the image downloads), and no path to
-configure. Connecting a GitHub repo from the app (pasted token, or the
+configure. Connecting a GitHub repo from the app (the "Connect GitHub" or
 "+ Add channel" OAuth flow) gets its tools from this container instead.
 If Docker Desktop isn't running yet, connecting GitHub still works fine
 (the token/repo get saved), the agent just has no GitHub tools until it
@@ -350,11 +349,10 @@ A few things were deliberately simplified to ship a genuinely working,
 fully-tested product quickly rather than a half-built bigger one:
 
 - **Authenticated join-link workspaces.** A GitHub account is required before creating or joining a workspace. A shared link or code still grants access once signed in; role-based permissions remain deferred.
-- **GitHub via OAuth or a pasted token; Slack via OAuth only.** GitHub
-  connects through a real OAuth login
-  (`services/chat-server/src/github-oauth.ts`) or a pasted personal access
-  token, either way verified against the live API before saving (encrypted
-  at rest). Slack connects via OAuth only
+- **OAuth only, for every tool.** GitHub connects through a real OAuth
+  login (`services/chat-server/src/github-oauth.ts`); Linear, Notion and
+  Figma through `services/chat-server/src/provider-oauth.ts`. Tokens are
+  encrypted at rest and never pasted by hand. Slack connects via OAuth
   (`services/chat-server/src/slack-oauth.ts`) -- Slack's own official MCP
   server (see "Slack tools via MCP server" above) requires a real user
   access token from that exact flow, so a hand-pasted bot token (what this

@@ -54,10 +54,6 @@ export interface CreateServerDeps {
   // fallback the way GitHub has one).
   slackOAuthConfig: SlackOAuthConfig;
   slackOAuthDeps: SlackOAuthDeps;
-  // Checks a pasted Figma token against Figma's REST API before it is saved
-  // (Integrations → Figma → Manual setup). Defaults to figma-tools.ts's
-  // verifyFigmaToken; injectable so tests never call api.figma.com.
-  figmaTokenVerifier?: (token: string) => Promise<{ handle?: string; email?: string }>;
   // Checks that a Figma token can open a team before it is saved as the
   // team the agent may browse. Defaults to figma-tools.ts's listFigmaTeamProjects.
   figmaTeamLoader?: (token: string, teamId: string) => Promise<{ teamName?: string }>;

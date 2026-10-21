@@ -102,39 +102,33 @@ describe("IN-01 integrations", () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
   });
-  it("basic: each member can connect a separate account for every provider", async () => {
+  it("basic: each member keeps a separate account for every provider", async () => {
+    // Connections are created by each provider's OAuth callback; seed them directly.
     for (const member of [admin, editor]) {
-      const github = await request(app).post(`/workspaces/${ws.id}/integrations/github`).set("Cookie", member.cookie).send({ owner: member.displayName.toLowerCase(), repo: "project", token: `github-token-${member.id}`, connectionScope: "shared" });
-      expect(github.status).toBe(201);
-      expect(github.body).toMatchObject({ type: "github", ownerUserId: member.id, connectionScope: "personal" });
+      const github = await db.upsertGithubIntegration({ workspaceId: ws.id, owner: member.displayName.toLowerCase(), repo: "project", token: `github-token-${member.id}`, connectionName: "My GitHub", connectionScope: "personal", ownerUserId: member.id });
+      expect(github).toMatchObject({ type: "github", ownerUserId: member.id, connectionScope: "personal" });
       await db.upsertSlackIntegration({ workspaceId: ws.id, teamName: `${member.displayName}'s Slack`, token: `slack-token-${member.id}`, ownerUserId: member.id });
       for (const provider of ["linear", "notion", "figma"] as const) {
-        const remote = await request(app).post(`/workspaces/${ws.id}/integrations/${provider}/mcp`).set("Cookie", member.cookie).send({ endpoint: `https://${provider}.example.test/mcp`, token: `${provider}-token-${member.id}` });
-        expect(remote.status).toBe(201);
-        expect(remote.body).toMatchObject({ type: provider, ownerUserId: member.id, connectionScope: "personal" });
+        const remote = await db.upsertRemoteMcpIntegration({ workspaceId: ws.id, type: provider, endpoint: `https://${provider}.example.test/mcp`, token: `${provider}-token-${member.id}`, ownerUserId: member.id });
+        expect(remote).toMatchObject({ type: provider, ownerUserId: member.id, connectionScope: "personal" });
       }
     }
     const connections = (await request(app).get(`/workspaces/${ws.id}/integrations`).set("Cookie", admin.cookie)).body;
     expect(connections).toHaveLength(10);
+    expect(JSON.stringify(connections)).not.toContain("-token-");
     for (const provider of ["github", "slack", "linear", "notion", "figma"]) {
       const accounts = connections.filter((connection: { type: string }) => connection.type === provider);
       expect(accounts).toHaveLength(2);
       expect(accounts.map((connection: { ownerUserId: string }) => connection.ownerUserId).sort()).toEqual([admin.id, editor.id].sort());
     }
   });
-  it("edge: a Figma token Figma rejects is refused and not saved; Notion and Figma need no endpoint", async () => {
-    const strictApp = newApp({ figmaTokenVerifier: async () => { throw new Error("Figma refused access: Invalid token."); } });
+  it("security: there is no pasted-token connection route for any provider", async () => {
     const before = (await request(app).get(`/workspaces/${ws.id}/integrations`).set("Cookie", admin.cookie)).body.length;
-    const rejected = await request(strictApp).post(`/workspaces/${ws.id}/integrations/figma/mcp`).set("Cookie", admin.cookie).send({ token: "figd_bad" });
-    expect(rejected.status).toBe(400);
-    expect(rejected.body.error).toMatch(/Figma did not accept this token/);
+    expect((await request(app).post(`/workspaces/${ws.id}/integrations/github`).set("Cookie", admin.cookie).send({ owner: "o", repo: "r", token: "ghp_pasted" })).status).toBe(404);
+    for (const provider of ["linear", "notion", "figma"]) {
+      expect((await request(app).post(`/workspaces/${ws.id}/integrations/${provider}/mcp`).set("Cookie", admin.cookie).send({ endpoint: "https://mcp.example.test", token: "pasted" })).status).toBe(404);
+    }
     expect((await request(app).get(`/workspaces/${ws.id}/integrations`).set("Cookie", admin.cookie)).body).toHaveLength(before);
-    const figma = await request(app).post(`/workspaces/${ws.id}/integrations/figma/mcp`).set("Cookie", admin.cookie).send({ token: "figd_good" });
-    expect(figma.status).toBe(201);
-    expect(figma.body).toMatchObject({ type: "figma", endpoint: "https://api.figma.com/v1", accountName: "figma-test-user" });
-    const notion = await request(app).post(`/workspaces/${ws.id}/integrations/notion/mcp`).set("Cookie", admin.cookie).send({ token: "ntn_test" });
-    expect(notion.status).toBe(201);
-    expect((await request(app).post(`/workspaces/${ws.id}/integrations/linear/mcp`).set("Cookie", admin.cookie).send({ token: "lin_test" })).status).toBe(400);
   });
   it("basic/edge: a member saves the Figma team their own connection may browse, checked with Figma first", async () => {
     const outsiderToTeam = newApp({ figmaTeamLoader: async () => { throw new Error("Figma refused access: Invalid scope."); } });
@@ -145,7 +139,7 @@ describe("IN-01 integrations", () => {
     expect((await request(teamApp).post(`/workspaces/${ws.id}/integrations/figma/team`).set("Cookie", admin.cookie).send({ team: "not a team" })).status).toBe(400);
     const refused = await request(outsiderToTeam).post(`/workspaces/${ws.id}/integrations/figma/team`).set("Cookie", admin.cookie).send({ team: "1234567890" });
     expect(refused.status).toBe(400);
-    expect(refused.body.error).toMatch(/personal access token/);
+    expect(refused.body.error).toMatch(/"folders:read" scope/);
     const saved = await request(teamApp).post(`/workspaces/${ws.id}/integrations/figma/team`).set("Cookie", admin.cookie).send({ team: "https://www.figma.com/files/team/1234567890/all-projects" });
     expect(saved.status).toBe(200);
     expect(saved.body).toEqual({ teamId: "1234567890", teamName: "Hena's team" });

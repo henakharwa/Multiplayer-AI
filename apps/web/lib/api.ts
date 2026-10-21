@@ -781,39 +781,6 @@ export async function disconnectIntegration(workspaceId: string, integration: In
   if (!res.ok) await parseJsonOrThrow(res);
 }
 
-export async function connectGithub(
-  workspaceId: string,
-  input: {
-    owner: string;
-    repo: string;
-    token: string;
-    connectionName?: string;
-    connectionScope?: "shared" | "personal";
-  },
-): Promise<IntegrationConfig> {
-  const res = await authenticatedFetch(
-    `${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/integrations/github`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
-    },
-  );
-  return (await parseJsonOrThrow(res)) as IntegrationConfig;
-}
-
-export async function connectRemoteMcp(
-  workspaceId: string,
-  provider: "linear" | "notion" | "figma",
-  input: { endpoint: string; token: string },
-): Promise<IntegrationConfig> {
-  const res = await authenticatedFetch(
-    `${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/integrations/${provider}/mcp`,
-    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) },
-  );
-  return (await parseJsonOrThrow(res)) as IntegrationConfig;
-}
-
 /** Saves the Figma team (link or ID) the agent may browse with your Figma connection. */
 export async function setFigmaTeam(workspaceId: string, team: string): Promise<{ teamId: string; teamName?: string }> {
   const res = await authenticatedFetch(

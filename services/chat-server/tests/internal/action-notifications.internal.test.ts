@@ -21,8 +21,7 @@ beforeAll(async () => {
   await setupDatabase();
   admin = await makeUser("Admin"); editor = await makeUser("Editor");
   ws = await makeWorkspace(app, admin, [editor]);
-  const github = await request(app).post(`/workspaces/${ws.id}/integrations/github`).set("Cookie", admin.cookie).send({ owner: "acme", repo: "widgets", token: "gh-token" });
-  expect(github.status).toBe(201);
+  await db.upsertGithubIntegration({ workspaceId: ws.id, owner: "acme", repo: "widgets", token: "gh-token", connectionName: "My GitHub", connectionScope: "personal", ownerUserId: admin.id });
 });
 afterAll(async () => { await db.closePool(); });
 

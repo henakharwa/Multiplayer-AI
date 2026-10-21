@@ -21,6 +21,7 @@ loadEnv();
 // gaps are fixed in services/chat-server/src/actions.ts's resolveAction.
 
 let sessionCookie: string;
+let sessionUserId: string;
 const fakeGithubClient: GithubClient = {
   listIssues: async () => [],
 };
@@ -44,6 +45,7 @@ beforeAll(async () => {
   await runMigrations();
   const user = await upsertUserFromGithub({ githubId: "test-auth-hena", username: "hena", displayName: "hena" });
   sessionCookie = `mai_session=${(await createSession(user.id, 60000)).token}`;
+  sessionUserId = user.id;
 });
 
 afterAll(async () => {
@@ -53,7 +55,9 @@ afterAll(async () => {
 async function createWorkspaceWithGithub(app: ReturnType<typeof import("../src/server.js").createApp>) {
   const created = await request(app).post("/workspaces").set("Cookie", sessionCookie).send({ name: `Confirm test ${Math.random()}` });
   const workspaceId = created.body.id as string;
-  await request(app).post(`/workspaces/${workspaceId}/integrations/github`).set("Cookie", sessionCookie).send({ token: "gh-token", owner: "acme", repo: "widgets" });
+  // Connections come from GitHub's OAuth callback; seed one directly.
+  const db = await import("@mai-chat/db");
+  await db.upsertGithubIntegration({ workspaceId, owner: "acme", repo: "widgets", token: "gh-token", connectionName: "My GitHub", connectionScope: "personal", ownerUserId: sessionUserId });
   return workspaceId;
 }
 

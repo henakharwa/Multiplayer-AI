@@ -84,20 +84,6 @@ describe("action audit trail", () => {
     expect(audit.body.events[0].summary).toContain(created.body.name);
   });
 
-  it("records an integration.connected event for a pasted GitHub token", async () => {
-    const { app } = createChatServer(makeDeps());
-    const workspace = await request(app).post("/workspaces").set("Cookie", ownerCookie).send({ name: `Audit WS ${randomUUID()}` });
-    await request(app)
-      .post(`/workspaces/${workspace.body.id}/integrations/github`)
-      .set("Cookie", ownerCookie)
-      .send({ owner: "acme", repo: "widgets", token: "gh-token" });
-
-    const audit = await request(app).get(`/workspaces/${workspace.body.id}/audit`).set("Cookie", ownerCookie).query({ type: "integration.connected" });
-    expect(audit.status).toBe(200);
-    expect(audit.body.events).toHaveLength(1);
-    expect(audit.body.events[0].summary).toContain("acme/widgets");
-  });
-
   it("logs an agent action's full propose -> confirm lifecycle, attributing it to whoever asked", async () => {
     const rooms = new RoomRegistry();
     const workingTool: ToolExecutor = {
@@ -137,7 +123,7 @@ describe("action audit trail", () => {
     // only through connections they own), so the requester connects GitHub.
     await db.addWorkspaceMember(created.id, requesterUser.id, "editor");
     const requesterCookie = `mai_session=${(await createSession(requesterUser.id, 60_000)).token}`;
-    await request(app).post(`/workspaces/${created.id}/integrations/github`).set("Cookie", requesterCookie).send({ owner: "acme", repo: "widgets", token: "gh-token" });
+    await db.upsertGithubIntegration({ workspaceId: created.id, owner: "acme", repo: "widgets", token: "gh-token", connectionName: "My GitHub", connectionScope: "personal", ownerUserId: requesterUser.id });
     const confirm = await request(app)
       .post(`/workspaces/${created.id}/actions/${result.actionId}/confirm`)
       .set("Cookie", ownerCookie)
@@ -150,7 +136,7 @@ describe("action audit trail", () => {
     // confirm route could find the tool again) are still in the trail.
     expect(afterConfirm[0]).toMatchObject({ eventType: "action.confirmed", actorType: "user", actorName: ownerName });
     expect(afterConfirm.map((e) => e.eventType)).toEqual(
-      expect.arrayContaining(["action.confirmed", "action.proposed", "integration.connected"])
+      expect.arrayContaining(["action.confirmed", "action.proposed"])
     );
 
     const action = await db.getPendingAction(created.id, result.actionId);

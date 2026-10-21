@@ -6,11 +6,15 @@ type Provider = "linear" | "notion" | "figma";
 const providerInfo: Record<Provider, { authorize: string; token: string; endpoint: string; scope: string }> = {
   linear: { authorize: "https://linear.app/oauth/authorize", token: "https://api.linear.app/oauth/token", endpoint: "https://mcp.linear.app/mcp", scope: "read,write" },
   notion: { authorize: "https://api.notion.com/v1/oauth/authorize", token: "https://api.notion.com/v1/oauth/token", endpoint: "notion-rest", scope: "" },
-  // Figma tools call the REST API directly (figma-tools.ts), so no MCP URL is needed.
-  figma: { authorize: "https://www.figma.com/oauth", token: "https://api.figma.com/v1/oauth/token", endpoint: "https://api.figma.com/v1", scope: "file_content:read,file_comments:read,file_comments:write,current_user:read" },
+  // Figma tools call the REST API directly (figma-tools.ts), so no MCP URL is
+  // needed. folders:read lets the agent find files by name in a team; every
+  // scope requested here must also be enabled in the Figma app's OAuth
+  // settings (FIGMA_OAUTH_SCOPES overrides this list).
+  figma: { authorize: "https://www.figma.com/oauth", token: "https://api.figma.com/v1/oauth/token", endpoint: "https://api.figma.com/v1", scope: "file_content:read,file_comments:read,file_comments:write,current_user:read,folders:read" },
 };
 function infoFor(kind: Provider) {
-  return providerInfo[kind];
+  const info = providerInfo[kind];
+  return kind === "figma" && process.env.FIGMA_OAUTH_SCOPES?.trim() ? { ...info, scope: process.env.FIGMA_OAUTH_SCOPES.trim() } : info;
 }
 function provider(value: string): Provider | null { return value === "linear" || value === "notion" || value === "figma" ? value : null; }
 function config(kind: Provider) { const prefix = kind.toUpperCase(); const publicUrl = process.env.CHAT_SERVER_PUBLIC_URL ?? `http://localhost:${process.env.CHAT_SERVER_PORT ?? 4000}`; return { clientId: process.env[`${prefix}_OAUTH_CLIENT_ID`] ?? "", clientSecret: process.env[`${prefix}_OAUTH_CLIENT_SECRET`] ?? "", redirectUri: `${publicUrl}/auth/mcp/${kind}/callback`, webAppUrl: process.env.WEB_APP_URL ?? "http://localhost:3000" }; }
@@ -65,7 +69,11 @@ export function registerProviderOAuthRoutes(app: Express): void {
     }
     const result = await response.json().catch(() => ({})) as { access_token?: string; error_description?: string; error?: string; workspace_name?: string };
     if (!response.ok || !result.access_token) return res.redirect(back(kind, pending.workspaceId, "error", result.error_description ?? result.error ?? "Account login failed."));
-    await db.upsertRemoteMcpIntegration({ workspaceId: pending.workspaceId, type: kind, endpoint: info.endpoint, token: result.access_token, ownerUserId: pending.userId, accountName: await connectedAccountName(kind, result.access_token, result) });
+    const accountName = await connectedAccountName(kind, result.access_token, result);
+    await db.upsertRemoteMcpIntegration({ workspaceId: pending.workspaceId, type: kind, endpoint: info.endpoint, token: result.access_token, ownerUserId: pending.userId, accountName });
+    const user = await db.getUserById(pending.userId);
+    const label = kind[0].toUpperCase() + kind.slice(1);
+    await db.recordAuditEvent({ workspaceId: pending.workspaceId, eventType: "integration.connected", actorType: "user", actorUserId: pending.userId, actorName: user?.displayName ?? "A workspace member", summary: `${user?.displayName ?? "A workspace member"} connected ${label}${accountName ? ` (${accountName})` : ""}`, metadata: { integration: kind } });
     res.redirect(back(kind, pending.workspaceId, "connected"));
   });
 }

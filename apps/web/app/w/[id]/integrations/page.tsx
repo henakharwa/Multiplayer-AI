@@ -13,8 +13,6 @@ import type {
 } from "@mai-chat/shared-types";
 import {
   describeError,
-  connectGithub,
-  connectRemoteMcp,
   setFigmaTeam,
   githubOAuthStartUrl,
   providerOAuthStartUrl,
@@ -68,29 +66,12 @@ export default function IntegrationsPage() {
   const [activeTab, setActiveTab] = useState<"connected" | "browse" | "access">("connected");
   const [agents, setAgents] = useState<WorkspaceAgent[]>([]);
   const [diagnostics, setDiagnostics] = useState<Record<string, string>>({});
-  const [remoteSetup, setRemoteSetup] = useState<
-    Record<"linear" | "notion" | "figma", { endpoint: string; token: string; busy: boolean; error: string }>
-  >({
-    linear: { endpoint: "", token: "", busy: false, error: "" },
-    notion: { endpoint: "", token: "", busy: false, error: "" },
-    figma: { endpoint: "", token: "", busy: false, error: "" },
-  });
-  const [remoteSetupOpen, setRemoteSetupOpen] = useState<"linear" | "notion" | "figma" | null>(null);
   const [figmaTeam, setFigmaTeamInput] = useState("");
   const [figmaTeamState, setFigmaTeamState] = useState<{ busy: boolean; error: string; saved: string }>({
     busy: false,
     error: "",
     saved: "",
   });
-
-  const [owner, setOwner] = useState("");
-  const [repo, setRepo] = useState("");
-  const [githubToken, setGithubToken] = useState("");
-  const [connectionName, setConnectionName] = useState("My GitHub");
-  const [connectionScope, setConnectionScope] = useState<"shared" | "personal">("personal");
-  const [githubBusy, setGithubBusy] = useState(false);
-  const [githubError, setGithubError] = useState<string | null>(null);
-  const [githubSuccess, setGithubSuccess] = useState(false);
 
   const [showRepoPicker, setShowRepoPicker] = useState(false);
   const [policy, setPolicy] = useState<WorkspacePermissionPolicy | null>(null);
@@ -219,25 +200,6 @@ export default function IntegrationsPage() {
     }
     setDiagnostics((current) => ({ ...current, [key]: message }));
   }
-  async function connectRemote(provider: "linear" | "notion" | "figma") {
-    const setup = remoteSetup[provider];
-    setRemoteSetup((current) => ({ ...current, [provider]: { ...current[provider], busy: true, error: "" } }));
-    try {
-      await connectRemoteMcp(workspaceId, provider, { endpoint: setup.endpoint, token: setup.token });
-      setRemoteSetup((current) => ({ ...current, [provider]: { endpoint: "", token: "", busy: false, error: "" } }));
-      await refresh();
-    } catch (reason) {
-      setRemoteSetup((current) => ({
-        ...current,
-        [provider]: {
-          ...current[provider],
-          busy: false,
-          error: describeError(reason, "Could not connect this provider."),
-        },
-      }));
-    }
-  }
-
   async function saveFigmaTeam() {
     setFigmaTeamState({ busy: true, error: "", saved: "" });
     try {
@@ -247,29 +209,6 @@ export default function IntegrationsPage() {
       await refresh();
     } catch (reason) {
       setFigmaTeamState({ busy: false, error: describeError(reason, "Could not save the Figma team."), saved: "" });
-    }
-  }
-
-  async function handleGithubSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setGithubBusy(true);
-    setGithubError(null);
-    setGithubSuccess(false);
-    try {
-      await connectGithub(workspaceId, {
-        owner: owner.trim(),
-        repo: repo.trim(),
-        token: githubToken.trim(),
-        connectionName: connectionName.trim(),
-        connectionScope,
-      });
-      setGithubSuccess(true);
-      setGithubToken("");
-      await refresh();
-    } catch (err) {
-      setGithubError(describeError(err, "Could not connect GitHub."));
-    } finally {
-      setGithubBusy(false);
     }
   }
 
@@ -647,14 +586,12 @@ export default function IntegrationsPage() {
 
           <>
             {(["linear", "notion", "figma"] as const).map((provider) => {
-              const setup = remoteSetup[provider];
               const connections = integrations.filter(
                 (item): item is Extract<IntegrationConfig, { type: "linear" | "notion" | "figma" }> =>
                   item.type === provider,
               );
               const connected = connections.find((item) => item.ownerUserId === user.id);
               const teammateConnections = connections.filter((item) => item.ownerUserId !== user.id);
-              const open = remoteSetupOpen === provider;
               return (
                 <article className="integration-panel remote-integration-card" key={provider}>
                   <div className="remote-provider-heading">
@@ -711,14 +648,6 @@ export default function IntegrationsPage() {
                     >
                       {connected ? "Reconnect my account" : `Connect ${provider[0].toUpperCase() + provider.slice(1)}`}
                     </button>
-                    <button
-                      className="btn secondary"
-                      type="button"
-                      disabled={!canConnect}
-                      onClick={() => setRemoteSetupOpen(open ? null : provider)}
-                    >
-                      Manual setup
-                    </button>
                   </div>
                   {connected && <p className="hint">Your account: {connected.accountName ?? "connected"}.</p>}
                   {provider === "figma" && connected && canConnect && (
@@ -756,62 +685,6 @@ export default function IntegrationsPage() {
                       Also connected by teammates:{" "}
                       {teammateConnections.map((item) => item.connectedByName ?? "Workspace member").join(", ")}.
                     </p>
-                  )}
-                  {open && canConnect && (
-                    <form
-                      className="remote-advanced-form"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        void connectRemote(provider);
-                      }}
-                    >
-                      {provider === "linear" ? (
-                        <label>
-                          HTTPS MCP endpoint
-                          <input
-                            type="url"
-                            value={setup.endpoint}
-                            onChange={(event) =>
-                              setRemoteSetup((current) => ({
-                                ...current,
-                                [provider]: { ...current[provider], endpoint: event.target.value },
-                              }))
-                            }
-                            placeholder="https://mcp.linear.app/mcp"
-                            required
-                          />
-                        </label>
-                      ) : (
-                        <p className="hint">
-                          {provider === "figma"
-                            ? "Paste a Figma personal access token (Figma → Settings → Security). It is checked with Figma before it is saved."
-                            : "Paste a Notion internal integration secret, and share your pages with that integration in Notion."}
-                        </p>
-                      )}
-                      <label>
-                        {provider === "figma"
-                          ? "Personal access token"
-                          : provider === "notion"
-                            ? "Integration secret"
-                            : "Access token"}
-                        <input
-                          type="password"
-                          value={setup.token}
-                          onChange={(event) =>
-                            setRemoteSetup((current) => ({
-                              ...current,
-                              [provider]: { ...current[provider], token: event.target.value },
-                            }))
-                          }
-                          placeholder="Provider token"
-                          required
-                        />
-                      </label>
-                      <button className="btn" disabled={setup.busy}>
-                        {setup.busy ? "Connecting…" : connected ? "Update connection" : "Save connection"}
-                      </button>
-                      {setup.error && <p className="error-text">{setup.error}</p>}
-                    </form>
                   )}
                 </article>
               );

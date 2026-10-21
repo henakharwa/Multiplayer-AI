@@ -15,7 +15,9 @@ export function figmaAuthHeaders(token: string): Record<string, string> {
 }
 
 export async function figmaRequest(token: string, path: string, init: RequestInit = {}, fetchImpl: FetchLike = fetch): Promise<unknown> {
-  const response = await fetchImpl(`${FIGMA_API}${path}`, {
+  // Paths are relative to /v1 unless they name another API version.
+  const url = path.startsWith("/v2/") ? `https://api.figma.com${path}` : `${FIGMA_API}${path}`;
+  const response = await fetchImpl(url, {
     ...init,
     headers: { ...figmaAuthHeaders(token), ...(init.body ? { "content-type": "application/json" } : {}), ...((init.headers as Record<string, string>) ?? {}) },
     signal: init.signal ?? AbortSignal.timeout(20_000),
@@ -23,10 +25,13 @@ export async function figmaRequest(token: string, path: string, init: RequestIni
   const body = (await response.json().catch(() => ({}))) as { err?: string; message?: string; status?: number };
   if (!response.ok) {
     const detail = body.err ?? body.message;
-    if (response.status === 403 || response.status === 401) throw new Error(`Figma refused access${detail ? `: ${detail}` : ""}. Check the token and that it can open this file.`);
-    if (response.status === 404) throw new Error("Figma could not find that file. Check the file link or key.");
-    if (response.status === 429) throw new Error("Figma rate limit reached. Try again in a minute.");
-    throw new Error(detail ? `Figma request failed: ${detail}` : `Figma request failed (HTTP ${response.status}).`);
+    const fail = (message: string): never => {
+      throw Object.assign(new Error(message), { status: response.status });
+    };
+    if (response.status === 403 || response.status === 401) fail(`Figma refused access${detail ? `: ${detail}` : ""}. Check the token and that it can open this file.`);
+    if (response.status === 404) fail("Figma could not find that file. Check the file link or key.");
+    if (response.status === 429) fail("Figma rate limit reached. Try again in a minute.");
+    fail(detail ? `Figma request failed: ${detail}` : `Figma request failed (HTTP ${response.status}).`);
   }
   return body;
 }
@@ -93,28 +98,82 @@ export function parseFigmaTeamId(value: unknown): string {
   return match[1];
 }
 
-interface FigmaProject { id: string | number; name: string }
+interface FigmaFolder { id: string | number; name?: string }
 interface FigmaProjectFile { key: string; name: string; last_modified?: string }
+type Listed<T> = T[];
 
-/** Lists a team's projects; also proves the token can see that team. */
+// Figma's folders endpoints (folders:read, the scope new personal access
+// tokens offer) replace the deprecated projects endpoints (projects:read,
+// no longer offered for new tokens). Their response fields are not yet
+// documented, so accept the list under any of the likely keys.
+function pickList<T>(body: unknown, keys: string[]): Listed<T> {
+  if (Array.isArray(body)) return body as T[];
+  for (const key of keys) {
+    const value = (body as Record<string, unknown> | null)?.[key];
+    if (Array.isArray(value)) return value as T[];
+  }
+  return [];
+}
+
+const isAccessOrMissing = (error: unknown) => [400, 401, 403, 404].includes((error as { status?: number }).status ?? 0);
+
+/** Tries the folders endpoint first, then the deprecated projects endpoint. */
+async function foldersThenProjects<T>(primary: () => Promise<T>, fallback: () => Promise<T>): Promise<T> {
+  try {
+    return await primary();
+  } catch (error) {
+    if (!isAccessOrMissing(error)) throw error;
+    try {
+      return await fallback();
+    } catch (fallbackError) {
+      if (isAccessOrMissing(fallbackError)) {
+        throw Object.assign(
+          new Error('Figma refused to list this team\'s folders. The Figma connection needs the "folders:read" scope (enable it in the Figma app\'s OAuth settings, then reconnect Figma), and the team link must be one you can open. Files can still be opened by pasting their link.'),
+          { status: (fallbackError as { status?: number }).status },
+        );
+      }
+      throw fallbackError;
+    }
+  }
+}
+
+const toFolder = (folder: FigmaFolder) => ({ id: String(folder.id), name: folder.name ?? String(folder.id) });
+
+/** Lists a team's top-level folders (projects); also proves the token can see that team. */
 export async function listFigmaTeamProjects(token: string, teamId: string, fetchImpl: FetchLike = fetch): Promise<{ teamName?: string; projects: { id: string; name: string }[] }> {
-  const body = (await figmaRequest(token, `/teams/${encodeURIComponent(teamId)}/projects`, {}, fetchImpl)) as { name?: string; projects?: FigmaProject[] };
-  return { teamName: body.name, projects: (body.projects ?? []).map((project) => ({ id: String(project.id), name: project.name })) };
+  const team = encodeURIComponent(teamId);
+  return foldersThenProjects(
+    async () => {
+      const body = (await figmaRequest(token, `/v2/teams/${team}/folders`, {}, fetchImpl)) as { name?: string; team?: { name?: string } };
+      return { teamName: body.name ?? body.team?.name, projects: pickList<FigmaFolder>(body, ["folders", "projects", "results"]).map(toFolder) };
+    },
+    async () => {
+      const body = (await figmaRequest(token, `/teams/${team}/projects`, {}, fetchImpl)) as { name?: string };
+      return { teamName: body.name, projects: pickList<FigmaFolder>(body, ["projects", "folders"]).map(toFolder) };
+    },
+  );
 }
 
 const fileLink = (key: string) => `https://www.figma.com/design/${key}`;
 
-// Figma refuses team/project listing for tokens from its public OAuth login.
-async function withTeamHint<T>(run: () => Promise<T>): Promise<T> {
+async function listFolderFiles(token: string, folderId: string, fetchImpl: FetchLike) {
+  const folder = encodeURIComponent(folderId);
+  const files = await foldersThenProjects(
+    async () => pickList<FigmaProjectFile>(await figmaRequest(token, `/v2/folders/${folder}/files`, {}, fetchImpl), ["files", "results"]),
+    async () => pickList<FigmaProjectFile>(await figmaRequest(token, `/projects/${folder}/files`, {}, fetchImpl), ["files"]),
+  );
+  return files.map((file) => ({ key: file.key, name: file.name, lastModified: file.last_modified, url: fileLink(file.key) }));
+}
+
+/** Direct subfolders (plans with nested folders); empty where unsupported. */
+async function listSubfolders(token: string, folderId: string, fetchImpl: FetchLike) {
   try {
-    return await run();
-  } catch (error) {
-    if (/refused access/i.test(error instanceof Error ? error.message : "")) {
-      throw new Error("Figma refused to list this team's projects. Figma only allows that with a personal access token that has the \"Projects: read\" scope (Integrations → Figma → Manual setup). Files can still be opened by pasting their link.");
-    }
-    throw error;
+    return pickList<FigmaFolder>(await figmaRequest(token, `/v2/folders/${encodeURIComponent(folderId)}/folders`, {}, fetchImpl), ["folders", "subfolders", "results"]).map(toFolder);
+  } catch {
+    return [];
   }
 }
+
 const MAX_PROJECTS_SCANNED = 25;
 
 export function buildFigmaTools(token: string, fetchImpl: FetchLike = fetch, teamId?: string): ToolExecutor[] {
@@ -125,10 +184,7 @@ export function buildFigmaTools(token: string, fetchImpl: FetchLike = fetch, tea
     if (teamId) return teamId;
     throw new Error("No Figma team is set for this connection. Set one in Integrations → Figma → Team, or paste the file link (files in Drafts can only be opened by link).");
   };
-  const listFiles = async (projectId: string) => {
-    const body = (await request(`/projects/${encodeURIComponent(projectId)}/files`)) as { name?: string; files?: FigmaProjectFile[] };
-    return (body.files ?? []).map((file) => ({ key: file.key, name: file.name, lastModified: file.last_modified, url: fileLink(file.key) }));
-  };
+  const listFiles = (projectId: string) => listFolderFiles(token, projectId, fetchImpl);
   const teamParam = { type: "string", description: "Optional Figma team link or ID. Leave empty to use the team set for this connection." };
   return [
     {
@@ -136,13 +192,13 @@ export function buildFigmaTools(token: string, fetchImpl: FetchLike = fetch, tea
         type: "function",
         function: {
           name: "figma_list_projects",
-          description: "List the projects in the connected Figma team. Use figma_list_files to see a project's files, or figma_find_files to look a file up by name.",
+          description: "List the projects (top-level folders) in the connected Figma team. Use figma_list_files to see a project's files, or figma_find_files to look a file up by name.",
           parameters: { type: "object", properties: { team: teamParam } },
         },
       },
       execute: async (args) => {
         const team = teamFor(args);
-        return { teamId: team, ...(await withTeamHint(() => listFigmaTeamProjects(token, team, fetchImpl))) };
+        return { teamId: team, ...(await listFigmaTeamProjects(token, team, fetchImpl)) };
       },
     },
     {
@@ -150,8 +206,8 @@ export function buildFigmaTools(token: string, fetchImpl: FetchLike = fetch, tea
         type: "function",
         function: {
           name: "figma_list_files",
-          description: "List the design files in one Figma project, with each file's name, link and last modified time.",
-          parameters: { type: "object", properties: { project_id: { type: "string", description: "The project id from figma_list_projects." } }, required: ["project_id"] },
+          description: "List the design files in one Figma project or folder, with each file's name, link and last modified time.",
+          parameters: { type: "object", properties: { project_id: { type: "string", description: "The project or folder id from figma_list_projects." } }, required: ["project_id"] },
         },
       },
       execute: async (args) => {
@@ -173,9 +229,15 @@ export function buildFigmaTools(token: string, fetchImpl: FetchLike = fetch, tea
         const query = typeof args.name === "string" ? args.name.trim().toLowerCase() : "";
         if (!query) throw new Error("name is required");
         const team = teamFor(args);
-        const { teamName, projects } = await withTeamHint(() => listFigmaTeamProjects(token, team, fetchImpl));
+        const { teamName, projects: topLevel } = await listFigmaTeamProjects(token, team, fetchImpl);
         const words = query.split(/[^a-z0-9]+/).filter(Boolean);
         const matches: Array<{ key: string; name: string; lastModified?: string; url: string; project: string }> = [];
+        // Include one level of subfolders where the plan has nested folders.
+        const projects = [...topLevel];
+        for (const folder of topLevel.slice(0, MAX_PROJECTS_SCANNED)) {
+          if (projects.length >= MAX_PROJECTS_SCANNED) break;
+          for (const sub of await listSubfolders(token, folder.id, fetchImpl)) projects.push({ id: sub.id, name: `${folder.name} / ${sub.name}` });
+        }
         for (const project of projects.slice(0, MAX_PROJECTS_SCANNED)) {
           for (const file of await listFiles(project.id)) {
             const name = file.name.toLowerCase();
