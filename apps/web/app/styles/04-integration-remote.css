@@ -1170,3 +1170,33 @@
 .integration-summary strong {
   color: var(--palette-teal-600);
 }
+
+/* Inline text action inside a provider card's status line (Figma team). */
+.text-link-button {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.text-link-button:hover:not(:disabled) {
+  color: var(--accent-strong, var(--accent));
+}
+
+.text-link-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.text-link-button:disabled {
+  color: var(--text-muted);
+  cursor: progress;
+  text-decoration: none;
+}

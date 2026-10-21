@@ -29,6 +29,7 @@ import {
 } from "../../../../lib/api";
 import { useWorkspaceUser } from "../../../_components/WorkspaceAuth";
 import GithubRepoPickerModal from "../../../_components/GithubRepoPickerModal";
+import { useDialog } from "../../../_components/DialogProvider";
 import { AccessNotice } from "../../../_components/AccessNotice";
 import { useWorkspaceAccess } from "../../../../lib/useWorkspaceAccess";
 
@@ -66,12 +67,8 @@ export default function IntegrationsPage() {
   const [activeTab, setActiveTab] = useState<"connected" | "browse" | "access">("connected");
   const [agents, setAgents] = useState<WorkspaceAgent[]>([]);
   const [diagnostics, setDiagnostics] = useState<Record<string, string>>({});
-  const [figmaTeam, setFigmaTeamInput] = useState("");
-  const [figmaTeamState, setFigmaTeamState] = useState<{ busy: boolean; error: string; saved: string }>({
-    busy: false,
-    error: "",
-    saved: "",
-  });
+  const dialog = useDialog();
+  const [figmaTeamBusy, setFigmaTeamBusy] = useState(false);
 
   const [showRepoPicker, setShowRepoPicker] = useState(false);
   const [policy, setPolicy] = useState<WorkspacePermissionPolicy | null>(null);
@@ -200,15 +197,36 @@ export default function IntegrationsPage() {
     }
     setDiagnostics((current) => ({ ...current, [key]: message }));
   }
-  async function saveFigmaTeam() {
-    setFigmaTeamState({ busy: true, error: "", saved: "" });
+  // The Figma team is set in a dialog so every provider card keeps the same
+  // fixed size; the card itself only shows the current team.
+  async function chooseFigmaTeam(currentTeamId?: string) {
+    const team = (
+      await dialog.prompt({
+        title: "Set Figma team",
+        message:
+          "Agents can find files by name in this team. In Figma, open the team from the sidebar and copy the address. Files in Drafts are not part of a team; open those by pasting their link in chat.",
+        label: "Team link or ID",
+        placeholder: "https://www.figma.com/files/team/1234567890/…",
+        defaultValue: currentTeamId ?? "",
+        confirmLabel: "Save team",
+        maxLength: 500,
+      })
+    )?.trim();
+    if (!team) return;
+    setFigmaTeamBusy(true);
     try {
-      const saved = await setFigmaTeam(workspaceId, figmaTeam.trim());
-      setFigmaTeamInput("");
-      setFigmaTeamState({ busy: false, error: "", saved: saved.teamName ?? saved.teamId });
+      await setFigmaTeam(workspaceId, team);
       await refresh();
     } catch (reason) {
-      setFigmaTeamState({ busy: false, error: describeError(reason, "Could not save the Figma team."), saved: "" });
+      const retry = await dialog.confirm({
+        title: "Figma team not saved",
+        message: describeError(reason, "Could not save the Figma team."),
+        confirmLabel: "Try again",
+        cancelLabel: "Close",
+      });
+      if (retry) void chooseFigmaTeam(team);
+    } finally {
+      setFigmaTeamBusy(false);
     }
   }
 
@@ -513,7 +531,7 @@ export default function IntegrationsPage() {
                   window.location.href = githubOAuthStartUrl(workspaceId);
                 }}
               >
-                Connect GitHub
+                {githubConnected ? "Reconnect my account" : "Connect GitHub"}
               </button>
 
               {githubConnected && (
@@ -579,7 +597,7 @@ export default function IntegrationsPage() {
                   window.location.href = slackOAuthStartUrl(workspaceId);
                 }}
               >
-                Connect Slack
+                {slackConnected ? "Reconnect my account" : "Connect Slack"}
               </button>
             </div>
           </div>
@@ -649,36 +667,29 @@ export default function IntegrationsPage() {
                       {connected ? "Reconnect my account" : `Connect ${provider[0].toUpperCase() + provider.slice(1)}`}
                     </button>
                   </div>
-                  {connected && <p className="hint">Your account: {connected.accountName ?? "connected"}.</p>}
-                  {provider === "figma" && connected && canConnect && (
-                    <form
-                      className="remote-advanced-form"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        void saveFigmaTeam();
-                      }}
-                    >
-                      <label>
-                        Figma team
-                        <input
-                          value={figmaTeam}
-                          onChange={(event) => setFigmaTeamInput(event.target.value)}
-                          placeholder="https://www.figma.com/files/team/1234567890/…"
-                          aria-describedby="figma-team-hint"
-                          required
-                        />
-                      </label>
-                      <p className="hint" id="figma-team-hint">
-                        {connected.teamId
-                          ? `Agents can browse ${connected.teamName ?? `team ${connected.teamId}`}. Paste another team link to change it.`
-                          : "Paste a team link so agents can find files by name. Files in Drafts can still be opened by link."}
-                      </p>
-                      <button className="btn" disabled={figmaTeamState.busy}>
-                        {figmaTeamState.busy ? "Checking…" : connected.teamId ? "Change team" : "Save team"}
-                      </button>
-                      {figmaTeamState.saved && <p className="hint">Saved: {figmaTeamState.saved}.</p>}
-                      {figmaTeamState.error && <p className="error-text">{figmaTeamState.error}</p>}
-                    </form>
+                  {connected && (
+                    <p className="hint">
+                      Your account: {connected.accountName ?? "connected"}.
+                      {provider === "figma" && (
+                        <>
+                          <br />
+                          {connected.teamId ? `Team: ${connected.teamName ?? connected.teamId}` : "No team set"}
+                          {canConnect && (
+                            <>
+                              {" · "}
+                              <button
+                                type="button"
+                                className="text-link-button"
+                                disabled={figmaTeamBusy}
+                                onClick={() => void chooseFigmaTeam(connected.teamId)}
+                              >
+                                {figmaTeamBusy ? "Checking…" : connected.teamId ? "Change" : "Set team"}
+                              </button>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </p>
                   )}
                   {teammateConnections.length > 0 && (
                     <p className="hint">
