@@ -429,10 +429,12 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
     const runAsApp = !runAsMe && action.runAsKind === "app";
     const runUserId = runAsMe ? req.user!.id : runAsApp ? undefined : action.runAsUserId ?? action.requestedByUserId ?? req.user!.id;
     const built = await buildToolsForWorkspace(workspaceId, deps, runUserId, { githubVia: runAsApp ? "app" : "user" });
+    // Every pending action is a write: an account that can only read the
+    // repository cannot run it, so treat that like a missing connection.
     const repoBlocked = (tools: WorkspaceTools) =>
       provider === "github" &&
       Boolean(action.target?.repo) &&
-      tools.githubContext?.repos.some((repository) => `${repository.owner}/${repository.repo}`.toLowerCase() === action.target!.repo!.toLowerCase() && repository.access === "none");
+      tools.githubContext?.repos.some((repository) => `${repository.owner}/${repository.repo}`.toLowerCase() === action.target!.repo!.toLowerCase() && (repository.access === "none" || repository.access === "read"));
     const tool = repoBlocked(built) ? undefined : built.tools.find((t) => t.definition.function.name === action.toolName);
     if (!tool) {
       // Offer "Run as me" instead of failing when the approver's own

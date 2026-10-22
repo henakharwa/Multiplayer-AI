@@ -289,6 +289,23 @@ describe("TG-04 run-as rule", () => {
     expect(messages.some((message) => message.content.includes("It ran as Admin (@hena-gh) because Stevens's connection was unavailable."))).toBe(true);
     await connectGithub(stevens, "tok-stevens");
   });
+
+  it("offers Run as me when the requester's account can only read the repository", async () => {
+    script = async ({ tools }) => {
+      const comment = tools.find((tool) => tool.definition.function.name === "add_issue_comment")!;
+      const proposal = (await comment.execute({ owner: "acme", repo: "web", issue_number: 20, body: "On it" })) as { actionId: string };
+      return result("Proposed a comment.", 1, [proposal.actionId]);
+    };
+    const { events } = await githubTurn(stevens, "Comment on #20");
+    const card = events.find((event) => event.type === "pending_action")!.action!;
+    access["tok-stevens:acme/web"] = "read";
+    const refused = await as(admin).post(`/workspaces/${ws.id}/actions/${card.id}/confirm`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("run_as_unavailable");
+    expect((await as(admin).post(`/workspaces/${ws.id}/actions/${card.id}/confirm`, { runAs: "me" })).status).toBe(200);
+    expect(toolCalls.at(-1)).toMatchObject({ tool: "add_issue_comment", token: "tok-admin" });
+    delete access["tok-stevens:acme/web"];
+  });
 });
 
 describe("TG-05 GitHub webhooks, event triggers and the workspace GitHub App", () => {
