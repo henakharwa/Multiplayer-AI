@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDialog } from "../../../_components/DialogProvider";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -8,6 +8,7 @@ import type {
   AuditEvent,
   AuditEventType,
   WorkspaceArtifact,
+  WorkspaceMember,
   WorkspaceMemory,
   WorkspaceTask,
 } from "@mai-chat/shared-types";
@@ -19,6 +20,7 @@ import {
   listWorkspaceArtifacts,
   listWorkspaceMemory,
   listWorkspaceTasks,
+  listWorkspaceMembers,
 } from "../../../../lib/api";
 
 // Matches the AuditEventType union in packages/shared-types -- add a new
@@ -83,6 +85,11 @@ export default function AuditPage() {
   const [memories, setMemories] = useState<WorkspaceMemory[]>([]);
   const [artifacts, setArtifacts] = useState<WorkspaceArtifact[]>([]);
   const [live, setLive] = useState(true);
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  // A background refresh (live updates) keeps the current page and does not
+  // show the loading state; a filter or search change starts over at page 1.
+  const quietReload = useRef(false);
+  const newestSeen = useRef<string | null>(null);
   const [actor, setActor] = useState("");
   const [outcome, setOutcome] = useState<"" | "success" | "failure" | "approval">("");
   const [range, setRange] = useState<"all" | "today" | "week">("all");
@@ -103,7 +110,9 @@ export default function AuditPage() {
   // request -- 250ms is short enough to still feel live.
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    const quiet = quietReload.current;
+    quietReload.current = false;
+    if (!quiet) setLoading(true);
     setError(null);
     const timeout = setTimeout(() => {
       const loadAllEvents = async () => {
@@ -125,7 +134,7 @@ export default function AuditPage() {
         .then((list) => {
           if (cancelled) return;
           setEvents(list);
-          setPage(1);
+          if (!quiet) setPage(1);
         })
         .catch((err) => {
           if (cancelled) return;
@@ -134,17 +143,50 @@ export default function AuditPage() {
         .finally(() => {
           if (!cancelled) setLoading(false);
         });
-    }, 250);
+    }, quiet ? 0 : 250);
     return () => {
       cancelled = true;
       clearTimeout(timeout);
     };
   }, [workspaceId, search, type, reload]);
+  // Live updates: every few seconds, ask for just the newest event and reload
+  // the list only when something new was recorded (by anyone, in any tab).
+  // Also checks right away when this tab becomes visible again.
   useEffect(() => {
     if (!live) return;
-    const timer = window.setInterval(() => setReload((value) => value + 1), 30000);
-    return () => window.clearInterval(timer);
-  }, [live]);
+    let stopped = false;
+    const check = async () => {
+      if (stopped || document.visibilityState === "hidden") return;
+      try {
+        const { events: latest } = await listAuditEvents(workspaceId, { limit: 1 });
+        const newest = latest[0] ? `${latest[0].id}:${latest[0].createdAt}` : "";
+        if (stopped) return;
+        if (newestSeen.current !== null && newest !== newestSeen.current) {
+          quietReload.current = true;
+          setReload((value) => value + 1);
+        }
+        newestSeen.current = newest;
+      } catch {
+        /* try again on the next tick */
+      }
+    };
+    void check();
+    const timer = window.setInterval(check, 4000);
+    const onVisible = () => void check();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [live, workspaceId]);
+  useEffect(() => {
+    listWorkspaceMembers(workspaceId)
+      .then(setMembers)
+      .catch(() => setMembers([]));
+  }, [workspaceId]);
   // Saved views live on the server per member so they follow you across devices. Older browser-only views are moved over once.
   useEffect(() => {
     let cancelled = false;
@@ -287,7 +329,14 @@ export default function AuditPage() {
   useEffect(() => {
     setPage(1);
   }, [search, type, actor, agentFilter, workflowFilter, outcome, range]);
-  const actors = [...new Set(events.map((event) => event.actorName).filter(Boolean))];
+  // Only people who are members of this workspace -- agents, workflows and
+  // other automated actors are filtered by the Agent/Workflow filters instead.
+  const memberNames = members.length
+    ? members.map((member) => member.displayName || member.username)
+    : events.filter((event) => event.actorType === "user").map((event) => event.actorName);
+  const actors = [...new Set(memberNames.filter(Boolean))].sort(
+    (a, b) => a.localeCompare(b),
+  );
   const iconFor = (event: AuditEvent) =>
     event.eventType.startsWith("workflow")
       ? "↻"
@@ -312,9 +361,35 @@ export default function AuditPage() {
       maxLength: 60,
     });
     if (!name) return;
-    const next = [...savedViews, { name, search, type, actor, outcome, range }];
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    // Saving under an existing name replaces that view.
+    const next = [
+      ...savedViews.filter((view) => view.name.toLowerCase() !== trimmed.toLowerCase()),
+      { name: trimmed, search, type, actor, outcome, range },
+    ];
     setSavedViews(next);
     void setWorkspacePreference(workspaceId, "activity-views", next).catch(() => setError("Could not save this view."));
+  }
+  async function deleteView(name: string) {
+    if (
+      !(await dialog.confirm({
+        title: `Delete the "${name}" view?`,
+        message: "Only the saved filters are removed. No activity is deleted.",
+        confirmLabel: "Delete view",
+        danger: true,
+      }))
+    )
+      return;
+    const previous = savedViews;
+    const next = savedViews.filter((view) => view.name !== name);
+    setSavedViews(next);
+    try {
+      await setWorkspacePreference(workspaceId, "activity-views", next);
+    } catch {
+      setSavedViews(previous);
+      setError("Could not delete this view.");
+    }
   }
   function exportCsv() {
     const rows = [
@@ -522,19 +597,29 @@ export default function AuditPage() {
       {savedViews.length > 0 && (
         <div className="activity-saved-views">
           {savedViews.map((view) => (
-            <button
-              key={view.name}
-              type="button"
-              onClick={() => {
-                setSearch(view.search);
-                setType(view.type);
-                setActor(view.actor);
-                setOutcome(view.outcome);
-                setRange(view.range);
-              }}
-            >
-              {view.name}
-            </button>
+            <span key={view.name} className="activity-saved-view">
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch(view.search);
+                  setType(view.type);
+                  setActor(view.actor);
+                  setOutcome(view.outcome);
+                  setRange(view.range);
+                }}
+              >
+                {view.name}
+              </button>
+              <button
+                type="button"
+                className="activity-saved-view-delete"
+                aria-label={`Delete saved view ${view.name}`}
+                title="Delete view"
+                onClick={() => void deleteView(view.name)}
+              >
+                ×
+              </button>
+            </span>
           ))}
         </div>
       )}

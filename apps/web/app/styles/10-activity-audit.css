@@ -386,14 +386,34 @@
   margin: -7px 0 14px;
 }
 
-.activity-saved-views button {
-  padding: 5px 8px;
+.activity-saved-view {
+  display: inline-flex;
+  align-items: stretch;
   border: 1px solid var(--border-tint);
   border-radius: 99px;
   background: var(--surface);
+  overflow: hidden;
+}
+
+.activity-saved-views button {
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
   color: var(--palette-violet-600-2);
   font-size: 11px;
   cursor: pointer;
+}
+
+.activity-saved-views .activity-saved-view-delete {
+  padding: 5px 8px 5px 4px;
+  color: var(--text-muted, #6b7280);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.activity-saved-views .activity-saved-view-delete:hover,
+.activity-saved-views .activity-saved-view-delete:focus-visible {
+  color: #b42318;
 }
 
 .audit-toolbar select {
