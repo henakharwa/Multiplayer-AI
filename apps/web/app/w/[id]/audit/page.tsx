@@ -114,36 +114,39 @@ export default function AuditPage() {
     quietReload.current = false;
     if (!quiet) setLoading(true);
     setError(null);
-    const timeout = setTimeout(() => {
-      const loadAllEvents = async () => {
-        const all: AuditEvent[] = [];
-        let before: string | undefined;
-        do {
-          const { events: batch } = await listAuditEvents(workspaceId, {
-            q: search.trim() || undefined,
-            type: type || undefined,
-            before,
-            limit: 200,
+    const timeout = setTimeout(
+      () => {
+        const loadAllEvents = async () => {
+          const all: AuditEvent[] = [];
+          let before: string | undefined;
+          do {
+            const { events: batch } = await listAuditEvents(workspaceId, {
+              q: search.trim() || undefined,
+              type: type || undefined,
+              before,
+              limit: 200,
+            });
+            all.push(...batch);
+            before = batch.length === 200 ? batch[batch.length - 1]?.createdAt : undefined;
+          } while (before);
+          return all;
+        };
+        loadAllEvents()
+          .then((list) => {
+            if (cancelled) return;
+            setEvents(list);
+            if (!quiet) setPage(1);
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            setError(describeError(err, "Could not load activity."));
+          })
+          .finally(() => {
+            if (!cancelled) setLoading(false);
           });
-          all.push(...batch);
-          before = batch.length === 200 ? batch[batch.length - 1]?.createdAt : undefined;
-        } while (before);
-        return all;
-      };
-      loadAllEvents()
-        .then((list) => {
-          if (cancelled) return;
-          setEvents(list);
-          if (!quiet) setPage(1);
-        })
-        .catch((err) => {
-          if (cancelled) return;
-          setError(describeError(err, "Could not load activity."));
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-    }, quiet ? 0 : 250);
+      },
+      quiet ? 0 : 250,
+    );
     return () => {
       cancelled = true;
       clearTimeout(timeout);
@@ -334,9 +337,7 @@ export default function AuditPage() {
   const memberNames = members.length
     ? members.map((member) => member.displayName || member.username)
     : events.filter((event) => event.actorType === "user").map((event) => event.actorName);
-  const actors = [...new Set(memberNames.filter(Boolean))].sort(
-    (a, b) => a.localeCompare(b),
-  );
+  const actors = [...new Set(memberNames.filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const iconFor = (event: AuditEvent) =>
     event.eventType.startsWith("workflow")
       ? "↻"
