@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import type {
@@ -9,6 +9,7 @@ import type {
   WorkspaceAgent,
   WorkspacePermissionPolicy,
   WorkspacePermissions,
+  WorkspaceRepository,
   WorkspaceRole,
 } from "@mai-chat/shared-types";
 import {
@@ -29,6 +30,7 @@ import {
 } from "../../../../lib/api";
 import { useWorkspaceUser } from "../../../_components/WorkspaceAuth";
 import GithubRepoPickerModal from "../../../_components/GithubRepoPickerModal";
+import WorkspaceRepositoriesPanel from "../../../_components/WorkspaceRepositoriesPanel";
 import { useDialog } from "../../../_components/DialogProvider";
 import { AccessNotice } from "../../../_components/AccessNotice";
 import { useWorkspaceAccess } from "../../../../lib/useWorkspaceAccess";
@@ -71,6 +73,13 @@ export default function IntegrationsPage() {
   const [figmaTeamBusy, setFigmaTeamBusy] = useState(false);
 
   const [showRepoPicker, setShowRepoPicker] = useState(false);
+  // When the workspace has its own repository list, a member's personal
+  // repository choice is not used, so that control is hidden.
+  const [workspaceRepoCount, setWorkspaceRepoCount] = useState<number | null>(null);
+  const handleRepositoriesChange = useCallback(
+    (repositories: WorkspaceRepository[]) => setWorkspaceRepoCount(repositories.length),
+    [],
+  );
   const [policy, setPolicy] = useState<WorkspacePermissionPolicy | null>(null);
   const [policyBusy, setPolicyBusy] = useState(false);
   const [policyError, setPolicyError] = useState<string | null>(null);
@@ -151,9 +160,11 @@ export default function IntegrationsPage() {
   const slackConnected = slackConnections.find((integration) => integration.ownerUserId === user.id);
   const connectionLabel = (integration: IntegrationConfig) =>
     integration.type === "github"
-      ? integration.owner && integration.repo
-        ? `${integration.owner}/${integration.repo}`
-        : "Repository not selected"
+      ? workspaceRepoCount
+        ? `${integration.accountLogin ? `@${integration.accountLogin} · ` : ""}${workspaceRepoCount} workspace ${workspaceRepoCount === 1 ? "repository" : "repositories"}`
+        : integration.owner && integration.repo
+          ? `${integration.owner}/${integration.repo}`
+          : "Repository not selected"
       : integration.type === "slack"
         ? integration.teamName
         : (integration.accountName ?? integration.endpoint);
@@ -175,7 +186,11 @@ export default function IntegrationsPage() {
     })[type];
   const setupSteps = (integration: IntegrationConfig) =>
     integration.type === "github"
-      ? ["Account connected", integration.repo ? "Repository selected" : "Choose a repository", "Verify read access"]
+      ? [
+          "Account connected",
+          workspaceRepoCount || integration.repo ? "Repositories set" : "Add workspace repositories",
+          "Verify read access",
+        ]
       : integration.type === "slack"
         ? ["Workspace connected", "Choose relevant channels", "Verify read access"]
         : ["Connection added", "Choose source scope", "Verify read access"];
@@ -515,9 +530,14 @@ export default function IntegrationsPage() {
                 </span>
               </span>
             </h2>
-            {githubConnected && !githubConnected.repo && (
+            {githubConnected && !githubConnected.repo && workspaceRepoCount === 0 && (
               <p className="hint" data-testid="github-no-repo-hint">
                 GitHub is connected, but no repository has been chosen yet.
+              </p>
+            )}
+            {githubConnected?.accountLogin && (
+              <p className="hint" data-testid="github-account">
+                Your account: @{githubConnected.accountLogin}
               </p>
             )}
 
@@ -534,7 +554,7 @@ export default function IntegrationsPage() {
                 {githubConnected ? "Reconnect my account" : "Connect GitHub"}
               </button>
 
-              {githubConnected && (
+              {githubConnected && workspaceRepoCount === 0 && (
                 <button
                   className="btn secondary"
                   type="button"
@@ -549,7 +569,9 @@ export default function IntegrationsPage() {
             </div>
 
             <p className="hint" style={{ marginTop: 16 }}>
-              Link a repository for workspace context.
+              {workspaceRepoCount
+                ? `Works on ${workspaceRepoCount} workspace ${workspaceRepoCount === 1 ? "repository" : "repositories"} through your own account.`
+                : "Link a repository for workspace context."}
             </p>
             {teammateGithubConnections.length > 0 && (
               <p className="hint">
@@ -557,7 +579,7 @@ export default function IntegrationsPage() {
                 {teammateGithubConnections
                   .map(
                     (integration) =>
-                      `${integration.connectedByName ?? "Workspace member"} (${integration.owner && integration.repo ? `${integration.owner}/${integration.repo}` : "repository not selected"})`,
+                      `${integration.connectedByName ?? "Workspace member"}${integration.accountLogin ? ` (@${integration.accountLogin})` : ""}`,
                   )
                   .join(", ")}
                 .
@@ -706,6 +728,13 @@ export default function IntegrationsPage() {
             <p style={{ color: "var(--text-dim)", fontSize: 13 }}>No integrations connected yet.</p>
           )}
         </section>
+      )}
+      {activeTab === "connected" && (
+        <WorkspaceRepositoriesPanel
+          workspaceId={workspaceId}
+          isAdmin={access.isAdmin}
+          onRepositoriesChange={handleRepositoriesChange}
+        />
       )}
 
       {showRepoPicker && (

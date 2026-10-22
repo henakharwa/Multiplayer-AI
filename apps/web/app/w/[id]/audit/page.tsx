@@ -58,6 +58,10 @@ const EVENT_TYPE_LABELS: Record<AuditEventType, string> = {
   "conversation.archived": "Conversation archived",
   "conversation.restored": "Conversation restored",
   "conversation.deleted": "Conversation deleted",
+  "repository.added": "Repository added",
+  "repository.removed": "Repository removed",
+  "repository.updated": "Repository settings changed",
+  "github.event": "GitHub event",
 };
 
 function formatTimestamp(iso: string): string {

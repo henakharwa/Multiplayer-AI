@@ -18,20 +18,26 @@ function toWorkflow(row: Record<string, unknown>): WorkspaceWorkflow {
     nextRunAt: row.next_run_at ? (row.next_run_at as Date).toISOString() : null, lastRunAt: row.last_run_at ? (row.last_run_at as Date).toISOString() : null,
     lastRunStatus: row.last_run_status as WorkflowRunStatus | null, lastRunError: row.last_run_error ? String(row.last_run_error) : null,
     createdAt: (row.created_at as Date).toISOString(), updatedAt: (row.updated_at as Date).toISOString(),
+    ...("owner_is_member" in row ? { ownerName: row.owner_name ? String(row.owner_name) : null, ownerIsMember: Boolean(row.owner_is_member) } : {}),
   };
 }
+
+const WORKFLOW_WITH_OWNER = `SELECT w.*, u.display_name AS owner_name, (m.user_id IS NOT NULL) AS owner_is_member
+  FROM workspace_workflows w
+  LEFT JOIN users u ON u.id = w.owner_user_id
+  LEFT JOIN workspace_members m ON m.workspace_id = w.workspace_id AND m.user_id = w.owner_user_id`;
 
 function workflowScheduleDate(trigger: WorkflowTrigger, scheduleMinutes: number | null): Date | null {
   return trigger === "schedule" && scheduleMinutes ? new Date(Date.now() + scheduleMinutes * 60_000) : null;
 }
 
 export async function listWorkspaceWorkflows(workspaceId: string): Promise<WorkspaceWorkflow[]> {
-  const result = await getPool().query("SELECT * FROM workspace_workflows WHERE workspace_id = $1 ORDER BY updated_at DESC", [workspaceId]);
+  const result = await getPool().query(`${WORKFLOW_WITH_OWNER} WHERE w.workspace_id = $1 ORDER BY w.updated_at DESC`, [workspaceId]);
   return result.rows.map(toWorkflow);
 }
 
 export async function getWorkspaceWorkflow(workspaceId: string, workflowId: string): Promise<WorkspaceWorkflow | null> {
-  const result = await getPool().query("SELECT * FROM workspace_workflows WHERE workspace_id = $1 AND id = $2", [workspaceId, workflowId]);
+  const result = await getPool().query(`${WORKFLOW_WITH_OWNER} WHERE w.workspace_id = $1 AND w.id = $2`, [workspaceId, workflowId]);
   return result.rows[0] ? toWorkflow(result.rows[0]) : null;
 }
 
@@ -62,6 +68,18 @@ export async function updateWorkspaceWorkflow(workspaceId: string, workflowId: s
 export async function deleteWorkspaceWorkflow(workspaceId: string, workflowId: string): Promise<WorkspaceWorkflow | null> {
   const result = await getPool().query("DELETE FROM workspace_workflows WHERE workspace_id=$1 AND id=$2 RETURNING *", [workspaceId, workflowId]);
   return result.rows[0] ? toWorkflow(result.rows[0]) : null;
+}
+
+/** Makes a member the workflow's owner (an Admin taking over from someone who left). */
+export async function setWorkflowOwner(workspaceId: string, workflowId: string, ownerUserId: string): Promise<WorkspaceWorkflow | null> {
+  const result = await getPool().query("UPDATE workspace_workflows SET owner_user_id=$3, updated_at=now() WHERE workspace_id=$1 AND id=$2 RETURNING id", [workspaceId, workflowId, ownerUserId]);
+  return result.rows[0] ? getWorkspaceWorkflow(workspaceId, workflowId) : null;
+}
+
+/** Enabled workflows started by a GitHub or Slack event of this kind. */
+export async function listEventWorkflows(workspaceId: string, trigger: WorkflowTrigger): Promise<WorkspaceWorkflow[]> {
+  const result = await getPool().query(`${WORKFLOW_WITH_OWNER} WHERE w.workspace_id = $1 AND w.trigger = $2 AND w.enabled ORDER BY w.created_at ASC`, [workspaceId, trigger]);
+  return result.rows.map(toWorkflow);
 }
 
 export async function setWorkflowConversation(workflowId: string, conversationId: string): Promise<void> {

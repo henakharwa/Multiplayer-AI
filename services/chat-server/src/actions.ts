@@ -8,6 +8,9 @@ import { getRemoteMcpClient } from "./remote-mcp-pool.js";
 import { listMcpToolExecutors } from "./mcp-tools.js";
 import { buildNotionTools } from "./notion-tools.js";
 import { buildFigmaTools } from "./figma-tools.js";
+import type { IntegrationType, PendingAction, TeamActivity, WorkspaceRepository } from "@mai-chat/shared-types";
+import { offlineGithubTeamApi, type GithubTeamApi } from "./github-api.js";
+import { describeActionTarget, findActionWarnings, guardGithubTools, providerForTool, repositoryAccess, type GithubWorkspaceContext } from "./github-team.js";
 
 type ActionAgentKind = "project" | "github" | "slack" | "linear" | "notion" | "figma";
 
@@ -29,6 +32,14 @@ function completionAgentFor(agentKind: ActionAgentKind | null | undefined, toolN
   return "GitHub Agent";
 }
 
+export interface ProviderAccount {
+  // "app": the workspace GitHub App acted, not a member.
+  via: "user" | "app";
+  userId: string | null;
+  // Provider account name, e.g. a GitHub username.
+  account: string | null;
+}
+
 export interface WorkspaceTools {
   tools: ToolExecutor[];
   githubTools: ToolExecutor[];
@@ -36,12 +47,31 @@ export interface WorkspaceTools {
   linearTools: ToolExecutor[];
   notionTools: ToolExecutor[];
   figmaTools: ToolExecutor[];
-  // Set exactly when a GitHub repo is connected and its MCP tools were
-  // loaded -- agent.ts needs this to tell the model which owner/repo to
-  // pass as arguments, since (unlike the old Octokit client) GitHub's MCP
-  // tools aren't pre-bound to one repo; every call takes owner/repo
-  // explicitly.
-  githubContext?: { owner: string; repo: string };
+  // Set when GitHub tools were loaded: the repositories they may reach, what
+  // this account can do on each, and who they act as. agent.ts tells the
+  // model which owner/repo to pass, since GitHub's MCP tools take both on
+  // every call.
+  githubContext?: GithubWorkspaceContext;
+  // Set when the workspace has repositories but this member has not
+  // connected GitHub, so the agent can say what to do instead of guessing.
+  githubNotice?: string;
+  // The account each provider's tools act as this turn.
+  accounts: Partial<Record<IntegrationType, ProviderAccount>>;
+  // Open issues in a repository, read with the same account (duplicate checks).
+  listOpenIssues?: (owner: string, repo: string) => Promise<Array<{ number: number; title: string; url: string }>>;
+}
+
+export interface BuildToolsOptions {
+  // "user" (default): only the member's own connection. "auto": the
+  // member's connection, or the workspace GitHub App when they have none
+  // (workflow runs). "app": only the workspace GitHub App.
+  githubVia?: "user" | "auto" | "app";
+  // Called with "owner/repo" whenever a GitHub tool call reaches a repository.
+  onGithubRepoUsed?: (fullName: string) => void;
+}
+
+export function teamApiFor(deps: CreateServerDeps): GithubTeamApi {
+  return deps.githubTeamApi ?? offlineGithubTeamApi;
 }
 
 // Builds the full read+write tool set for whatever's connected to a
@@ -49,12 +79,15 @@ export interface WorkspaceTools {
 // wraps the mutating ones via wrapForProposal below before handing them to
 // the LLM) and by the confirm route below (which needs the SAME tools,
 // unwrapped, to actually run one once a human approves it).
-export async function buildToolsForWorkspace(workspaceId: string, deps: CreateServerDeps, requestingUserId?: string): Promise<WorkspaceTools> {
+export async function buildToolsForWorkspace(workspaceId: string, deps: CreateServerDeps, requestingUserId?: string, options: BuildToolsOptions = {}): Promise<WorkspaceTools> {
   const available = await db.listIntegrations(workspaceId);
+  const api = teamApiFor(deps);
+  const githubVia = options.githubVia ?? "user";
   // A member can work only through a connection they own. This preserves
   // source access boundaries even though every member can see the connected
   // account directory in the workspace UI.
   const integrations = (["github", "slack", "linear", "notion", "figma"] as const).flatMap((type) => {
+    if (type === "github" && githubVia === "app") return [];
     const accounts = available.filter((integration) => integration.type === type);
     const owned = accounts.find((integration) => integration.ownerUserId === requestingUserId);
     return owned ? [owned] : [];
@@ -63,24 +96,59 @@ export async function buildToolsForWorkspace(workspaceId: string, deps: CreateSe
   const githubAgentTools: ToolExecutor[] = [];
   const slackAgentTools: ToolExecutor[] = [];
   const remoteAgentTools: Record<"linear" | "notion" | "figma", ToolExecutor[]> = { linear: [], notion: [], figma: [] };
-  let githubContext: { owner: string; repo: string } | undefined;
+  const accounts: WorkspaceTools["accounts"] = {};
+  let githubContext: GithubWorkspaceContext | undefined;
+  let githubNotice: string | undefined;
+  let listOpenIssues: WorkspaceTools["listOpenIssues"];
+  const workspaceRepos = await db.listWorkspaceRepositories(workspaceId);
+  const actingUser = requestingUserId ? await db.getUserById(requestingUserId) : null;
+
+  // GitHub: the workspace repository list, reached through the member's own
+  // account (or, for automation, the workspace GitHub App).
+  const loadGithub = async (token: string, via: "user" | "app", account: string | null, personalRepo?: { owner: string; repo: string }) => {
+    const repos: WorkspaceRepository[] = workspaceRepos.length
+      ? workspaceRepos
+      : personalRepo
+        ? [{ id: "personal", workspaceId, owner: personalRepo.owner, repo: personalRepo.repo, fullName: `${personalRepo.owner}/${personalRepo.repo}`, isDefault: true, addedByUserId: requestingUserId ?? null, addedByName: null, webhookId: null, lastEventAt: null, createdAt: new Date().toISOString() }]
+        : [];
+    if (!repos.length) return;
+    try {
+      const githubTools = await deps.githubMcpToolsFactory({ workspaceId, token, accountKey: via === "app" ? "app" : requestingUserId });
+      const repoAccess = await repositoryAccess(api, token, repos);
+      const preferred = repoAccess.find((repository) => repository.isDefault) ?? repoAccess[0];
+      githubContext = {
+        owner: preferred.owner,
+        repo: preferred.repo,
+        repos: repoAccess,
+        account,
+        actingAs: via === "app" ? "the workspace GitHub App" : actingUser?.displayName ?? "this member",
+        via,
+        workspaceList: workspaceRepos.length > 0,
+      };
+      const guarded = guardGithubTools(githubTools, githubContext, options.onGithubRepoUsed);
+      tools.push(...guarded);
+      githubAgentTools.push(...guarded);
+      accounts.github = { via, userId: via === "app" ? null : requestingUserId ?? null, account };
+      listOpenIssues = (owner, repo) => api.listOpenIssues(token, owner, repo);
+    } catch (err) {
+      // A misconfigured/unreachable GitHub MCP server (e.g. Docker isn't
+      // running) shouldn't take the whole chat down -- surface it in the
+      // server's own logs and proceed without GitHub tools this turn, the
+      // same as if the integration weren't connected at all.
+      console.error(`[actions] workspace ${workspaceId}: GitHub MCP tools unavailable:`, errMessage(err));
+    }
+  };
+
   for (const integration of integrations) {
     if (integration.type === "github") {
       const credential = await db.getIntegrationCredential(workspaceId, "github", integration.id);
-      if (credential?.owner && credential?.repo) {
-        try {
-          const githubTools = await deps.githubMcpToolsFactory({ workspaceId, token: credential.token });
-          tools.push(...githubTools);
-          githubAgentTools.push(...githubTools);
-          githubContext = { owner: credential.owner, repo: credential.repo };
-        } catch (err) {
-          // A misconfigured/unreachable GitHub MCP server (e.g. Docker
-          // Desktop isn't installed or isn't running) shouldn't take the
-          // whole chat down -- surface it in the server's own logs and just
-          // proceed without GitHub tools this turn, the same as if the
-          // integration weren't connected at all.
-          console.error(`[actions] workspace ${workspaceId}: GitHub MCP tools unavailable:`, errMessage(err));
+      if (credential?.token) {
+        let login = integration.accountLogin ?? null;
+        if (!login && integration.id) {
+          login = await api.getLogin(credential.token);
+          if (login) await db.setIntegrationAccountLogin(integration.id, login).catch(() => undefined);
         }
+        await loadGithub(credential.token, "user", login, credential.owner && credential.repo ? { owner: credential.owner, repo: credential.repo } : undefined);
       }
     } else if (integration.type === "slack") {
       const credential = await db.getIntegrationCredential(workspaceId, "slack", integration.id);
@@ -89,6 +157,7 @@ export async function buildToolsForWorkspace(workspaceId: string, deps: CreateSe
           const slackTools = await deps.slackMcpToolsFactory({ workspaceId, accessToken: credential.token });
           tools.push(...slackTools);
           slackAgentTools.push(...slackTools);
+          accounts.slack = { via: "user", userId: requestingUserId ?? null, account: integration.teamName ?? null };
         } catch (err) {
           // Same fail-open-without-Slack-tools policy as the GitHub MCP
           // branch above: an unreachable Slack MCP server (a revoked/
@@ -103,6 +172,7 @@ export async function buildToolsForWorkspace(workspaceId: string, deps: CreateSe
         const notionTools = buildNotionTools(credential.token);
         tools.push(...notionTools);
         remoteAgentTools.notion.push(...notionTools);
+        accounts.notion = { via: "user", userId: requestingUserId ?? null, account: integration.accountName ?? null };
       }
     } else if (integration.type === "figma") {
       // Figma's REST API accepts personal access tokens and OAuth tokens;
@@ -113,6 +183,7 @@ export async function buildToolsForWorkspace(workspaceId: string, deps: CreateSe
         const figmaTools = buildFigmaTools(credential.token, fetch, credential.repo?.split(":")[0] || undefined);
         tools.push(...figmaTools);
         remoteAgentTools.figma.push(...figmaTools);
+        accounts.figma = { via: "user", userId: requestingUserId ?? null, account: integration.accountName ?? null };
       }
     } else {
       const credential = await db.getIntegrationCredential(workspaceId, integration.type, integration.id);
@@ -122,13 +193,38 @@ export async function buildToolsForWorkspace(workspaceId: string, deps: CreateSe
           const providerTools = await listMcpToolExecutors(client, integration.type[0].toUpperCase() + integration.type.slice(1));
           tools.push(...providerTools);
           remoteAgentTools[integration.type].push(...providerTools);
+          accounts[integration.type] = { via: "user", userId: requestingUserId ?? null, account: integration.accountName ?? null };
         } catch (err) {
           console.error(`[actions] workspace ${workspaceId}: ${integration.type} MCP tools unavailable:`, errMessage(err));
         }
       }
     }
   }
-  return { tools, githubTools: githubAgentTools, slackTools: slackAgentTools, linearTools: remoteAgentTools.linear, notionTools: remoteAgentTools.notion, figmaTools: remoteAgentTools.figma, githubContext };
+
+  // Automation with no member connection: the workspace GitHub App, when
+  // it is installed on the default repository.
+  if (!githubContext && githubVia !== "user" && workspaceRepos.length && api.app.configured()) {
+    const preferred = workspaceRepos.find((repository) => repository.isDefault) ?? workspaceRepos[0];
+    const token = await api.app.installationToken(preferred.owner, preferred.repo).catch((error) => {
+      console.error(`[actions] workspace ${workspaceId}: GitHub App token unavailable:`, errMessage(error));
+      return null;
+    });
+    if (token) await loadGithub(token, "app", api.app.botLogin());
+  }
+  if (!githubContext && workspaceRepos.length) {
+    githubNotice = `This workspace works on ${workspaceRepos.map((repository) => repository.fullName).join(", ")}, but ${
+      githubVia === "app" ? "the workspace GitHub App is not installed on it" : `${actingUser?.displayName ?? "the person asking"} has not connected their GitHub account in this workspace`
+    }. They can connect it under Integrations → GitHub.`;
+  }
+  return { tools, githubTools: githubAgentTools, slackTools: slackAgentTools, linearTools: remoteAgentTools.linear, notionTools: remoteAgentTools.notion, figmaTools: remoteAgentTools.figma, githubContext, githubNotice, accounts, listOpenIssues };
+}
+
+export const PROVIDER_LABELS: Record<IntegrationType, string> = { github: "GitHub", slack: "Slack", linear: "Linear", notion: "Notion", figma: "Figma" };
+
+/** How a provider account is shown, e.g. "@octocat" for GitHub. */
+export function formatAccount(provider: IntegrationType, account: string | null | undefined): string | null {
+  if (!account) return null;
+  return provider === "github" ? `@${account.replace(/^@/, "")}` : account;
 }
 
 // Swaps every mutating tool's `execute` for one that queues a
@@ -151,7 +247,13 @@ export function wrapForProposal(
   // build tools directly) don't have a requesting user to attribute.
   requestedBy?: { userId: string; name: string },
   agentKind?: ActionAgentKind,
-  options?: { readOnly?: boolean }
+  options?: {
+    readOnly?: boolean;
+    // The account the proposal will run as when approved (defaults to the requester).
+    runAs?: ProviderAccount;
+    // Open issues for the duplicate check on new GitHub issues.
+    listOpenIssues?: WorkspaceTools["listOpenIssues"];
+  }
 ): ToolExecutor[] {
   // An automation review must never be able to turn an unexpected model
   // tool call into a pending external change. Remove mutating tools from its
@@ -162,25 +264,42 @@ export function wrapForProposal(
     return {
       ...tool,
       execute: async (args: Record<string, unknown>) => {
-        const description = tool.describe ? tool.describe(args) : `Run ${tool.definition.function.name}`;
+        const toolName = tool.definition.function.name;
+        const description = tool.describe ? tool.describe(args) : `Run ${toolName}`;
         const preview = tool.preview ? tool.preview(args) : undefined;
+        const target = describeActionTarget(toolName, args, agentKind);
+        // Duplicate and conflict checks never block a proposal; they only
+        // inform the people deciding on it.
+        const existing = await db.listActionsForConflictCheck(workspaceId).catch(() => []);
+        let openIssues: Array<{ number: number; title: string; url: string }> = [];
+        if (target.provider === "github" && target.kind === "new_issue" && target.repo && options?.listOpenIssues) {
+          const [owner, repo] = target.repo.split("/");
+          openIssues = await options.listOpenIssues(owner, repo).catch(() => []);
+        }
+        const warnings = findActionWarnings({ target, toolName, requestedByUserId: requestedBy?.userId, existing, openIssues });
+        const runAs = options?.runAs;
         const action = await db.createPendingAction({
           workspaceId,
           conversationId,
-          toolName: tool.definition.function.name,
+          toolName,
           description,
           preview,
           args,
           requestedByUserId: requestedBy?.userId,
           requestedByName: requestedBy?.name,
           agentKind: agentKind ?? null,
+          runAsKind: runAs?.via ?? "user",
+          runAsUserId: runAs ? runAs.userId : requestedBy?.userId ?? null,
+          runAsAccount: runAs?.account ?? null,
+          target,
+          warnings,
         });
-        rooms.broadcast(`${workspaceId}:${conversationId}`, { type: "pending_action", action });
+        rooms.broadcast(`${workspaceId}:${conversationId}`, { type: "pending_action", action: { ...action, runAsAvailable: true } });
         await db.notifyWorkspaceMembers({
           workspaceId,
           conversationId,
           kind: "decision_needed",
-          text: `Decision needed: ${description}`,
+          text: `Decision needed: ${description}${warnings.length ? ` (${warnings.length} possible duplicate${warnings.length === 1 ? "" : "s"})` : ""}`,
           priority: "high",
           resourceType: "action",
           resourceId: action.id,
@@ -191,17 +310,40 @@ export function wrapForProposal(
           actorType: "agent",
           actorName: "Agent",
           summary: `Agent prepared an action for review${requestedBy?.name ? ` (requested by ${requestedBy.name})` : ""}: ${description}`,
-          metadata: { actionId: action.id, toolName: action.toolName, requestedByUserId: requestedBy?.userId ?? null, requestedByName: requestedBy?.name ?? null },
+          metadata: { actionId: action.id, toolName: action.toolName, requestedByUserId: requestedBy?.userId ?? null, requestedByName: requestedBy?.name ?? null, target: target.label, repo: target.repo ?? null, warnings: warnings.length },
         });
         return {
           status: "awaiting_user_confirmation",
           actionId: action.id,
           description,
-          note: "This has NOT happened yet. A human in the chat must confirm it from the card now shown in the UI before it runs. Do not tell the user it's done -- tell them what you're proposing and that it needs their confirmation.",
+          ...(warnings.length ? { possibleDuplicates: warnings.map((warning) => warning.message) } : {}),
+          note: `This has NOT happened yet. A human in the chat must confirm it from the card now shown in the UI before it runs. Do not tell the user it's done -- tell them what you're proposing and that it needs their confirmation.${warnings.length ? " Mention the possible duplicates listed above in one short sentence so the team can decide." : ""}`,
         };
       },
     };
   });
+}
+
+/** Adds runAsAvailable: whether the member the action runs as still has a usable connection. */
+export async function withRunAsAvailability(workspaceId: string, deps: CreateServerDeps, actions: PendingAction[]): Promise<PendingAction[]> {
+  if (!actions.some((action) => action.status === "pending")) return actions;
+  const integrations = await db.listIntegrations(workspaceId);
+  const members = new Set((await db.listWorkspaceMembers(workspaceId)).map((member) => member.id));
+  const api = teamApiFor(deps);
+  return actions.map((action) => {
+    if (action.status !== "pending") return action;
+    const provider = providerForTool(action.toolName, action.agentKind);
+    if (action.runAsKind === "app") return { ...action, runAsAvailable: api.app.configured() };
+    const userId = action.runAsUserId ?? action.requestedByUserId;
+    if (!userId) return { ...action, runAsAvailable: true };
+    const connected = integrations.some((integration) => integration.type === provider && integration.ownerUserId === userId);
+    return { ...action, runAsAvailable: connected && members.has(userId) };
+  });
+}
+
+/** A link to what a confirmed action created or changed, when the provider returned one. */
+function resultUrl(resultText: string): string | null {
+  return resultText.match(/https:\/\/github\.com\/[^"\s\\]+/)?.[0] ?? null;
 }
 
 export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms: RoomRegistry): void {
@@ -212,7 +354,7 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
     if (!UUID_RE.test(conversationId)) return res.status(400).json({ error: "valid conversationId is required" });
     if (!(await db.getWorkspaceRole(workspaceId, req.user!.id))) return res.status(403).json({ error: "You do not have permission to perform this action." });
     const onlyPending = req.query.status !== "all";
-    res.json(await db.listPendingActions(workspaceId, conversationId, onlyPending));
+    res.json(await withRunAsAvailability(workspaceId, deps, await db.listPendingActions(workspaceId, conversationId, onlyPending)));
   });
 
   app.post("/workspaces/:id/actions/:actionId/confirm", (req: Request, res: Response) => {
@@ -245,10 +387,12 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
       return;
     }
     const actorName = req.user!.displayName;
+    const roomId = `${workspaceId}:${action.conversationId}`;
+    const watchers = () => [req.user!.id, ...rooms.participants(roomId).flatMap((participant) => (participant.userId ? [participant.userId] : []))];
 
     if (intent === "cancelled") {
       const resolved = await db.resolvePendingAction({ workspaceId, id: actionId, status: "cancelled" });
-      rooms.broadcast(`${workspaceId}:${action.conversationId}`, { type: "pending_action_update", action: resolved });
+      rooms.broadcast(roomId, { type: "pending_action_update", action: resolved });
       const message = await db.insertMessage({
         workspaceId,
         conversationId: action.conversationId,
@@ -256,13 +400,13 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
         authorName: "System",
         content: `${actorName} cancelled: ${action.description}`,
       });
-      rooms.broadcast(`${workspaceId}:${action.conversationId}`, { type: "message", message });
+      rooms.broadcast(roomId, { type: "message", message });
       await db.notifyWorkspaceMembers({
         workspaceId,
         conversationId: action.conversationId,
         kind: "action_completed",
         text: `${actorName} cancelled: ${action.description}`,
-        excludeUserIds: [req.user!.id, ...rooms.participants(`${workspaceId}:${action.conversationId}`).flatMap((participant) => participant.userId ? [participant.userId] : [])],
+        excludeUserIds: watchers(),
       });
       await db.recordAuditEvent({
         workspaceId,
@@ -277,9 +421,34 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
       return;
     }
 
-    const { tools } = await buildToolsForWorkspace(workspaceId, deps, action.requestedByUserId ?? req.user?.id);
-    const tool = tools.find((t) => t.definition.function.name === action.toolName);
+    // Run-as rule: an approved action runs with the requester's own
+    // connection (or the workspace GitHub App for automation). When that is
+    // no longer usable, the approver may choose to run it as themselves.
+    const provider = providerForTool(action.toolName, action.agentKind);
+    const runAsMe = req.body?.runAs === "me";
+    const runAsApp = !runAsMe && action.runAsKind === "app";
+    const runUserId = runAsMe ? req.user!.id : runAsApp ? undefined : action.runAsUserId ?? action.requestedByUserId ?? req.user!.id;
+    const built = await buildToolsForWorkspace(workspaceId, deps, runUserId, { githubVia: runAsApp ? "app" : "user" });
+    const repoBlocked = (tools: WorkspaceTools) =>
+      provider === "github" &&
+      Boolean(action.target?.repo) &&
+      tools.githubContext?.repos.some((repository) => `${repository.owner}/${repository.repo}`.toLowerCase() === action.target!.repo!.toLowerCase() && repository.access === "none");
+    const tool = repoBlocked(built) ? undefined : built.tools.find((t) => t.definition.function.name === action.toolName);
     if (!tool) {
+      // Offer "Run as me" instead of failing when the approver's own
+      // connection can do it. The action stays pending until they choose.
+      if (!runAsMe && runUserId !== req.user!.id) {
+        const mine = await buildToolsForWorkspace(workspaceId, deps, req.user!.id);
+        if (!repoBlocked(mine) && mine.tools.some((t) => t.definition.function.name === action.toolName)) {
+          const who = runAsApp ? "The workspace GitHub App" : `${action.runAsName ?? action.requestedByName ?? "The requester"}'s ${PROVIDER_LABELS[provider]} connection`;
+          res.status(409).json({
+            error: `${who} can no longer run this action. You can run it as yourself${formatAccount(provider, mine.accounts[provider]?.account) ? ` (${formatAccount(provider, mine.accounts[provider]?.account)})` : ""} instead.`,
+            code: "run_as_unavailable",
+            canRunAsMe: true,
+          });
+          return;
+        }
+      }
       console.error(
         `[actions] workspace ${workspaceId}: confirm failed for action ${actionId} (${action.toolName}) -- integration no longer connected`
       );
@@ -289,12 +458,11 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
         status: "failed",
         result: "The integration this action needed is no longer connected.",
       });
-      rooms.broadcast(`${workspaceId}:${action.conversationId}`, { type: "pending_action_update", action: resolved });
+      rooms.broadcast(roomId, { type: "pending_action_update", action: resolved });
       // Without this, the card just silently vanishes from the UI (it's no
       // longer "pending") and nobody -- neither the humans in the room nor
       // the agent's own next-turn history -- ever learns the confirm
-      // actually failed. See the same reasoning on the catch block below,
-      // which hit this exact silent-failure shape live.
+      // actually failed.
       const failureMessage = await db.insertMessage({
         workspaceId,
         conversationId: action.conversationId,
@@ -302,7 +470,7 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
         authorName: "System",
         content: `${actorName} tried to confirm "${action.description}", but it failed: the integration this action needed is no longer connected.`,
       });
-      rooms.broadcast(`${workspaceId}:${action.conversationId}`, { type: "message", message: failureMessage });
+      rooms.broadcast(roomId, { type: "message", message: failureMessage });
       await db.recordAuditEvent({
         workspaceId,
         eventType: "action.failed",
@@ -316,19 +484,26 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
       return;
     }
 
+    const executed = built.accounts[provider];
+    const executedAccount = formatAccount(provider, executed?.account);
+    const executedAsName = runAsApp ? "the workspace GitHub App" : runAsMe ? actorName : action.runAsName ?? action.requestedByName ?? actorName;
     try {
       const result = await tool.execute(action.args);
       const resultText = typeof result === "string" ? result : JSON.stringify(result);
+      await db.setActionExecutedAs(workspaceId, actionId, runAsApp ? null : runUserId ?? null, executed?.account ?? null);
       const resolved = await db.resolvePendingAction({ workspaceId, id: actionId, status: "confirmed", result: resultText });
-      rooms.broadcast(`${workspaceId}:${action.conversationId}`, { type: "pending_action_update", action: resolved });
+      rooms.broadcast(roomId, { type: "pending_action_update", action: resolved });
+      const ranAs = runAsMe
+        ? ` It ran as ${actorName}${executedAccount ? ` (${executedAccount})` : ""} because ${action.runAsName ?? action.requestedByName ?? "the requester"}'s connection was unavailable.`
+        : executedAccount ? ` Ran as ${executedAsName} (${executedAccount}).` : "";
       const message = await db.insertMessage({
         workspaceId,
         conversationId: action.conversationId,
         role: "system",
         authorName: "System",
-        content: `${actorName} confirmed: ${action.description}`,
+        content: `${actorName} confirmed: ${action.description}.${ranAs}`,
       });
-      rooms.broadcast(`${workspaceId}:${action.conversationId}`, { type: "message", message });
+      rooms.broadcast(roomId, { type: "message", message });
       // A click acknowledgement only proves someone approved the action;
       // it does not prove the provider call finished. Publish this separate
       // agent message only after execute() succeeds, so a later question
@@ -340,8 +515,9 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
         role: "agent",
         authorName: completionAgentFor(action.agentKind, action.toolName),
         content: `The requested action has completed: ${action.description}.`,
+        provenance: { provider, via: runAsApp ? "app" : "user", actedAsUserId: runAsApp ? null : runUserId ?? null, actedAsName: executedAsName, account: executed?.account ?? null, ...(action.target?.repo ? { repos: [action.target.repo] } : {}) },
       });
-      rooms.broadcast(`${workspaceId}:${action.conversationId}`, { type: "message", message: completionMessage });
+      rooms.broadcast(roomId, { type: "message", message: completionMessage });
       // Members who are not watching this conversation learn the write
       // actually happened (the cancel branch above sends the matching
       // "cancelled" notification).
@@ -350,30 +526,34 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
         conversationId: action.conversationId,
         kind: "action_completed",
         text: `${actorName} confirmed and completed: ${action.description}`,
-        excludeUserIds: [req.user!.id, ...rooms.participants(`${workspaceId}:${action.conversationId}`).flatMap((participant) => participant.userId ? [participant.userId] : [])],
+        excludeUserIds: watchers(),
       });
-      await db.recordAuditEvent({
+      // One line for team awareness: whose agent changed what, and where.
+      const requester = action.requestedByName ?? executedAsName;
+      const activity = action.target
+        ? `${requester}'s agent made a ${action.target.kind === "comment" ? `comment on ${action.target.label}` : action.target.kind.startsWith("new_") ? action.target.label : `change to ${action.target.label}`}${requester === actorName ? "" : ` (approved by ${actorName})`}`
+        : `${actorName} confirmed: ${action.description}`;
+      const url = resultUrl(resultText);
+      const event = await db.recordAuditEvent({
         workspaceId,
         eventType: "action.confirmed",
         actorType: "user",
         actorUserId: req.user?.id ?? null,
         actorName,
         summary: `${actorName} confirmed: ${action.description}`,
-        metadata: { actionId, toolName: action.toolName },
+        metadata: { actionId, toolName: action.toolName, provider, target: action.target?.label ?? null, repo: action.target?.repo ?? null, executedAs: executedAccount ?? executedAsName, activity, url },
       });
+      const teamActivity: TeamActivity = { id: event.id, source: "nexus", actorName, summary: activity, repo: action.target?.repo ?? null, url, createdAt: event.createdAt };
+      rooms.broadcast(workspaceId, { type: "team_activity", activity: teamActivity });
       res.json(resolved);
     } catch (err) {
-      // Found live: a failed confirm (e.g. Docker/the GitHub MCP container
-      // not reachable, a stale token, GitHub rejecting the write) used to
-      // resolve the action to "failed" and stop there -- no chat message,
-      // no server log. The card disappears (correctly, it's resolved), but
-      // that reads to a human as "it must have worked", and the agent has
-      // no way to know its own proposal failed, so it just repeats its
-      // generic "please confirm" line forever. Both gaps fixed here.
+      // A failed confirm (e.g. the GitHub MCP container not reachable, a
+      // stale token, GitHub rejecting the write) resolves the action to
+      // "failed", posts why in the room, and records it.
       const failureReason = errMessage(err);
       console.error(`[actions] workspace ${workspaceId}: confirm failed for action ${actionId} (${action.toolName}):`, failureReason);
       const resolved = await db.resolvePendingAction({ workspaceId, id: actionId, status: "failed", result: failureReason });
-      rooms.broadcast(`${workspaceId}:${action.conversationId}`, { type: "pending_action_update", action: resolved });
+      rooms.broadcast(roomId, { type: "pending_action_update", action: resolved });
       const failureMessage = await db.insertMessage({
         workspaceId,
         conversationId: action.conversationId,
@@ -381,7 +561,7 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
         authorName: "System",
         content: `${actorName} tried to confirm "${action.description}", but it failed: ${failureReason}`,
       });
-      rooms.broadcast(`${workspaceId}:${action.conversationId}`, { type: "message", message: failureMessage });
+      rooms.broadcast(roomId, { type: "message", message: failureMessage });
       await db.recordAuditEvent({
         workspaceId,
         eventType: "action.failed",

@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChatMessage, Participant, PendingAction } from "@mai-chat/shared-types";
+import type { ChatMessage, Participant, PendingAction, TeamActivity } from "@mai-chat/shared-types";
 import { CHAT_SERVER_WS_URL } from "./config";
-import { listMessages, listPendingActions } from "./api";
+import { listMessages, listPendingActions, listTeamActivity } from "./api";
 
 export type ConnectionStatus = "connecting" | "open" | "closed";
 
@@ -17,13 +17,15 @@ interface ServerEvent {
     | "error"
     | "pending_action"
     | "pending_action_update"
-    | "agent_status";
+    | "agent_status"
+    | "team_activity";
   messages?: ChatMessage[];
   message?: ChatMessage;
   participants?: Participant[];
   error?: string;
   action?: PendingAction;
   status?: "busy" | "idle";
+  activity?: TeamActivity;
 }
 
 export interface WorkspaceChatState {
@@ -46,6 +48,9 @@ export interface WorkspaceChatState {
   // next successful send.
   sendError: string | null;
   historyLoaded: boolean;
+  // What teammates' agents and GitHub did recently in this workspace,
+  // newest first; updated live.
+  teamActivity: TeamActivity[];
   sendMessage: (
     content: string,
     agentKind?: "project" | "github" | "slack" | "linear" | "notion" | "figma",
@@ -76,6 +81,7 @@ export function useWorkspaceChat(
   const [agentBusy, setAgentBusy] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [teamActivity, setTeamActivity] = useState<TeamActivity[]>([]);
   const [generation, setGeneration] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
 
@@ -155,6 +161,9 @@ export function useWorkspaceChat(
       } else if (parsed.type === "pending_action_update" && parsed.action) {
         const updated = parsed.action;
         setPendingActions((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      } else if (parsed.type === "team_activity" && parsed.activity) {
+        const incoming = parsed.activity;
+        setTeamActivity((current) => mergeActivity(current, [incoming]));
       } else if (parsed.type === "agent_status" && parsed.status) {
         setAgentBusy(parsed.status === "busy");
       } else if (parsed.type === "error" && parsed.error) {
@@ -186,6 +195,23 @@ export function useWorkspaceChat(
       socketRef.current = null;
     };
   }, [workspaceId, conversationId, displayName, generation]);
+
+  // Team activity belongs to the workspace, not one conversation.
+  useEffect(() => {
+    if (!workspaceId) return;
+    let active = true;
+    setTeamActivity([]);
+    listTeamActivity(workspaceId)
+      .then((items) => {
+        if (active) setTeamActivity((live) => mergeActivity(live, items));
+      })
+      .catch(() => {
+        // Optional context; the chat works without it.
+      });
+    return () => {
+      active = false;
+    };
+  }, [workspaceId]);
 
   useEffect(() => {
     if (conversationId) setUnreadConversationIds((current) => current.filter((id) => id !== conversationId));
@@ -228,7 +254,15 @@ export function useWorkspaceChat(
     agentBusy,
     sendError,
     historyLoaded,
+    teamActivity,
     sendMessage,
     reconnect,
   };
+}
+
+/** Newest first, one entry per id, at most 20. */
+function mergeActivity(current: TeamActivity[], incoming: TeamActivity[]): TeamActivity[] {
+  const byId = new Map<string, TeamActivity>();
+  for (const item of [...incoming, ...current]) if (!byId.has(item.id)) byId.set(item.id, item);
+  return [...byId.values()].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, 20);
 }

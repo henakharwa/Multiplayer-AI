@@ -1200,3 +1200,184 @@
   cursor: progress;
   text-decoration: none;
 }
+
+/* Workspace repositories: the shared list every member's GitHub agent uses. */
+.team-github-panel {
+  margin-bottom: 20px;
+  padding: 18px 20px;
+  border: 1px solid var(--border-tint);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.team-github-panel h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.team-github-repos {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.team-github-repo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.team-github-repo-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.team-github-repo-name {
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.team-github-badge,
+.team-github-access {
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.team-github-access.write {
+  background: #e8f6ee;
+  color: #1f7a4a;
+}
+
+.team-github-access.read,
+.team-github-access.unknown,
+.team-github-access.not_connected {
+  background: #fdf3e2;
+  color: #8a5a10;
+}
+
+.team-github-access.none {
+  background: #fdecec;
+  color: #b42318;
+}
+
+.team-github-events {
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.team-github-repo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.team-github-repo-actions .text-button,
+.team-github-setup-values .text-button {
+  font-size: 12px;
+}
+
+.text-button.danger {
+  color: #b42318;
+}
+
+.team-github-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.team-github-add input {
+  flex: 1 1 260px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--border-tint);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.team-github-add .btn {
+  width: auto;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.team-github-notice {
+  margin: 10px 0 0;
+  color: #1f7a4a;
+  font-size: 12.5px;
+}
+
+.team-github-events-setup {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.team-github-events-setup summary {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.team-github-setup-values {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.team-github-setup-values div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.team-github-setup-values dt {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.team-github-setup-values dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.team-github-setup-values code {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .team-github-setup-values div {
+    grid-template-columns: 1fr;
+  }
+}

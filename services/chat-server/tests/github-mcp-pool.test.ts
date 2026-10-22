@@ -102,6 +102,15 @@ describe("getGithubMcpClient", () => {
     expect(connectMock).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps one container per account in a workspace, so members taking turns never close each other's", async () => {
+    const hena = await getGithubMcpClient("ws-7", { token: "hena-token", accountKey: "user-hena" });
+    const stevens = await getGithubMcpClient("ws-7", { token: "stevens-token", accountKey: "user-stevens" });
+    expect(await getGithubMcpClient("ws-7", { token: "hena-token", accountKey: "user-hena" })).toBe(hena);
+    expect(await getGithubMcpClient("ws-7", { token: "stevens-token", accountKey: "user-stevens" })).toBe(stevens);
+    expect(connectMock).toHaveBeenCalledTimes(2);
+    expect(closeMock).not.toHaveBeenCalled();
+  });
+
   it("replaces the container when the workspace's token changes", async () => {
     await getGithubMcpClient("ws-6", { token: "old-token" });
     await getGithubMcpClient("ws-6", { token: "new-token" });

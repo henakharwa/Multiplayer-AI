@@ -1,0 +1,13 @@
+DROP INDEX IF EXISTS pending_actions_workspace_status_idx;
+ALTER TABLE pending_actions DROP COLUMN IF EXISTS executed_as_account;
+ALTER TABLE pending_actions DROP COLUMN IF EXISTS executed_as_user_id;
+ALTER TABLE pending_actions DROP COLUMN IF EXISTS warnings;
+ALTER TABLE pending_actions DROP COLUMN IF EXISTS target;
+ALTER TABLE pending_actions DROP COLUMN IF EXISTS run_as_account;
+ALTER TABLE pending_actions DROP COLUMN IF EXISTS run_as_user_id;
+ALTER TABLE pending_actions DROP COLUMN IF EXISTS run_as_kind;
+ALTER TABLE messages DROP COLUMN IF EXISTS provenance;
+ALTER TABLE integrations DROP COLUMN IF EXISTS account_login;
+DROP TABLE IF EXISTS github_webhook_deliveries;
+DROP TABLE IF EXISTS workspace_github_webhooks;
+DROP TABLE IF EXISTS workspace_repositories;

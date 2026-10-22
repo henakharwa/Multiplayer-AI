@@ -23,6 +23,12 @@ import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotoc
 // connected.
 export interface GithubMcpOptions {
   token: string;
+  /**
+   * Which account in the workspace this server acts as (a member's user id,
+   * or "app"). Each account keeps its own process, so members taking turns
+   * never restart -- or close -- one another's server mid-call.
+   */
+  accountKey?: string;
   /** ghcr.io/github/github-mcp-server by default -- override to pin a specific tag/digest. */
   image?: string;
   /** GITHUB_TOOLSETS value, e.g. "context,repos,issues,pull_requests". Comma-separated toolset names, or "all". */
@@ -37,6 +43,22 @@ interface PoolEntry {
   fingerprint: string;
   client: Client;
   close: () => Promise<void>;
+  lastUsedAt: number;
+}
+
+// Several members per workspace each get a process; close ones idle for a
+// while, and cap the total so a busy server cannot accumulate containers.
+const IDLE_CLOSE_MS = 30 * 60_000;
+const MAX_POOLED = 24;
+
+function evictIdle(now = Date.now()): void {
+  const entries = [...pool.entries()].sort((a, b) => a[1].lastUsedAt - b[1].lastUsedAt);
+  for (const [key, entry] of entries) {
+    if (now - entry.lastUsedAt > IDLE_CLOSE_MS || pool.size > MAX_POOLED) {
+      pool.delete(key);
+      void entry.close().catch(() => {});
+    }
+  }
 }
 
 const pool = new Map<string, PoolEntry>();
@@ -74,12 +96,17 @@ function fingerprintOf(opts: GithubMcpOptions): string {
 // change.
 export async function getGithubMcpClient(workspaceId: string, opts: GithubMcpOptions): Promise<Client> {
   const fingerprint = fingerprintOf(opts);
-  const existing = pool.get(workspaceId);
-  if (existing && existing.fingerprint === fingerprint) return existing.client;
+  const poolKey = opts.accountKey ? `${workspaceId}:${opts.accountKey}` : workspaceId;
+  const existing = pool.get(poolKey);
+  if (existing && existing.fingerprint === fingerprint) {
+    existing.lastUsedAt = Date.now();
+    return existing.client;
+  }
   if (existing) {
-    pool.delete(workspaceId);
+    pool.delete(poolKey);
     await existing.close().catch(() => {});
   }
+  evictIdle();
 
   const image = nonEmpty(opts.image) ?? DEFAULT_GITHUB_MCP_IMAGE;
   // In production images, use GitHub's official MCP binary directly. Local
@@ -140,16 +167,20 @@ export async function getGithubMcpClient(workspaceId: string, opts: GithubMcpOpt
   }
   console.log(`[timing] GitHub MCP container start (docker run, image "${image}") took ${Date.now() - connectStart}ms`);
 
-  pool.set(workspaceId, { fingerprint, client, close: () => transport.close() });
+  pool.set(poolKey, { fingerprint, client, close: () => transport.close(), lastUsedAt: Date.now() });
   return client;
 }
 
 /** Closes and forgets one workspace's MCP server container, if it has one. */
 export async function closeGithubMcpClient(workspaceId: string): Promise<void> {
-  const existing = pool.get(workspaceId);
-  if (!existing) return;
-  pool.delete(workspaceId);
-  await existing.close().catch(() => {});
+  const keys = [...pool.keys()].filter((key) => key === workspaceId || key.startsWith(`${workspaceId}:`));
+  await Promise.all(
+    keys.map(async (key) => {
+      const existing = pool.get(key);
+      pool.delete(key);
+      await existing?.close().catch(() => {});
+    })
+  );
 }
 
 /** Closes every pooled MCP server container -- for graceful shutdown and test teardown. */

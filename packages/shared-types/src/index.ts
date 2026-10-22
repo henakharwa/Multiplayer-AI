@@ -112,6 +112,22 @@ export interface ChatMessage {
   // mentions.
   mentionsAgent: boolean;
   mentionedUserIds: string[];
+  // Which account and repositories an agent reply actually used, so a
+  // shared conversation shows whose access answered each question. Set only
+  // on agent replies that called a provider tool.
+  provenance?: MessageProvenance | null;
+}
+
+export interface MessageProvenance {
+  provider: IntegrationType;
+  // "user": the member's own connection; "app": the workspace GitHub App.
+  via: "user" | "app";
+  actedAsUserId: string | null;
+  actedAsName: string;
+  // Provider account, e.g. a GitHub username ("octocat").
+  account: string | null;
+  // GitHub repositories the reply read from ("owner/repo").
+  repos?: string[];
 }
 
 export type IntegrationType = "github" | "slack" | "linear" | "notion" | "figma";
@@ -184,6 +200,11 @@ export interface WorkspaceWorkflow {
   /** Approval checkpoint: the run must stop for review before proposing an external change. */
   requiresApproval: boolean;
   ownerUserId: string | null;
+  // Display name of the owner, and whether they are still a member. A
+  // workflow whose owner left runs through the workspace GitHub App when one
+  // is installed; otherwise an Admin can take it over.
+  ownerName?: string | null;
+  ownerIsMember?: boolean;
   nextRunAt: string | null;
   lastRunAt: string | null;
   lastRunStatus: WorkflowRunStatus | null;
@@ -373,6 +394,8 @@ export interface GithubIntegrationConfig {
   // at once instead.
   owner?: string;
   repo?: string;
+  // GitHub username behind this connection ("octocat"), when known.
+  accountLogin?: string;
   // The token itself is never returned to the client after it's saved --
   // packages/db's read APIs omit it; only the server-side agent/integration
   // code ever sees the real value.
@@ -642,6 +665,87 @@ export interface PendingAction {
   requestedByUserId?: string | null;
   requestedByName?: string | null;
   agentKind?: "project" | "github" | "slack" | "linear" | "notion" | "figma" | null;
+  // Who the action runs as when approved. "user": the requester's own
+  // connection (the default); "app": the workspace GitHub App (workflow runs
+  // whose owner has no usable connection).
+  runAsKind?: "user" | "app";
+  runAsUserId?: string | null;
+  runAsName?: string | null;
+  // Provider account it will act as, e.g. "@octocat" on GitHub.
+  runAsAccount?: string | null;
+  // False when the run-as member no longer has a usable connection; the
+  // approver can then run it as themselves.
+  runAsAvailable?: boolean;
+  target?: ActionTarget | null;
+  // Possible duplicates or conflicts found when the action was proposed.
+  warnings?: ActionWarning[];
+  executedAsUserId?: string | null;
+  executedAsAccount?: string | null;
+}
+
+export interface ActionTarget {
+  provider: IntegrationType;
+  // Stable identity used to spot two actions on the same thing.
+  key: string;
+  // Short human label, e.g. "issue #14 in acme/web".
+  label: string;
+  kind: string;
+  repo?: string;
+  number?: number;
+  title?: string;
+  path?: string;
+  branch?: string;
+  channel?: string;
+}
+
+export interface ActionWarning {
+  kind: "pending_duplicate" | "recent_duplicate" | "similar_issue" | "similar_pending";
+  message: string;
+  url?: string;
+  actionId?: string;
+}
+
+// A repository the whole workspace works on. Each member's agent reaches it
+// through that member's own GitHub account.
+export interface WorkspaceRepository {
+  id: string;
+  workspaceId: string;
+  owner: string;
+  repo: string;
+  fullName: string;
+  isDefault: boolean;
+  addedByUserId: string | null;
+  addedByName: string | null;
+  webhookId: number | null;
+  lastEventAt: string | null;
+  createdAt: string;
+  // For the member viewing the list: what their own GitHub account can do.
+  myAccess?: "write" | "read" | "none" | "not_connected" | "unknown";
+  // Whether the workspace GitHub App is installed on this repository
+  // (null when no GitHub App is configured on the server).
+  appInstalled?: boolean | null;
+}
+
+export interface WorkspaceGithubSetup {
+  // Repository webhook endpoint for this workspace (content type JSON).
+  webhookUrl: string;
+  // Shown to Admins only.
+  webhookSecret?: string;
+  events: string[];
+  lastDeliveryAt: string | null;
+  lastEvent: string | null;
+  app: { configured: boolean; installUrl: string | null };
+}
+
+// One recent thing a teammate (or GitHub itself) did, shown live in chat.
+export interface TeamActivity {
+  id: string;
+  source: "nexus" | "github";
+  actorName: string;
+  summary: string;
+  repo: string | null;
+  url: string | null;
+  createdAt: string;
 }
 
 // -- Action audit trail (docs/spec.md Phase 2: "who asked for what, what
@@ -695,7 +799,12 @@ export type AuditEventType =
   // recorded so a removed or hidden chat always has an attributable trail.
   | "conversation.archived"
   | "conversation.restored"
-  | "conversation.deleted";
+  | "conversation.deleted"
+  // Workspace repository list changes and verified GitHub webhook events.
+  | "repository.added"
+  | "repository.removed"
+  | "repository.updated"
+  | "github.event";
 
 export interface AuditEvent {
   id: string;

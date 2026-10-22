@@ -9,6 +9,7 @@ import { defaultSlackOAuthDeps } from "./slack-oauth.js";
 import { createMailer, defaultMailerConfig } from "./mailer.js";
 import type { GithubClient, SlackClient } from "@mai-chat/integrations";
 import type { ToolExecutor } from "./tools.js";
+import { createGithubTeamApi, type GithubTeamApi } from "./github-api.js";
 import type { RunAgentTurnInput, RunAgentTurnResult } from "./agent.js";
 import type { UserAuthDeps } from "./auth.js";
 import type { Mailer } from "./mailer.js";
@@ -29,7 +30,9 @@ export interface CreateServerDeps {
   // converted to this project's ToolExecutor shape. Injectable so tests
   // can supply canned tools without spawning a real subprocess -- see
   // github-mcp-pool.ts / mcp-tools.ts for the real implementation.
-  githubMcpToolsFactory: (opts: { workspaceId: string; token: string }) => Promise<ToolExecutor[]>;
+  // accountKey separates members of one workspace (or the workspace
+  // GitHub App), so each account keeps its own server process.
+  githubMcpToolsFactory: (opts: { workspaceId: string; token: string; accountKey?: string }) => Promise<ToolExecutor[]>;
   // The agent's actual Slack tool surface -- connects to (or reuses a
   // connection to) Slack's own official MCP server with this workspace's
   // stored OAuth access token and returns its tools converted to this
@@ -57,6 +60,10 @@ export interface CreateServerDeps {
   // Checks that a Figma token can open a team before it is saved as the
   // team the agent may browse. Defaults to figma-tools.ts's listFigmaTeamProjects.
   figmaTeamLoader?: (token: string, teamId: string) => Promise<{ teamName?: string }>;
+  // GitHub account names, repository access, duplicate checks, webhooks and
+  // the workspace GitHub App. Omitted in tests, which then never reach
+  // github.com (access is "unknown" and no App is configured).
+  githubTeamApi?: GithubTeamApi;
 }
 
 // Real implementation of githubMcpToolsFactory above -- spawns (or, for an
@@ -67,8 +74,9 @@ export interface CreateServerDeps {
 // server" section. GITHUB_MCP_DOCKER_IMAGE can override the image (e.g.
 // to pin a version) if left unset it defaults to GitHub's own published
 // ghcr.io/github/github-mcp-server.
-export async function defaultGithubMcpToolsFactory(opts: { workspaceId: string; token: string }): Promise<ToolExecutor[]> {
+export async function defaultGithubMcpToolsFactory(opts: { workspaceId: string; token: string; accountKey?: string }): Promise<ToolExecutor[]> {
   const client = await getGithubMcpClient(opts.workspaceId, {
+    accountKey: opts.accountKey,
     token: opts.token,
     image: process.env.GITHUB_MCP_DOCKER_IMAGE,
     // Render retains a blank variable as an empty string. `??` treats that
@@ -121,6 +129,8 @@ export function defaultSlackOAuthConfig(): SlackOAuthConfig {
   };
 }
 
+let sharedGithubTeamApi: GithubTeamApi | undefined;
+
 export const defaultDeps: CreateServerDeps = {
   githubClientFactory: createGithubClient,
   slackClientFactory: createSlackClient,
@@ -138,4 +148,9 @@ export const defaultDeps: CreateServerDeps = {
     return defaultSlackOAuthConfig();
   },
   slackOAuthDeps: defaultSlackOAuthDeps,
+  // Created on first use, after the environment is loaded; one instance so
+  // its access and App-token caches are shared.
+  get githubTeamApi() {
+    return (sharedGithubTeamApi ??= createGithubTeamApi());
+  },
 };

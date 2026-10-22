@@ -48,6 +48,7 @@ import GithubRepoPickerModal from "../../_components/GithubRepoPickerModal";
 import { useWorkspaceUser } from "../../_components/WorkspaceAuth";
 import { logout } from "../../../lib/api";
 import PendingActionCard from "../../_components/PendingActionCard";
+import { MessageProvenanceLine, TeamActivityStrip } from "../../_components/TeamAwareness";
 import { AccessNotice } from "../../_components/AccessNotice";
 import { useWorkspaceAccess } from "../../../lib/useWorkspaceAccess";
 import EmailVerificationBanner from "../../_components/EmailVerificationBanner";
@@ -1317,6 +1318,8 @@ export default function WorkspaceRoomPage() {
           </Link>
         </section>
 
+        <TeamActivityStrip activity={chat.teamActivity} />
+
         <div className="workspace-chat-scroll" data-testid="message-list">
           {isNewWorkspaceConversation ? (
             <section className="workspace-empty-state">
@@ -1466,6 +1469,7 @@ export default function WorkspaceRoomPage() {
                         chat.participants.map((p) => p.displayName),
                       )}
                     </div>
+                    {isAgent && m.provenance && <MessageProvenanceLine provenance={m.provenance} />}
                   </div>
                 </div>
               );

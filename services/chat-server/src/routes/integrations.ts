@@ -108,6 +108,12 @@ export function registerIntegrationsRoutes({ app, deps, requireRole, requirePerm
     }
     const config = await db.setGithubRepo({ workspaceId, owner, repo, ownerUserId: req.user!.id });
     if (!config) return res.status(404).json({ error: "GitHub isn't connected for this workspace yet." });
+    // The first repository an Admin picks becomes the workspace's default
+    // repository, so a new workspace works without a separate setup step.
+    if ((await db.getWorkspaceRole(workspaceId, req.user!.id)) === "admin" && (await db.listWorkspaceRepositories(workspaceId)).length === 0) {
+      const added = await db.addWorkspaceRepository({ workspaceId, owner, repo, addedByUserId: req.user!.id });
+      if (added) await db.recordAuditEvent({ workspaceId, eventType: "repository.added", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} added ${added.fullName} to the workspace repositories`, metadata: { repo: added.fullName } });
+    }
     res.json(config);
   });
 

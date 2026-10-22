@@ -48,17 +48,17 @@ export async function upsertGithubIntegration(input: {
 // already were (NULL on a first-ever connect), never overwritten with a
 // guess. Distinct from upsertGithubIntegration, which is the pasted-token
 // flow and always sets owner+repo+token together in one step.
-export async function saveGithubOAuthToken(input: { workspaceId: string; token: string; ownerUserId?: string }): Promise<void> {
+export async function saveGithubOAuthToken(input: { workspaceId: string; token: string; ownerUserId?: string; accountLogin?: string | null }): Promise<void> {
   const pool = getPool();
   const encrypted = encryptToken(input.token);
   const accountKey = input.ownerUserId ? `personal:${input.ownerUserId}:github` : "shared";
   const connectionScope = input.ownerUserId ? "personal" : "shared";
   await pool.query(
-    `INSERT INTO integrations (workspace_id, type, encrypted_token, connection_scope, owner_user_id, account_key)
-     VALUES ($1, 'github', $2, $3, $4, $5)
+    `INSERT INTO integrations (workspace_id, type, encrypted_token, connection_scope, owner_user_id, account_key, account_login)
+     VALUES ($1, 'github', $2, $3, $4, $5, $6)
      ON CONFLICT (workspace_id, type, account_key)
-     DO UPDATE SET encrypted_token = $2, connection_scope = $3, owner_user_id = $4, connected_at = now()`,
-    [input.workspaceId, encrypted, connectionScope, input.ownerUserId ?? null, accountKey]
+     DO UPDATE SET encrypted_token = $2, connection_scope = $3, owner_user_id = $4, account_login = COALESCE($6, integrations.account_login), connected_at = now()`,
+    [input.workspaceId, encrypted, connectionScope, input.ownerUserId ?? null, accountKey, input.accountLogin ?? null]
   );
 }
 
@@ -143,7 +143,7 @@ export async function upsertRemoteMcpIntegration(input: { workspaceId: string; t
 export async function listIntegrations(workspaceId: string): Promise<IntegrationConfig[]> {
   const pool = getPool();
   const result = await pool.query(
-    `SELECT i.id, i.type, i.owner, i.repo, i.team_name, i.connection_name, i.connection_scope, i.owner_user_id, i.connected_at, u.display_name AS connected_by_name
+    `SELECT i.id, i.type, i.owner, i.repo, i.team_name, i.connection_name, i.connection_scope, i.owner_user_id, i.connected_at, i.account_login, u.display_name AS connected_by_name
      FROM integrations i LEFT JOIN users u ON u.id = i.owner_user_id WHERE i.workspace_id = $1`,
     [workspaceId]
   );
@@ -159,6 +159,7 @@ export async function listIntegrations(workspaceId: string): Promise<Integration
         connectedByName: row.connected_by_name ?? undefined,
         owner: row.owner ?? undefined,
         repo: row.repo ?? undefined,
+        accountLogin: row.account_login ?? undefined,
         connected: true,
         connectedAt: row.connected_at.toISOString(),
       };

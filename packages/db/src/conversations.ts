@@ -2,11 +2,12 @@
 import type {
   ChatMessage,
   Conversation,
+  MessageProvenance,
   MessageRole } from "@mai-chat/shared-types";
 import { getPool } from "./pool.js";
 
 
-const MESSAGE_COLUMNS = "id, workspace_id, conversation_id, role, author_name, user_id, content, created_at, mentions_agent, mentioned_user_ids";
+const MESSAGE_COLUMNS = "id, workspace_id, conversation_id, role, author_name, user_id, content, created_at, mentions_agent, mentioned_user_ids, provenance";
 
 const CONVERSATION_COLUMNS = "id, workspace_id, title, created_by_user_id, created_at, updated_at, pinned_at, archived_at";
 
@@ -88,11 +89,13 @@ export async function insertMessage(input: {
   // 'agent'/'system' messages, which never parse mentions.
   mentionsAgent?: boolean;
   mentionedUserIds?: string[];
+  // Agent replies only: which account and repositories the reply used.
+  provenance?: MessageProvenance | null;
 }): Promise<ChatMessage> {
   const pool = getPool();
   const result = await pool.query(
-    `INSERT INTO messages (workspace_id, conversation_id, role, author_name, content, user_id, mentions_agent, mentioned_user_ids)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO messages (workspace_id, conversation_id, role, author_name, content, user_id, mentions_agent, mentioned_user_ids, provenance)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING ${MESSAGE_COLUMNS}`,
     [
       input.workspaceId,
@@ -103,6 +106,7 @@ export async function insertMessage(input: {
       input.userId ?? null,
       input.mentionsAgent ?? true,
       input.mentionedUserIds ?? [],
+      input.provenance ? JSON.stringify(input.provenance) : null,
     ]
   );
   await pool.query(
@@ -136,6 +140,7 @@ function toMessage(row: {
   created_at: Date;
   mentions_agent: boolean;
   mentioned_user_ids: string[];
+  provenance?: MessageProvenance | null;
 }): ChatMessage {
   return {
     id: row.id,
@@ -148,5 +153,6 @@ function toMessage(row: {
     createdAt: row.created_at.toISOString(),
     mentionsAgent: row.mentions_agent,
     mentionedUserIds: row.mentioned_user_ids ?? [],
+    ...(row.provenance ? { provenance: row.provenance } : {}),
   };
 }

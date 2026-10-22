@@ -568,7 +568,7 @@
 
 .pending-action-details {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
   margin: 0 0 10px;
 }
@@ -611,6 +611,42 @@
   word-break: break-word;
   max-height: 220px;
   overflow-y: auto;
+}
+
+.pending-action-unavailable {
+  color: var(--danger);
+  font-weight: 650;
+}
+
+/* Possible duplicates found when the action was proposed. */
+.pending-action-warnings {
+  margin: 0 0 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--palette-amber-125);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.pending-action-warnings strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--palette-amber-575);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pending-action-warnings ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.pending-action-warnings a {
+  color: var(--accent);
+  font-weight: 650;
 }
 
 .pending-action-error {
@@ -1152,4 +1188,99 @@
 .agent-delete-button:disabled {
   opacity: 0.55;
   cursor: wait;
+}
+
+/* Under an agent reply: whose account (and which repositories) it used. */
+.msg-provenance {
+  max-width: 100%;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Recent teammate and GitHub activity, above the conversation. */
+.team-activity {
+  margin: 0 22px 8px;
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--accent-soft);
+  font-size: 12.5px;
+}
+
+.team-activity-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.team-activity-source {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--surface, #fff);
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.team-activity-source.github {
+  color: var(--text);
+}
+
+.team-activity-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-activity-text a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 2px;
+}
+
+.team-activity-time {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.team-activity-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+.team-activity-actions .text-button {
+  font-size: 12px;
+}
+
+.team-activity-list {
+  display: grid;
+  gap: 5px;
+  margin: 7px 0 0;
+  padding: 7px 0 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+}
+
+@media (max-width: 680px) {
+  .team-activity {
+    margin: 0 12px 8px;
+  }
+
+  .team-activity-time {
+    display: none;
+  }
 }

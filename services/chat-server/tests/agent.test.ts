@@ -324,6 +324,43 @@ describe("runAgentTurn", () => {
     expect(seenSystemPrompt).toContain("No GitHub repository is connected");
   });
 
+  it("tells the GitHub agent the workspace repositories, whose account it acts as, what it cannot open, and recent team activity", async () => {
+    let seenSystemPrompt = "";
+    const chat: LlmChatFn = async (_config, messages) => {
+      seenSystemPrompt = String(messages[0].content);
+      return { role: "assistant", content: "ok" };
+    };
+    await runAgentTurn({
+      history: [],
+      tools: [],
+      chat,
+      agentKind: "github",
+      githubContext: {
+        owner: "acme",
+        repo: "web",
+        account: "stevens-gh",
+        actingAs: "Stevens",
+        via: "user",
+        workspaceList: true,
+        repos: [
+          { owner: "acme", repo: "web", access: "write", isDefault: true },
+          { owner: "acme", repo: "secret", access: "none" },
+        ],
+      },
+      teamActivity: "- Hena's agent made a comment on #14 in acme/web (5 minutes ago)",
+    });
+    expect(seenSystemPrompt).toContain("- acme/web (default): can read and propose changes");
+    expect(seenSystemPrompt).toContain("- acme/secret: NO ACCESS");
+    expect(seenSystemPrompt).toContain("Stevens's own GitHub account (@stevens-gh)");
+    expect(seenSystemPrompt).toContain('say "Your GitHub account (@stevens-gh) can\'t access acme/secret"');
+    expect(seenSystemPrompt).toContain("Only use the repositories listed above");
+    expect(seenSystemPrompt).toContain("Hena's agent made a comment on #14");
+
+    await runAgentTurn({ history: [], tools: [], chat, agentKind: "github", githubNotice: "This workspace works on acme/web, but Casey has not connected their GitHub account in this workspace." });
+    expect(seenSystemPrompt).toContain("Casey has not connected their GitHub account");
+    expect(seenSystemPrompt).not.toContain("No GitHub repository is connected");
+  });
+
   it("includes trusted action status so follow-up questions can report a confirmed action accurately", async () => {
     let seenSystemPrompt = "";
     const chat: LlmChatFn = async (_config, messages) => {

@@ -23,6 +23,7 @@ import {
   listWorkspaceAgents,
   listWorkspaceWorkflows,
   runWorkspaceWorkflow,
+  takeOverWorkflow,
   updateWorkspaceWorkflow,
   type WorkflowInput,
 } from "../../../../lib/api";
@@ -30,8 +31,16 @@ import {
 const triggers: Array<{ value: WorkflowTrigger; label: string; help: string }> = [
   { value: "manual", label: "Manual", help: "Run when a teammate starts it." },
   { value: "schedule", label: "Schedule", help: "Run on a repeating interval." },
-  { value: "github_issue", label: "New GitHub issue", help: "Run when a new issue event arrives." },
-  { value: "github_status", label: "GitHub status change", help: "Run when a status event arrives." },
+  {
+    value: "github_issue",
+    label: "New GitHub issue",
+    help: "Runs when an issue is opened in a workspace repository. Connect GitHub events under Integrations.",
+  },
+  {
+    value: "github_status",
+    label: "GitHub status change",
+    help: "Runs when a CI run or commit status finishes in a workspace repository. Connect GitHub events under Integrations.",
+  },
   { value: "slack_mention", label: "Slack mention", help: "Run when the workspace is mentioned in Slack." },
 ];
 const agentKinds = ["project", "github", "slack", "linear", "notion", "figma"] as const;
@@ -421,8 +430,16 @@ export default function WorkflowsPage() {
                 className={`workflow-card ${selected?.id === workflow.id ? "selected" : ""}`}
                 onClick={() => void select(workflow)}
               >
-                <span className={`workflow-status ${workflow.enabled ? "enabled" : "paused"}`}>
-                  {workflow.lastRunStatus === "failed" ? "Needs attention" : workflow.enabled ? "Active" : "Paused"}
+                <span
+                  className={`workflow-status ${workflow.enabled && workflow.ownerIsMember !== false ? "enabled" : "paused"}`}
+                >
+                  {workflow.ownerIsMember === false
+                    ? "Owner left"
+                    : workflow.lastRunStatus === "failed"
+                      ? "Needs attention"
+                      : workflow.enabled
+                        ? "Active"
+                        : "Paused"}
                 </span>
                 <strong>{workflow.name}</strong>
                 <small>
@@ -910,6 +927,35 @@ export default function WorkflowsPage() {
                 <aside className="workflow-diagnostic">
                   <strong>Last diagnostic</strong>
                   <span>{selected.lastRunError}</span>
+                </aside>
+              )}
+              {selected.ownerIsMember === false && (
+                <aside className="workflow-diagnostic" data-testid="workflow-owner-left">
+                  <strong>Owner left the workspace</strong>
+                  <span>
+                    {selected.ownerName ?? "Its owner"} is no longer a member.{" "}
+                    {selected.agentKind === "github" || selected.agentKind === "project"
+                      ? "It keeps running through the workspace GitHub App when one is installed; otherwise runs fail until someone takes it over."
+                      : "Runs fail until someone takes it over."}
+                  </span>
+                  {canChange && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={async () => {
+                        try {
+                          const updated = await takeOverWorkflow(workspaceId, selected.id);
+                          setSelected(updated);
+                          await refresh();
+                          setNotice(`You now own ${updated.name}. It runs with your connections.`);
+                        } catch (err) {
+                          setError(describeError(err, "Could not take over this workflow."));
+                        }
+                      }}
+                    >
+                      Take over
+                    </button>
+                  )}
                 </aside>
               )}
             </div>

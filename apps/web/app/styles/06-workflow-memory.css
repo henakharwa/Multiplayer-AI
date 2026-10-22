@@ -876,6 +876,13 @@
   font-size: 11px;
 }
 
+.workflow-diagnostic .secondary-button {
+  justify-self: start;
+  margin-top: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+}
+
 @media (max-width: 900px) {
   .workflow-command-center {
     grid-template-columns: repeat(2, minmax(0, 1fr));

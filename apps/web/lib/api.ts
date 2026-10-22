@@ -9,7 +9,11 @@ import type {
   PublicArtifactView,
   PublicDashboardView,
   PublicReleaseNotesView,
+  TeamActivity,
   Workspace,
+  WorkspaceGithubSetup,
+  WorkspaceRepository,
+  WorkspaceWorkflow,
   WorkspaceInvitation,
   WorkspaceMember,
   WorkspaceNotification,
@@ -24,10 +28,13 @@ function authenticatedFetch(input: RequestInfo | URL, init?: RequestInit) {
 export class ApiError extends Error {
   status: number;
   workspace?: Workspace;
-  constructor(status: number, message: string, workspace?: Workspace) {
+  // Machine-readable reason when the server gives one, e.g. "run_as_unavailable".
+  code?: string;
+  constructor(status: number, message: string, workspace?: Workspace, code?: string) {
     super(message);
     this.status = status;
     this.workspace = workspace;
+    this.code = code;
   }
 }
 
@@ -63,7 +70,8 @@ async function parseJsonOrThrow(res: Response): Promise<unknown> {
       typeof body === "object" && body !== null && "workspace" in body
         ? (body as { workspace?: Workspace }).workspace
         : undefined;
-    throw new ApiError(res.status, message, workspace);
+    const code = typeof (body as { code?: unknown }).code === "string" ? (body as { code: string }).code : undefined;
+    throw new ApiError(res.status, message, workspace, code);
   }
   return body;
 }
@@ -846,16 +854,92 @@ export async function listPendingActions(workspaceId: string, conversationId: st
   return (await parseJsonOrThrow(res)) as PendingAction[];
 }
 
-export async function confirmAction(workspaceId: string, actionId: string, actorName: string): Promise<PendingAction> {
+// runAs "me": the approver runs it with their own connection, offered when
+// the requester's connection is no longer usable (ApiError code "run_as_unavailable").
+export async function confirmAction(
+  workspaceId: string,
+  actionId: string,
+  actorName: string,
+  options: { runAs?: "me" } = {},
+): Promise<PendingAction> {
   const res = await authenticatedFetch(
     `${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}/actions/${encodeURIComponent(actionId)}/confirm`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ actorName }),
+      body: JSON.stringify({ actorName, ...(options.runAs ? { runAs: options.runAs } : {}) }),
     },
   );
   return (await parseJsonOrThrow(res)) as PendingAction;
+}
+
+// -- Team GitHub (services/chat-server/src/routes/github-team.ts) --
+
+function workspaceUrl(workspaceId: string, path: string): string {
+  return `${CHAT_SERVER_URL}/workspaces/${encodeURIComponent(workspaceId)}${path}`;
+}
+
+async function postJson(url: string, body: unknown = {}): Promise<unknown> {
+  const res = await authenticatedFetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return parseJsonOrThrow(res);
+}
+
+export async function listWorkspaceRepositories(workspaceId: string): Promise<WorkspaceRepository[]> {
+  return (await parseJsonOrThrow(
+    await authenticatedFetch(workspaceUrl(workspaceId, "/repositories")),
+  )) as WorkspaceRepository[];
+}
+
+export async function addWorkspaceRepository(workspaceId: string, fullName: string): Promise<WorkspaceRepository> {
+  return (await postJson(workspaceUrl(workspaceId, "/repositories"), { fullName })) as WorkspaceRepository;
+}
+
+export async function removeWorkspaceRepository(workspaceId: string, repositoryId: string): Promise<void> {
+  const res = await authenticatedFetch(workspaceUrl(workspaceId, `/repositories/${encodeURIComponent(repositoryId)}`), {
+    method: "DELETE",
+  });
+  if (!res.ok) await parseJsonOrThrow(res);
+}
+
+export async function setDefaultWorkspaceRepository(
+  workspaceId: string,
+  repositoryId: string,
+): Promise<WorkspaceRepository> {
+  return (await postJson(
+    workspaceUrl(workspaceId, `/repositories/${encodeURIComponent(repositoryId)}/default`),
+  )) as WorkspaceRepository;
+}
+
+export async function connectRepositoryEvents(workspaceId: string, repositoryId: string): Promise<WorkspaceRepository> {
+  return (await postJson(
+    workspaceUrl(workspaceId, `/repositories/${encodeURIComponent(repositoryId)}/webhook`),
+  )) as WorkspaceRepository;
+}
+
+export async function getGithubSetup(workspaceId: string): Promise<WorkspaceGithubSetup> {
+  return (await parseJsonOrThrow(
+    await authenticatedFetch(workspaceUrl(workspaceId, "/github/setup")),
+  )) as WorkspaceGithubSetup;
+}
+
+export async function rotateGithubWebhookSecret(workspaceId: string): Promise<{ webhookSecret: string }> {
+  return (await postJson(workspaceUrl(workspaceId, "/github/webhook-secret/rotate"))) as { webhookSecret: string };
+}
+
+export async function listTeamActivity(workspaceId: string): Promise<TeamActivity[]> {
+  return (await parseJsonOrThrow(
+    await authenticatedFetch(workspaceUrl(workspaceId, "/team-activity")),
+  )) as TeamActivity[];
+}
+
+export async function takeOverWorkflow(workspaceId: string, workflowId: string): Promise<WorkspaceWorkflow> {
+  return (await postJson(
+    workspaceUrl(workspaceId, `/workflows/${encodeURIComponent(workflowId)}/take-over`),
+  )) as WorkspaceWorkflow;
 }
 
 export async function cancelAction(workspaceId: string, actionId: string, actorName: string): Promise<PendingAction> {

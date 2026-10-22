@@ -1,12 +1,14 @@
 // Agent-proposed actions awaiting approval.
 import type {
+  ActionTarget,
+  ActionWarning,
   PendingAction,
   PendingActionStatus } from "@mai-chat/shared-types";
 import { getPool } from "./pool.js";
 
 
 const PENDING_ACTION_COLUMNS =
-  "id, workspace_id, conversation_id, tool_name, description, preview, args, status, result, created_at, resolved_at, requested_by_user_id, requested_by_name, agent_kind";
+  "id, workspace_id, conversation_id, tool_name, description, preview, args, status, result, created_at, resolved_at, requested_by_user_id, requested_by_name, agent_kind, run_as_kind, run_as_user_id, run_as_account, target, warnings, executed_as_user_id, executed_as_account";
 
 export async function createPendingAction(input: {
   workspaceId: string;
@@ -20,11 +22,18 @@ export async function createPendingAction(input: {
   requestedByUserId?: string | null;
   requestedByName?: string | null;
   agentKind?: PendingAction["agentKind"];
+  // Who it runs as when approved; defaults to the requester's own connection.
+  runAsKind?: "user" | "app";
+  runAsUserId?: string | null;
+  runAsAccount?: string | null;
+  target?: ActionTarget | null;
+  warnings?: ActionWarning[];
 }): Promise<PendingAction> {
   const pool = getPool();
+  const runAsKind = input.runAsKind ?? "user";
   const result = await pool.query(
-    `INSERT INTO pending_actions (workspace_id, conversation_id, tool_name, description, preview, args, requested_by_user_id, requested_by_name, agent_kind)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO pending_actions (workspace_id, conversation_id, tool_name, description, preview, args, requested_by_user_id, requested_by_name, agent_kind, run_as_kind, run_as_user_id, run_as_account, target, warnings)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING ${PENDING_ACTION_COLUMNS}`,
     [
       input.workspaceId,
@@ -36,9 +45,37 @@ export async function createPendingAction(input: {
       input.requestedByUserId ?? null,
       input.requestedByName ?? null,
       input.agentKind ?? null,
+      runAsKind,
+      runAsKind === "app" ? null : input.runAsUserId === undefined ? input.requestedByUserId ?? null : input.runAsUserId,
+      input.runAsAccount ?? null,
+      input.target ? JSON.stringify(input.target) : null,
+      JSON.stringify(input.warnings ?? []),
     ]
   );
   return toPendingAction(result.rows[0]);
+}
+
+/**
+ * Actions anywhere in the workspace that a new proposal could duplicate:
+ * everything still waiting, plus actions confirmed in the last `hours`.
+ */
+export async function listActionsForConflictCheck(workspaceId: string, hours = 24): Promise<Array<PendingAction & { conversationTitle: string | null }>> {
+  const result = await getPool().query(
+    `SELECT ${PENDING_ACTION_COLUMNS.split(", ").map((column) => `a.${column}`).join(", ")}, c.title AS conversation_title
+     FROM pending_actions a LEFT JOIN conversations c ON c.id = a.conversation_id
+     WHERE a.workspace_id = $1 AND (a.status = 'pending' OR (a.status = 'confirmed' AND a.resolved_at >= now() - ($2::int * interval '1 hour')))
+     ORDER BY a.created_at DESC LIMIT 200`,
+    [workspaceId, hours]
+  );
+  return result.rows.map((row) => ({ ...toPendingAction(row), conversationTitle: row.conversation_title ?? null }));
+}
+
+/** Records which member (or the workspace app) an approved action actually ran as. */
+export async function setActionExecutedAs(workspaceId: string, id: string, executedAsUserId: string | null, executedAsAccount: string | null): Promise<void> {
+  await getPool().query(
+    "UPDATE pending_actions SET executed_as_user_id = $3, executed_as_account = $4 WHERE workspace_id = $1 AND id = $2",
+    [workspaceId, id, executedAsUserId, executedAsAccount]
+  );
 }
 
 export async function getPendingAction(workspaceId: string, id: string): Promise<PendingAction | null> {
@@ -95,6 +132,13 @@ function toPendingAction(row: {
   requested_by_user_id: string | null;
   requested_by_name: string | null;
   agent_kind: PendingAction["agentKind"];
+  run_as_kind?: "user" | "app" | null;
+  run_as_user_id?: string | null;
+  run_as_account?: string | null;
+  target?: ActionTarget | null;
+  warnings?: ActionWarning[] | null;
+  executed_as_user_id?: string | null;
+  executed_as_account?: string | null;
 }): PendingAction {
   return {
     id: row.id,
@@ -111,6 +155,14 @@ function toPendingAction(row: {
     requestedByUserId: row.requested_by_user_id ?? null,
     requestedByName: row.requested_by_name ?? null,
     agentKind: row.agent_kind ?? null,
+    runAsKind: row.run_as_kind ?? "user",
+    runAsUserId: row.run_as_user_id ?? null,
+    runAsName: row.run_as_kind === "app" ? "Nexus GitHub App" : row.requested_by_name ?? null,
+    runAsAccount: row.run_as_account ?? null,
+    target: row.target ?? null,
+    warnings: Array.isArray(row.warnings) ? row.warnings : [],
+    executedAsUserId: row.executed_as_user_id ?? null,
+    executedAsAccount: row.executed_as_account ?? null,
   };
 }
 

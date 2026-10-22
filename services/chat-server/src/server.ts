@@ -10,7 +10,10 @@ import { createPostgresRoomBus, realtimeBusEnabled } from "./realtime-bus.js";
 import { toLlmHistory } from "./history.js";
 import { replyForResolvedActions, stripConfirmationBoilerplate, type AgentKind } from "./agent.js";
 import { resolveLlmConfig } from "./llm-client.js";
-import { buildToolsForWorkspace, wrapForProposal, registerActionRoutes } from "./actions.js";
+import { buildToolsForWorkspace, wrapForProposal, registerActionRoutes, teamApiFor } from "./actions.js";
+import { registerGithubTeamRoutes, registerGithubWebhookRoutes, type GithubEventHandler } from "./routes/github-team.js";
+import { formatTeamActivity, listTeamActivity, summarizeGithubEvent } from "./github-team.js";
+import type { MessageProvenance, TeamActivity } from "@mai-chat/shared-types";
 import { parseMentions } from "./mentions.js";
 import { UUID_RE, paramString, errMessage } from "./http-utils.js";
 import { attachUser, requireAuth, parseSessionToken, registerUserAuthRoutes, type UserAuthConfig } from "./auth.js";
@@ -57,6 +60,9 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   const trustedProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? 0);
   if (Number.isInteger(trustedProxyHops) && trustedProxyHops > 0) app.set("trust proxy", trustedProxyHops);
   app.use(cors({ origin: webAppUrl, credentials: true }));
+  // GitHub webhook receivers verify a signature over the raw request body,
+  // so they are registered before the JSON parser.
+  registerGithubWebhookRoutes({ app, deps });
   app.use(express.json());
   app.use((req, res, next) => {
     const requestId = randomUUID();
@@ -95,7 +101,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   app.use("/workspaces", requireAuth);
   // A malformed entity id can never match a row, so answer 404 up front
   // instead of letting Postgres reject the value as a 500.
-  for (const name of ["taskId", "agentId", "memoryId", "artifactId", "workflowId", "conversationId", "requestId", "userId", "versionId", "invitationId"]) {
+  for (const name of ["taskId", "agentId", "memoryId", "artifactId", "workflowId", "conversationId", "requestId", "userId", "versionId", "invitationId", "repositoryId"]) {
     app.param(name, (req: Request, res: Response, next: NextFunction, value: string) => {
       if (UUID_RE.test(value)) return next();
       res.status(404).json({ error: "not found" });
@@ -159,6 +165,7 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
   registerConversationsRoutes(routeContext);
   registerPreferencesRoutes(routeContext);
   registerIntegrationsRoutes(routeContext);
+  registerGithubTeamRoutes(routeContext);
 
   return app;
 }
@@ -228,7 +235,8 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
   async function runAgentReply(
     workspaceId: string,
     conversationId: string,
-    requestedBy: { userId: string; name: string },
+    // userId is null for a workflow run by the workspace GitHub App after its owner left.
+    requestedBy: { userId: string | null; name: string },
     agentKind: AgentKind,
     configuredAgentId?: string,
     workflowInstructions?: string,
@@ -246,15 +254,24 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     // that's easy to mistake for "the LLM is slow" if you're only
     // watching the chat, not the terminal.
     const buildStart = Date.now();
-    const built = await buildToolsForWorkspace(workspaceId, deps, requestedBy.userId);
+    // Repositories the GitHub tools actually reached this turn (for "Read as @login · owner/repo").
+    const reposUsed = new Set<string>();
+    const built = await buildToolsForWorkspace(workspaceId, deps, requestedBy.userId ?? undefined, {
+      // Workflows may fall back to the workspace GitHub App; chat never does.
+      githubVia: workflowInstructions ? "auto" : "user",
+      onGithubRepoUsed: (fullName) => reposUsed.add(fullName),
+    });
     console.log(`[timing] workspace ${workspaceId}: buildToolsForWorkspace (incl. GitHub MCP container) took ${Date.now() - buildStart}ms`);
     // Read tools run for real from the agent loop; write tools are
     // swapped for proposal-only stand-ins here -- see actions.ts.
     const specialistTools = agentKind === "github" ? built.githubTools : agentKind === "slack" ? built.slackTools : agentKind === "linear" ? built.linearTools : agentKind === "notion" ? built.notionTools : agentKind === "figma" ? built.figmaTools : [];
     // Reviews and checks are runtime read-only. Workflows that explicitly
     // request a write retain proposal tools, never direct write execution.
-    const tools = wrapForProposal(specialistTools, workspaceId, conversationId, rooms, requestedBy, agentKind, {
+    const actingAccount = agentKind === "project" ? undefined : built.accounts[agentKind];
+    const tools = wrapForProposal(specialistTools, workspaceId, conversationId, rooms, requestedBy.userId ? { userId: requestedBy.userId, name: requestedBy.name } : undefined, agentKind, {
       readOnly: workflowReadOnly,
+      runAs: actingAccount,
+      listOpenIssues: built.listOpenIssues,
     });
     // A workflow configured for a specialist is an operational contract: it
     // must have that specialist's connected tool surface. Letting the model
@@ -280,6 +297,9 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       .map((action) => `- ${action.description}: ${action.status}`)
       .join("\n");
     const workspaceMemory = await db.workspaceMemoryContext(workspaceId);
+    // What teammates and GitHub did recently, so the GitHub agent can point
+    // out work that is already done or under way.
+    const teamActivity = agentKind === "github" ? formatTeamActivity(await listTeamActivity(workspaceId, { hours: 24, limit: 8 }).catch(() => [])) : null;
     const turnStart = Date.now();
     const allowedModels = (process.env.AGENT_LLM_ALLOWED_MODELS ?? "").split(",").map((model) => model.trim());
     const selectedModel = configuredAgent?.model && configuredAgent.model !== "workspace-default" && allowedModels.includes(configuredAgent.model) ? configuredAgent.model : undefined;
@@ -295,6 +315,8 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       history: toLlmHistory(messages),
       tools,
       githubContext: agentKind === "github" ? built.githubContext : null,
+      githubNotice: agentKind === "github" ? built.githubNotice ?? null : null,
+      teamActivity,
       actionContext: recentActions || null,
       agentKind,
       customInstructions: activeInstructions || undefined,
@@ -315,9 +337,24 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       proposedActions.filter((action): action is NonNullable<typeof action> => action !== null),
       agentKind
     );
+    // Which account (and repositories) answered, shown under the reply.
+    const provenance: MessageProvenance | null =
+      actingAccount && agentKind !== "project" && result.toolCallsMade > 0
+        ? {
+            provider: agentKind,
+            via: actingAccount.via,
+            actedAsUserId: actingAccount.userId,
+            actedAsName: actingAccount.via === "app" ? "Workspace GitHub App" : requestedBy.name,
+            account: actingAccount.account,
+            ...(agentKind === "github"
+              ? { repos: reposUsed.size ? [...reposUsed] : built.githubContext ? [`${built.githubContext.owner}/${built.githubContext.repo}`] : [] }
+              : {}),
+          }
+        : null;
     const agentMessage = await db.insertMessage({
       workspaceId,
       conversationId,
+      provenance,
       role: "agent",
       authorName: configuredAgent?.name ?? (agentKind === "github" ? "GitHub Agent" : agentKind === "slack" ? "Slack Agent" : agentKind === "linear" ? "Linear Agent" : agentKind === "notion" ? "Notion Agent" : agentKind === "figma" ? "Figma Agent" : "Project Agent"),
       // When the card was confirmed or cancelled before this turn finished,
@@ -348,16 +385,25 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
   // runner. Keeping the actual agent invocation here means scheduled and
   // event-driven work takes the identical tool, provider-permission, action
   // proposal, notification, and WebSocket paths as an ordinary chat turn.
-  app.locals.runWorkflow = async (workflow: NonNullable<Awaited<ReturnType<typeof db.getWorkspaceWorkflow>>>, trigger: "manual" | "schedule" | "github_issue" | "github_status" | "slack_mention", user: { id: string; displayName: string }, eventText?: string) => {
+  app.locals.runWorkflow = async (workflow: NonNullable<Awaited<ReturnType<typeof db.getWorkspaceWorkflow>>>, trigger: "manual" | "schedule" | "github_issue" | "github_status" | "slack_mention", user: { id: string | null; displayName: string }, eventText?: string) => {
+    const role = user.id ? await db.getWorkspaceRole(workflow.workspaceId, user.id) : null;
+    // A workflow whose owner left keeps running through the workspace
+    // GitHub App (GitHub and Project workflows only); its proposals still
+    // need a person's approval.
+    const viaApp = !role && (workflow.agentKind === "github" || workflow.agentKind === "project") && teamApiFor(deps).app.configured();
+    const actor = role ? user : { id: null, displayName: "Workflow automation" };
     const run = await db.createWorkflowRun(workflow, trigger);
-    await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.started", actorType: "user", actorUserId: user.id, actorName: user.displayName, summary: `${user.displayName} started workflow ${workflow.name}`, metadata: { workflowId: workflow.id, runId: run.id, trigger } });
+    await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.started", actorType: role ? "user" : "system", actorUserId: role ? user.id : null, actorName: actor.displayName, summary: `${actor.displayName} started workflow ${workflow.name}${viaApp ? " (owner unavailable; using the workspace GitHub App)" : ""}`, metadata: { workflowId: workflow.id, runId: run.id, trigger } });
     try {
-      const role = await db.getWorkspaceRole(workflow.workspaceId, user.id);
-      if (!role) throw new Error("The workflow owner is no longer a workspace member.");
-      if (workflow.agentKind !== "project" && !(await db.hasWorkspacePermission(workflow.workspaceId, role, workflow.agentKind))) {
+      if (!role && !viaApp) {
+        throw new Error(
+          `The workflow owner is no longer a workspace member. An Admin can take it over on the Workflows page${workflow.agentKind === "github" ? ", or install the workspace GitHub App so it runs without a member" : ""}.`
+        );
+      }
+      if (role && workflow.agentKind !== "project" && !(await db.hasWorkspacePermission(workflow.workspaceId, role, workflow.agentKind))) {
         throw new Error(`The workflow owner cannot use the ${workflow.agentKind} provider.`);
       }
-      const conversation = workflow.conversationId ? await db.getConversation(workflow.workspaceId, workflow.conversationId) : await db.createConversation({ workspaceId: workflow.workspaceId, title: workflow.name, createdByUserId: user.id });
+      const conversation = workflow.conversationId ? await db.getConversation(workflow.workspaceId, workflow.conversationId) : await db.createConversation({ workspaceId: workflow.workspaceId, title: workflow.name, createdByUserId: actor.id });
       if (!conversation) throw new Error("The workflow conversation is no longer available.");
       if (!workflow.conversationId) await db.setWorkflowConversation(workflow.id, conversation.id);
       const prefix = trigger === "manual" ? "Manual run" : `Triggered by ${trigger.replace(/_/g, " ")}`;
@@ -373,7 +419,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       const telemetry = await runAgentReply(
         workflow.workspaceId,
         conversation.id,
-        { userId: user.id, name: user.displayName },
+        { userId: actor.id, name: actor.displayName },
         workflow.agentKind,
         workflow.workspaceAgentId ?? undefined,
         task,
@@ -406,6 +452,34 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     }
   };
 
+  // A verified GitHub webhook delivery for one workspace: recorded in
+  // Activity, pushed live to everyone in the workspace, and used to start
+  // workflows with a matching event trigger.
+  const handleGithubEvent: GithubEventHandler = async (workspaceId, event, payload, deliveryId) => {
+    const summary = summarizeGithubEvent(event, payload as Record<string, any>);
+    if (summary.ignore) return;
+    const recorded = await db.recordAuditEvent({
+      workspaceId,
+      eventType: "github.event",
+      actorType: "system",
+      actorName: event === "ping" ? "GitHub" : `@${summary.actor}`,
+      summary: summary.summary,
+      metadata: { event, repo: summary.repo, url: summary.url, activity: summary.summary, deliveryId },
+    });
+    const activity: TeamActivity = { id: recorded.id, source: "github", actorName: recorded.actorName, summary: summary.summary, repo: summary.repo, url: summary.url, createdAt: recorded.createdAt };
+    rooms.broadcast(workspaceId, { type: "team_activity", activity });
+    if (!summary.trigger) return;
+    // Changes made by the workspace GitHub App itself never start workflows,
+    // so an automated change cannot set off a chain of runs.
+    const sender = (payload as { sender?: { login?: string; type?: string } }).sender;
+    if (sender?.type === "Bot" && sender.login === teamApiFor(deps).app.botLogin()) return;
+    for (const workflow of await db.listEventWorkflows(workspaceId, summary.trigger)) {
+      const owner = workflow.ownerUserId ? await db.getUserById(workflow.ownerUserId) : null;
+      void app.locals.runWorkflow(workflow, summary.trigger, { id: owner?.id ?? null, displayName: owner?.displayName ?? "Workflow automation" }, summary.eventText);
+    }
+  };
+  app.locals.handleGithubEvent = handleGithubEvent;
+
   // Interval scheduling is intentionally modest: database claiming makes it
   // safe for more than one server process, while each execution still goes
   // through the governed workflow runner above.
@@ -417,8 +491,8 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
         const due = await db.claimDueWorkflows();
         for (const workflow of due) {
           const owner = workflow.ownerUserId ? await db.getUserById(workflow.ownerUserId) : null;
-          if (!owner) continue;
-          void app.locals.runWorkflow(workflow, "schedule", { id: owner.id, displayName: owner.displayName });
+          // runWorkflow decides whether a missing owner can be replaced by the workspace GitHub App.
+          void app.locals.runWorkflow(workflow, "schedule", { id: owner?.id ?? null, displayName: owner?.displayName ?? "Workflow automation" });
         }
       })().catch((error) => console.error("workflow scheduler failed", error));
     }, 30_000);

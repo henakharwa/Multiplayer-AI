@@ -14,7 +14,12 @@ export interface RunAgentTurnInput {
   // Octokit-backed tools (which were pre-bound to one repo via closure),
   // GitHub's MCP server tools are generic -- every call takes owner/repo
   // explicitly, so the model has to be told what they are.
-  githubContext?: { owner: string; repo: string } | null;
+  githubContext?: GithubPromptContext | null;
+  // Shown instead of "no repository connected" when the workspace has
+  // repositories but this member's GitHub account is not connected.
+  githubNotice?: string | null;
+  // Trusted, server-generated list of what teammates (and GitHub) did recently.
+  teamActivity?: string | null;
   /**
    * Server-generated state for actions recently proposed in this
    * conversation. This is deliberately separate from chat history: action
@@ -33,6 +38,18 @@ export interface RunAgentTurnInput {
   maxTurns?: number;
 }
 
+export interface GithubPromptContext {
+  // Default repository.
+  owner: string;
+  repo: string;
+  // Every workspace repository and what the acting account can do there.
+  repos?: Array<{ owner: string; repo: string; access: "write" | "read" | "none" | "unknown"; isDefault?: boolean }>;
+  account?: string | null;
+  actingAs?: string;
+  via?: "user" | "app";
+  workspaceList?: boolean;
+}
+
 export interface RunAgentTurnResult {
   reply: string;
   toolCallsMade: number;
@@ -49,14 +66,54 @@ export interface RunAgentTurnResult {
 // Built fresh per turn (rather than a single module-level constant) since
 // the GitHub section depends on whether -- and which -- repo is connected
 // right now. See buildToolsForWorkspace's githubContext.
+const ACCESS_LABEL = { write: "can read and propose changes", read: "read only", none: "NO ACCESS", unknown: "access not confirmed" } as const;
+
+function githubPromptSection(githubContext?: GithubPromptContext | null, githubNotice?: string | null, teamActivity?: string | null): string {
+  if (!githubContext) {
+    if (githubNotice) return `GitHub is not available for this person right now: ${githubNotice} Say so plainly if they ask about GitHub; do not answer from memory.`;
+    return `No GitHub repository is connected to this workspace right now. If
+someone asks about GitHub (issues, pull requests, code, commits, etc.),
+say so plainly rather than guessing -- do not answer from memory or from
+something said earlier in this conversation, since a repo could be
+connected at any point after that.`;
+  }
+  const repos = githubContext.repos?.length ? githubContext.repos : [{ owner: githubContext.owner, repo: githubContext.repo, access: "unknown" as const, isDefault: true }];
+  const account = githubContext.account ? `@${githubContext.account}` : null;
+  const who = githubContext.via === "app" ? `the workspace GitHub App${account ? ` (${account})` : ""}` : `${githubContext.actingAs ?? "the person asking"}'s own GitHub account${account ? ` (${account})` : ""}`;
+  const listLine = repos
+    .map((repository) => `- ${repository.owner}/${repository.repo}${repository.isDefault ? " (default)" : ""}: ${ACCESS_LABEL[repository.access]}`)
+    .join("\n");
+  const blocked = repos.filter((repository) => repository.access === "none");
+  const activity = teamActivity
+    ? `\n\nRECENT TEAM GITHUB ACTIVITY (trusted, server-generated; last 24 hours):\n${teamActivity}\nIf a request would repeat something listed here (for example a second comment on the same issue), point that out briefly before proposing it.`
+    : "";
+  return `${githubContext.workspaceList === false ? "A GitHub repository IS connected to this workspace right now" : "This workspace's GitHub repositories"}:
+${listLine}
+You are acting through ${who}. Everything you read or propose uses that account's access, and anything you propose will be made as that account.
+Every GitHub tool call requires explicit "owner" and "repo" arguments --
+they are never assumed or pre-filled for you. Unless the user clearly
+means a different repository from the list, always pass owner="${githubContext.owner}"
+and repo="${githubContext.repo}".${
+    githubContext.workspaceList === false
+      ? ""
+      : ` Only use the repositories listed above; never substitute a different repository.`
+  }${
+    blocked.length
+      ? ` This account cannot open ${blocked.map((repository) => `${repository.owner}/${repository.repo}`).join(", ")}: if asked about it, say "Your GitHub account${account ? ` (${account})` : ""} can't access ${blocked[0].owner}/${blocked[0].repo}" and suggest asking a repository admin for access. Do not answer from another repository instead.`
+      : ""
+  }${activity}`;
+}
+
 function buildSystemPrompt(
-  githubContext?: { owner: string; repo: string } | null,
+  githubContext?: GithubPromptContext | null,
   agentKind: AgentKind = "project",
   actionContext?: string | null,
   customInstructions?: string,
   knowledge?: string,
   workspaceMemory?: string,
-  workflowMode = false
+  workflowMode = false,
+  githubNotice?: string | null,
+  teamActivity?: string | null
 ): string {
   const specialist = agentKind === "github"
     ? "You are the GitHub specialist. Focus on repository code, issues, pull requests, branches, and CI. Only use the GitHub tools supplied for this turn."
@@ -69,17 +126,7 @@ function buildSystemPrompt(
           : agentKind === "figma"
             ? "You are the Figma specialist. Focus on design context, components, and design handoff. Only use the Figma tools supplied for this turn."
       : "You are the Project coordinator. Help plan, summarize, and coordinate the team. Do not use external GitHub or Slack tools; direct users to a specialist when relevant.";
-  const githubSection = githubContext
-    ? `A GitHub repository IS connected to this workspace right now: **${githubContext.owner}/${githubContext.repo}**.
-Every GitHub tool call requires explicit "owner" and "repo" arguments --
-they are never assumed or pre-filled for you. Unless the user clearly
-means a different repository, always pass owner="${githubContext.owner}"
-and repo="${githubContext.repo}".`
-    : `No GitHub repository is connected to this workspace right now. If
-someone asks about GitHub (issues, pull requests, code, commits, etc.),
-say so plainly rather than guessing -- do not answer from memory or from
-something said earlier in this conversation, since a repo could be
-connected at any point after that.`;
+  const githubSection = githubPromptSection(githubContext, githubNotice, agentKind === "github" ? teamActivity : null);
 
   const configurationSection = customInstructions
     ? `\n\nACTIVE WORKSPACE AGENT CONFIGURATION — mandatory rules for this turn:\n${customInstructions}\nFollow this configuration as the agent's operating policy. If it narrows the scope, do not include excluded work or generic alternatives.\n${knowledge ? `\nWorkspace knowledge:\n${knowledge}` : ""}`
@@ -326,7 +373,7 @@ export async function runAgentTurn(input: RunAgentTurnInput): Promise<RunAgentTu
   // against an 8000 limit, almost entirely from tool schema + system
   // prompt + the (then 4096) completion reserve, with nothing left over
   // for history at all.
-  const systemPrompt = buildSystemPrompt(input.githubContext, input.agentKind, input.actionContext, input.customInstructions, input.knowledge, input.workspaceMemory, input.workflowMode);
+  const systemPrompt = buildSystemPrompt(input.githubContext, input.agentKind, input.actionContext, input.customInstructions, input.knowledge, input.workspaceMemory, input.workflowMode, input.githubNotice, input.teamActivity);
   const toolsTokens = estimateTokens(JSON.stringify(toolDefs));
   const systemTokens = estimateTokens(systemPrompt);
   const historyBudget = config.tpmLimit - toolsTokens - systemTokens - config.maxTokens - TOKEN_BUDGET_SAFETY_MARGIN;
