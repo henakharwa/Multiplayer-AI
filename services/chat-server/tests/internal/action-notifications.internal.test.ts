@@ -59,3 +59,38 @@ describe("AC-01 action resolution notifications", () => {
     expect(adminTexts.some((text) => text.includes("comment on issue 16"))).toBe(false);
   });
 });
+
+describe("AC-02 decision reminders", () => {
+  // Makes every notification for this workspace old enough to be due.
+  async function backdate() {
+    await db.getPool().query("UPDATE workspace_notifications SET created_at = now() - interval '2 days' WHERE workspace_id = $1", [ws.id]);
+  }
+  async function editorTextsFor(description: string) {
+    return (await editorNotificationTexts()).filter((text) => text.includes(description));
+  }
+
+  it("sends one reminder per waiting decision and never a reminder of a reminder", async () => {
+    const description = "comment on issue 40";
+    const pending = await propose(description);
+    await db.notifyWorkspaceMembers({ workspaceId: ws.id, conversationId: ws.conversationId, kind: "decision_needed", text: `Decision needed: ${description}`, priority: "high", resourceType: "action", resourceId: pending.id });
+    for (let round = 0; round < 4; round++) {
+      await backdate();
+      await db.escalateUnreadDecisionNotifications();
+    }
+    const texts = await editorTextsFor(description);
+    expect(texts.filter((text) => text === `Reminder: Decision needed: ${description}`)).toHaveLength(1);
+    expect(texts.some((text) => text.startsWith("Reminder: Reminder:"))).toBe(false);
+    const reminder = (await db.listNotifications(editor.id, { workspaceId: ws.id, limit: 200 })).find((item) => item.text === `Reminder: Decision needed: ${description}`);
+    expect(reminder).toMatchObject({ resourceType: "action", resourceId: pending.id, groupKey: `escalation:${pending.id}` });
+  });
+
+  it("does not remind about a decision that was already resolved", async () => {
+    const description = "comment on issue 41";
+    const pending = await propose(description);
+    await db.notifyWorkspaceMembers({ workspaceId: ws.id, conversationId: ws.conversationId, kind: "decision_needed", text: `Decision needed: ${description}`, priority: "high", resourceType: "action", resourceId: pending.id });
+    await db.resolvePendingAction({ workspaceId: ws.id, id: pending.id, status: "cancelled" });
+    await backdate();
+    await db.escalateUnreadDecisionNotifications();
+    expect((await editorTextsFor(description)).some((text) => text.startsWith("Reminder:"))).toBe(false);
+  });
+});

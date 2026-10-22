@@ -39,18 +39,34 @@ export async function ensurePendingActionNotifications(workspaceId: string): Pro
       AND NOT EXISTS (SELECT 1 FROM workspace_notifications n WHERE n.user_id=wm.user_id AND n.resource_type='action' AND n.resource_id=a.id::text AND n.kind='decision_needed')`, [workspaceId]);
 }
 
-/** Escalate each unresolved decision once, using the recipient's saved delay. */
+/**
+ * Sends one reminder for each unread "Decision needed" notification whose
+ * action is still waiting, after the recipient's saved delay.
+ *
+ * A reminder is itself marked as already escalated, so it is never reminded
+ * about again (before this, each reminder spawned another one and the text
+ * grew "Reminder: Reminder: ..."). Actions that were already confirmed or
+ * cancelled get no reminder, and each action's reminder is its own group.
+ */
 export async function escalateUnreadDecisionNotifications(): Promise<number> {
   const result = await getPool().query(`WITH due AS (
     UPDATE workspace_notifications n SET escalated_at=now()
     FROM workspace_members wm
     LEFT JOIN workspace_notification_preferences p ON p.workspace_id=wm.workspace_id AND p.user_id=wm.user_id
     WHERE n.workspace_id=wm.workspace_id AND n.user_id=wm.user_id
-      AND n.kind IN ('decision_needed','permission_request') AND n.read_at IS NULL AND n.escalated_at IS NULL
+      AND n.kind = 'decision_needed' AND n.read_at IS NULL AND n.escalated_at IS NULL
+      AND n.text NOT LIKE 'Reminder: %'
+      AND COALESCE(n.group_key, '') NOT LIKE 'escalation:%'
+      AND (
+        n.resource_type IS DISTINCT FROM 'action'
+        OR EXISTS (SELECT 1 FROM pending_actions a WHERE a.id::text = n.resource_id AND a.status = 'pending')
+      )
       AND n.created_at <= now() - (COALESCE(p.escalation_minutes, 60) * interval '1 minute')
-    RETURNING n.workspace_id,n.user_id,n.conversation_id,n.text
-  ) INSERT INTO workspace_notifications (workspace_id,user_id,conversation_id,kind,text,priority,group_key)
-  SELECT workspace_id,user_id,conversation_id,'decision_needed','Reminder: ' || text,'high','escalation:' || conversation_id::text FROM due`);
+    RETURNING n.id,n.workspace_id,n.user_id,n.conversation_id,n.kind,n.text,n.resource_type,n.resource_id
+  ) INSERT INTO workspace_notifications (workspace_id,user_id,conversation_id,kind,text,priority,group_key,resource_type,resource_id,escalated_at)
+  SELECT workspace_id,user_id,conversation_id,kind,'Reminder: ' || text,'high',
+    'escalation:' || COALESCE(resource_id, id::text), resource_type, resource_id, now()
+  FROM due`);
   return result.rowCount ?? 0;
 }
 

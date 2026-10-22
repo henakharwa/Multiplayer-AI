@@ -219,7 +219,7 @@ export default function NotificationsPage() {
                           {item.kind.replaceAll("_", " ")}
                           {group.length > 1 ? ` · ${group.length} updates` : ""}
                         </strong>
-                        <p>{item.text}</p>
+                        <p title={item.text}>{item.text}</p>
                         <small>
                           {item.priority} priority · {relativeTime(item.createdAt)}
                         </small>
