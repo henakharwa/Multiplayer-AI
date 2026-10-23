@@ -215,14 +215,15 @@
   overflow: visible;
 }
 
+/* Cards share a minimum height and every card in a row stretches to the
+   tallest, so the buttons line up; extra text grows a card instead of
+   sliding underneath its buttons. */
 .integration-tool-box > .integration-panel {
-  height: 264px;
   min-height: 264px;
   padding: 16px;
   border: 1px solid var(--border-tint);
   border-radius: 11px;
   background: var(--surface-tint);
-  overflow: hidden;
 }
 
 .integration-tool-box > .integration-panel-featured {
@@ -242,17 +243,13 @@
 }
 
 .remote-integration-grid article {
-  height: 264px;
   min-height: 264px;
-  overflow: hidden;
 }
 
 .integration-tool-box > .remote-integration-card {
   display: flex;
   flex-direction: column;
-  height: 264px;
   min-height: 264px;
-  overflow: hidden;
 }
 
 .remote-integration-card strong,
@@ -347,6 +344,16 @@
 
 .integration-tool-box .integration-panel .btn + .btn {
   margin-top: 8px !important;
+}
+
+.integration-tool-box .integration-actions {
+  padding-top: 12px;
+}
+
+.integration-repo-name {
+  color: var(--text-ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .integration-tool-box .remote-integration-card .btn {

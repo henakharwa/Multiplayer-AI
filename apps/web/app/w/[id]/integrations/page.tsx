@@ -145,7 +145,6 @@ export default function IntegrationsPage() {
     (i): i is Extract<IntegrationConfig, { type: "github" }> => i.type === "github",
   );
   const githubConnected = githubConnections.find((integration) => integration.ownerUserId === user.id);
-  const teammateGithubConnections = githubConnections.filter((integration) => integration.ownerUserId !== user.id);
   const slackConnections = integrations.filter(
     (i): i is Extract<IntegrationConfig, { type: "slack" }> => i.type === "slack",
   );
@@ -516,16 +515,21 @@ export default function IntegrationsPage() {
                 </span>
               </span>
             </h2>
-            {githubConnected && !githubConnected.repo && (
-              <p className="hint" data-testid="github-no-repo-hint">
-                GitHub is connected, but no repository has been chosen yet.
-              </p>
-            )}
-            {githubConnected?.accountLogin && (
-              <p className="hint" data-testid="github-account">
-                Your account: @{githubConnected.accountLogin}
-              </p>
-            )}
+            <p className="hint" data-testid="github-summary">
+              {!githubConnected ? (
+                "Work in one repository in chat."
+              ) : githubConnected.repo ? (
+                <>
+                  Working in{" "}
+                  <strong className="integration-repo-name" title={`${githubConnected.owner}/${githubConnected.repo}`}>
+                    {githubConnected.owner}/{githubConnected.repo}
+                  </strong>
+                  {githubConnected.accountLogin ? ` as @${githubConnected.accountLogin}` : ""}
+                </>
+              ) : (
+                <span data-testid="github-no-repo-hint">Connected. Choose the one repository you work in.</span>
+              )}
+            </p>
 
             <div className="integration-actions">
               <button
@@ -553,24 +557,6 @@ export default function IntegrationsPage() {
                 </button>
               )}
             </div>
-
-            <p className="hint" style={{ marginTop: 16 }}>
-              {githubConnected?.owner && githubConnected.repo
-                ? `You're working in ${githubConnected.owner}/${githubConnected.repo}. The agent only uses this repository for you; change it any time.`
-                : "Choose the one repository you work in. The agent only uses that repository for you."}
-            </p>
-            {teammateGithubConnections.length > 0 && (
-              <p className="hint">
-                Also connected by teammates:{" "}
-                {teammateGithubConnections
-                  .map(
-                    (integration) =>
-                      `${integration.connectedByName ?? "Workspace member"}${integration.accountLogin ? ` (@${integration.accountLogin})` : ""}`,
-                  )
-                  .join(", ")}
-                .
-              </p>
-            )}
           </div>
 
           <div id="slack-integration" className="integration-panel">
@@ -663,18 +649,6 @@ export default function IntegrationsPage() {
                         ? "Use team pages and databases in chat."
                         : "Use design files in chat."}
                   </p>
-                  <div className="integration-actions">
-                    <button
-                      className="btn"
-                      type="button"
-                      disabled={!canConnect}
-                      onClick={() => {
-                        window.location.href = providerOAuthStartUrl(workspaceId, provider);
-                      }}
-                    >
-                      {connected ? "Reconnect my account" : `Connect ${provider[0].toUpperCase() + provider.slice(1)}`}
-                    </button>
-                  </div>
                   {connected && (
                     <p className="hint">
                       Your account: {connected.accountName ?? "connected"}.
@@ -705,6 +679,18 @@ export default function IntegrationsPage() {
                       {teammateConnections.map((item) => item.connectedByName ?? "Workspace member").join(", ")}.
                     </p>
                   )}
+                  <div className="integration-actions">
+                    <button
+                      className="btn"
+                      type="button"
+                      disabled={!canConnect}
+                      onClick={() => {
+                        window.location.href = providerOAuthStartUrl(workspaceId, provider);
+                      }}
+                    >
+                      {connected ? "Reconnect my account" : `Connect ${provider[0].toUpperCase() + provider.slice(1)}`}
+                    </button>
+                  </div>
                 </article>
               );
             })}

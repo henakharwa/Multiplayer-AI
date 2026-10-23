@@ -1129,3 +1129,13 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Card buttons fill narrow cards (up to their usual width) and keep their
+   label on one line. */
+.integration-tool-box .integration-panel .btn,
+.integration-tool-box .remote-integration-card .btn {
+  width: 100%;
+  max-width: 172px;
+  padding: 6px 8px;
+  white-space: nowrap;
+}
