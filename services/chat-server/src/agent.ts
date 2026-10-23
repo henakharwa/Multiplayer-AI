@@ -15,8 +15,8 @@ export interface RunAgentTurnInput {
   // GitHub's MCP server tools are generic -- every call takes owner/repo
   // explicitly, so the model has to be told what they are.
   githubContext?: GithubPromptContext | null;
-  // Shown instead of "no repository connected" when the workspace has
-  // repositories but this member's GitHub account is not connected.
+  // Shown instead of "no repository connected" when this member connected
+  // GitHub but hasn't chosen a repository.
   githubNotice?: string | null;
   // Trusted, server-generated list of what teammates (and GitHub) did recently.
   teamActivity?: string | null;
@@ -39,15 +39,13 @@ export interface RunAgentTurnInput {
 }
 
 export interface GithubPromptContext {
-  // Default repository.
+  // The one repository this member works in.
   owner: string;
   repo: string;
-  // Every workspace repository and what the acting account can do there.
-  repos?: Array<{ owner: string; repo: string; access: "write" | "read" | "none" | "unknown"; isDefault?: boolean }>;
+  // What the member's account can do there.
+  access?: "write" | "read" | "none" | "unknown";
   account?: string | null;
   actingAs?: string;
-  via?: "user" | "app";
-  workspaceList?: boolean;
 }
 
 export interface RunAgentTurnResult {
@@ -77,30 +75,25 @@ say so plainly rather than guessing -- do not answer from memory or from
 something said earlier in this conversation, since a repo could be
 connected at any point after that.`;
   }
-  const repos = githubContext.repos?.length ? githubContext.repos : [{ owner: githubContext.owner, repo: githubContext.repo, access: "unknown" as const, isDefault: true }];
+  const fullName = `${githubContext.owner}/${githubContext.repo}`;
+  const access = githubContext.access ?? "unknown";
   const account = githubContext.account ? `@${githubContext.account}` : null;
-  const who = githubContext.via === "app" ? `the workspace GitHub App${account ? ` (${account})` : ""}` : `${githubContext.actingAs ?? "the person asking"}'s own GitHub account${account ? ` (${account})` : ""}`;
-  const listLine = repos
-    .map((repository) => `- ${repository.owner}/${repository.repo}${repository.isDefault ? " (default)" : ""}: ${ACCESS_LABEL[repository.access]}`)
-    .join("\n");
-  const blocked = repos.filter((repository) => repository.access === "none");
+  const who = `${githubContext.actingAs ?? "the person asking"}'s own GitHub account${account ? ` (${account})` : ""}`;
   const activity = teamActivity
     ? `\n\nRECENT TEAM GITHUB ACTIVITY (trusted, server-generated; last 24 hours):\n${teamActivity}\nIf a request would repeat something listed here (for example a second comment on the same issue), point that out briefly before proposing it.`
     : "";
-  return `${githubContext.workspaceList === false ? "A GitHub repository IS connected to this workspace right now" : "This workspace's GitHub repositories"}:
-${listLine}
+  return `This person works in ONE GitHub repository: ${fullName} (${ACCESS_LABEL[access]}).
 You are acting through ${who}. Everything you read or propose uses that account's access, and anything you propose will be made as that account.
 Every GitHub tool call requires explicit "owner" and "repo" arguments --
-they are never assumed or pre-filled for you. Unless the user clearly
-means a different repository from the list, always pass owner="${githubContext.owner}"
-and repo="${githubContext.repo}".${
-    githubContext.workspaceList === false
-      ? ""
-      : ` Only use the repositories listed above; never substitute a different repository.`
-  }${
-    blocked.length
-      ? ` This account cannot open ${blocked.map((repository) => `${repository.owner}/${repository.repo}`).join(", ")}: if asked about it, say "Your GitHub account${account ? ` (${account})` : ""} can't access ${blocked[0].owner}/${blocked[0].repo}" and suggest asking a repository admin for access. Do not answer from another repository instead.`
-      : ""
+they are never assumed or pre-filled for you. Always pass owner="${githubContext.owner}"
+and repo="${githubContext.repo}". Never use a different repository: if someone asks
+about another repository, say you're working in ${fullName} and that they can change
+their repository under Integrations → GitHub.${
+    access === "none"
+      ? ` This account cannot open ${fullName}: say "Your GitHub account${account ? ` (${account})` : ""} can't access ${fullName}" and suggest asking a repository admin for access.`
+      : access === "read"
+        ? ` This account can read ${fullName} but cannot make changes there, so don't propose changes; say why instead.`
+        : ""
   }${activity}`;
 }
 

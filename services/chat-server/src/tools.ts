@@ -17,6 +17,10 @@ export interface ToolExecutor {
   // the one-liner alone. Optional -- not every mutating tool has more
   // useful detail to show than describe() already says.
   preview?: (args: Record<string, unknown>) => string;
+  // Throws, with a message for the model, when a call isn't allowed (for
+  // example a GitHub repository other than the member's own). Checked before
+  // a write is proposed for approval, not only when it finally runs.
+  validate?: (args: Record<string, unknown>) => void;
   execute: (args: Record<string, unknown>) => Promise<unknown>;
 }
 

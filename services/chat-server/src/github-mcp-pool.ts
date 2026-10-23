@@ -24,8 +24,8 @@ import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotoc
 export interface GithubMcpOptions {
   token: string;
   /**
-   * Which account in the workspace this server acts as (a member's user id,
-   * or "app"). Each account keeps its own process, so members taking turns
+   * Which account in the workspace this server acts as (a member's user id).
+   * Each account keeps its own process, so members taking turns
    * never restart -- or close -- one another's server mid-call.
    */
   accountKey?: string;

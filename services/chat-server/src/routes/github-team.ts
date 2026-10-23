@@ -1,26 +1,20 @@
-// Team GitHub: the workspace repository list, webhook setup, the GitHub
-// webhook receiver, recent team activity, and taking over a workflow whose
-// owner left.
+// Team GitHub: GitHub event (webhook) setup and receiver, recent team
+// activity, and taking over a workflow whose owner left. Each member works
+// in the one repository they chose for their own GitHub connection.
 import express, { type Request, type Response } from "express";
 import * as db from "@mai-chat/db";
-import type { WorkspaceGithubSetup, WorkspaceRepository } from "@mai-chat/shared-types";
+import type { WorkspaceGithubSetup } from "@mai-chat/shared-types";
 import { UUID_RE, paramString, errMessage } from "../http-utils.js";
 import type { RouteContext } from "./context.js";
 import { teamApiFor } from "../actions.js";
 import { GITHUB_WEBHOOK_EVENTS, listTeamActivity, verifyGithubSignature } from "../github-team.js";
 
-const REPO_PART = /^[A-Za-z0-9_.-]{1,100}$/;
-
-/** Accepts "owner/repo", a github.com URL, or separate owner and repo fields. */
-export function parseRepositoryInput(body: Record<string, unknown>): { owner: string; repo: string } | null {
-  const raw = typeof body.fullName === "string" ? body.fullName : typeof body.url === "string" ? body.url : null;
-  let owner = typeof body.owner === "string" ? body.owner.trim() : "";
-  let repo = typeof body.repo === "string" ? body.repo.trim() : "";
-  if (raw) {
-    const match = raw.trim().replace(/\.git$/, "").match(/(?:github\.com[/:])?([^/\s]+)\/([^/\s#?]+)\/?$/);
-    if (match) [owner, repo] = [match[1], match[2]];
-  }
-  return REPO_PART.test(owner) && REPO_PART.test(repo) ? { owner, repo } : null;
+/** The repositories members of a workspace currently work in ("owner/repo"), one per member at most. */
+async function memberRepositories(workspaceId: string): Promise<string[]> {
+  const names = (await db.listIntegrations(workspaceId)).flatMap((integration) =>
+    integration.type === "github" && integration.owner && integration.repo ? [`${integration.owner}/${integration.repo}`] : []
+  );
+  return [...new Map(names.map((name) => [name.toLowerCase(), name])).values()].sort((a, b) => a.localeCompare(b));
 }
 
 function publicApiUrl(): string {
@@ -42,19 +36,13 @@ export function registerGithubWebhookRoutes({ app, deps }: Pick<RouteContext, "a
   const raw = express.raw({ type: "*/*", limit: "10mb" });
   const handlerFor = () => app.locals.handleGithubEvent as GithubEventHandler | undefined;
 
-  async function deliver(req: Request, res: Response, targets: Array<{ workspaceId: string; repositoryId: string }>, event: string, payload: Record<string, unknown>) {
+  async function deliver(req: Request, res: Response, workspaceId: string, event: string, payload: Record<string, unknown>) {
     const deliveryId = req.header("x-github-delivery") ?? `${event}:${Date.now()}`;
     const handler = handlerFor();
-    let processed = 0;
-    for (const target of targets) {
-      // A retried delivery, or the same event from both the repository
-      // webhook and the GitHub App, runs once per workspace.
-      if (!(await db.recordWebhookDelivery(target.workspaceId, deliveryId, event))) continue;
-      await db.touchRepositoryEvent(target.repositoryId);
-      processed++;
-      if (handler) await handler(target.workspaceId, event, payload, deliveryId).catch((error) => console.error("[github-webhook] handling failed", errMessage(error)));
-    }
-    res.status(202).json({ ok: true, processed });
+    // GitHub retries deliveries; each one is handled once.
+    if (!(await db.recordWebhookDelivery(workspaceId, deliveryId, event))) return res.status(202).json({ ok: true, processed: 0 });
+    if (handler) await handler(workspaceId, event, payload, deliveryId).catch((error) => console.error("[github-webhook] handling failed", errMessage(error)));
+    res.status(202).json({ ok: true, processed: 1 });
   }
 
   function parse(req: Request, res: Response): { event: string; payload: Record<string, unknown>; body: Buffer } | null {
@@ -82,103 +70,39 @@ export function registerGithubWebhookRoutes({ app, deps }: Pick<RouteContext, "a
     }
     const parsed = parse(req, res);
     if (!parsed) return;
-    const repository = parsed.payload.repository as { full_name?: string } | undefined;
-    const [owner, repo] = String(repository?.full_name ?? "").split("/");
-    const match = (await db.listWorkspaceRepositories(workspaceId)).find(
-      (candidate) => candidate.owner.toLowerCase() === (owner ?? "").toLowerCase() && candidate.repo.toLowerCase() === (repo ?? "").toLowerCase()
-    );
-    if (!match) return res.status(202).json({ ok: true, processed: 0, note: "This repository is not on the workspace's repository list." });
-    await deliver(req, res, [{ workspaceId, repositoryId: match.id }], parsed.event, parsed.payload);
-  });
-
-  // The workspace GitHub App: one webhook for every installation, routed to
-  // each workspace that has the repository on its list.
-  app.post("/webhooks/github", raw, async (req: Request, res: Response) => {
-    const api = teamApiFor(deps);
-    const secret = api.app.webhookSecret();
-    if (!secret) return res.status(404).json({ error: "GitHub App webhooks are not configured on this server." });
-    if (!Buffer.isBuffer(req.body) || !verifyGithubSignature(secret, req.body, req.header("x-hub-signature-256"))) {
-      return res.status(401).json({ error: "Invalid signature." });
+    // Only events from a repository someone in this workspace works in.
+    const fullName = String((parsed.payload.repository as { full_name?: string } | undefined)?.full_name ?? "");
+    if (!(await memberRepositories(workspaceId)).some((name) => name.toLowerCase() === fullName.toLowerCase())) {
+      return res.status(202).json({ ok: true, processed: 0, note: "No one in this workspace works in this repository." });
     }
-    const parsed = parse(req, res);
-    if (!parsed) return;
-    const repository = parsed.payload.repository as { full_name?: string } | undefined;
-    if (!repository?.full_name) return res.status(202).json({ ok: true, processed: 0 });
-    const [owner, repo] = repository.full_name.split("/");
-    await deliver(req, res, await db.findWorkspacesForRepository(owner, repo), parsed.event, parsed.payload);
+    await deliver(req, res, workspaceId, parsed.event, parsed.payload);
   });
 }
 
 export function registerGithubTeamRoutes({ app, deps, requireRole, requirePermission }: RouteContext): void {
   const api = () => teamApiFor(deps);
 
-  async function ownGithubToken(workspaceId: string, userId: string): Promise<string | null> {
+  // The member's own GitHub connection: its token and the repository they chose.
+  async function ownGithub(workspaceId: string, userId: string): Promise<{ token: string; owner: string | null; repo: string | null } | null> {
     const integration = (await db.listIntegrations(workspaceId)).find((candidate) => candidate.type === "github" && candidate.ownerUserId === userId);
-    return integration ? (await db.getIntegrationCredential(workspaceId, "github", integration.id))?.token ?? null : null;
+    const credential = integration ? await db.getIntegrationCredential(workspaceId, "github", integration.id) : null;
+    return credential?.token ? { token: credential.token, owner: credential.owner ?? null, repo: credential.repo ?? null } : null;
   }
-
-  app.get("/workspaces/:id/repositories", async (req: Request, res: Response) => {
-    if (!(await requireRole(req, res, ["admin", "editor"]))) return;
-    const workspaceId = paramString(req.params.id);
-    const repositories = await db.listWorkspaceRepositories(workspaceId);
-    const token = await ownGithubToken(workspaceId, req.user!.id);
-    const appConfigured = api().app.configured();
-    const withAccess: WorkspaceRepository[] = await Promise.all(
-      repositories.map(async (repository) => ({
-        ...repository,
-        myAccess: token ? await api().getRepoAccess(token, repository.owner, repository.repo).catch(() => "unknown" as const) : "not_connected",
-        appInstalled: appConfigured ? await api().app.isInstalled(repository.owner, repository.repo).catch(() => false) : null,
-      }))
-    );
-    res.json(withAccess);
-  });
-
-  app.post("/workspaces/:id/repositories", async (req: Request, res: Response) => {
-    if (!(await requireRole(req, res, ["admin"]))) return;
-    const workspaceId = paramString(req.params.id);
-    const parsed = parseRepositoryInput(req.body ?? {});
-    if (!parsed) return res.status(400).json({ error: "Enter a repository as owner/name, for example acme/web." });
-    const token = await ownGithubToken(workspaceId, req.user!.id);
-    if (token) {
-      const access = await api().getRepoAccess(token, parsed.owner, parsed.repo);
-      if (access === "none") return res.status(400).json({ error: `Your GitHub account can't access ${parsed.owner}/${parsed.repo}. Check the name, or ask a repository admin for access first.` });
-    }
-    const repository = await db.addWorkspaceRepository({ workspaceId, owner: parsed.owner, repo: parsed.repo, addedByUserId: req.user!.id });
-    if (!repository) return res.status(409).json({ error: `${parsed.owner}/${parsed.repo} is already on this workspace's list.` });
-    await db.recordAuditEvent({ workspaceId, eventType: "repository.added", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} added ${repository.fullName} to the workspace repositories`, metadata: { repo: repository.fullName } });
-    res.status(201).json(repository);
-  });
-
-  app.delete("/workspaces/:id/repositories/:repositoryId", async (req: Request, res: Response) => {
-    if (!(await requireRole(req, res, ["admin"]))) return;
-    const workspaceId = paramString(req.params.id);
-    const removed = await db.removeWorkspaceRepository(workspaceId, paramString(req.params.repositoryId));
-    if (!removed) return res.status(404).json({ error: "Repository not found." });
-    await db.recordAuditEvent({ workspaceId, eventType: "repository.removed", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} removed ${removed.fullName} from the workspace repositories`, metadata: { repo: removed.fullName } });
-    res.status(204).end();
-  });
-
-  app.post("/workspaces/:id/repositories/:repositoryId/default", async (req: Request, res: Response) => {
-    if (!(await requireRole(req, res, ["admin"]))) return;
-    const workspaceId = paramString(req.params.id);
-    const repository = await db.setDefaultWorkspaceRepository(workspaceId, paramString(req.params.repositoryId));
-    if (!repository) return res.status(404).json({ error: "Repository not found." });
-    await db.recordAuditEvent({ workspaceId, eventType: "repository.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} made ${repository.fullName} the default repository`, metadata: { repo: repository.fullName } });
-    res.json(repository);
-  });
 
   app.get("/workspaces/:id/github/setup", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin", "editor"]))) return;
     const workspaceId = paramString(req.params.id);
     const isAdmin = (await db.getWorkspaceRole(workspaceId, req.user!.id)) === "admin";
     const status = await db.getWorkspaceWebhookStatus(workspaceId);
+    const mine = await ownGithub(workspaceId, req.user!.id);
     const setup: WorkspaceGithubSetup = {
       webhookUrl: workspaceWebhookUrl(workspaceId),
       ...(isAdmin ? { webhookSecret: await db.getOrCreateWorkspaceWebhookSecret(workspaceId) } : {}),
       events: GITHUB_WEBHOOK_EVENTS,
       lastDeliveryAt: status.lastDeliveryAt,
       lastEvent: status.lastEvent,
-      app: { configured: api().app.configured(), installUrl: api().app.installUrl() },
+      myRepository: mine?.owner && mine.repo ? `${mine.owner}/${mine.repo}` : null,
+      repositories: await memberRepositories(workspaceId),
     };
     res.json(setup);
   });
@@ -191,21 +115,20 @@ export function registerGithubTeamRoutes({ app, deps, requireRole, requirePermis
     res.json({ webhookSecret: secret });
   });
 
-  // Adds the repository webhook with the Admin's own GitHub account (they
-  // need admin rights on the repository).
-  app.post("/workspaces/:id/repositories/:repositoryId/webhook", async (req: Request, res: Response) => {
+  // Adds the GitHub webhook to the Admin's own repository with their own
+  // GitHub account (they need admin rights on that repository).
+  app.post("/workspaces/:id/github/webhook", async (req: Request, res: Response) => {
     if (!(await requireRole(req, res, ["admin"]))) return;
     const workspaceId = paramString(req.params.id);
-    const repository = await db.getWorkspaceRepository(workspaceId, paramString(req.params.repositoryId));
-    if (!repository) return res.status(404).json({ error: "Repository not found." });
-    const token = await ownGithubToken(workspaceId, req.user!.id);
-    if (!token) return res.status(400).json({ error: "Connect your GitHub account first." });
+    const mine = await ownGithub(workspaceId, req.user!.id);
+    if (!mine) return res.status(400).json({ error: "Connect your GitHub account first." });
+    if (!mine.owner || !mine.repo) return res.status(400).json({ error: "Choose your repository under GitHub first." });
+    const fullName = `${mine.owner}/${mine.repo}`;
     try {
       const secret = await db.getOrCreateWorkspaceWebhookSecret(workspaceId);
-      const hook = await api().createRepoWebhook(token, repository.owner, repository.repo, { url: workspaceWebhookUrl(workspaceId), secret, events: GITHUB_WEBHOOK_EVENTS });
-      await db.setRepositoryWebhookId(workspaceId, repository.id, hook.id);
-      await db.recordAuditEvent({ workspaceId, eventType: "repository.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} connected GitHub events for ${repository.fullName}`, metadata: { repo: repository.fullName } });
-      res.json({ ...repository, webhookId: hook.id });
+      const hook = await api().createRepoWebhook(mine.token, mine.owner, mine.repo, { url: workspaceWebhookUrl(workspaceId), secret, events: GITHUB_WEBHOOK_EVENTS });
+      await db.recordAuditEvent({ workspaceId, eventType: "repository.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} connected GitHub events for ${fullName}`, metadata: { repo: fullName } });
+      res.json({ repository: fullName, webhookId: hook.id });
     } catch (error) {
       res.status(400).json({ error: errMessage(error) });
     }

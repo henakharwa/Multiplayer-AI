@@ -184,9 +184,9 @@ describe("GitHub workflow release gate", () => {
       socket.send(JSON.stringify({ type: "chat", agentKind: "github", content: "Read the open issues and propose a follow-up." }));
       await waitFor(() => events.some((event) => event.type === "agent_status" && event.status === "idle"));
 
-      // The chosen repository became the workspace repository; the agent is
-      // told it is the default and that it acts through this member's account.
-      expect(agentContext).toMatchObject({ owner: "acme", repo: "demo", via: "user", workspaceList: true, repos: [{ owner: "acme", repo: "demo", isDefault: true }] });
+      // The agent works in the one repository this member chose, through
+      // their own account.
+      expect(agentContext).toMatchObject({ owner: "acme", repo: "demo", access: "unknown" });
       expect(readCalls).toEqual([{ owner: "acme", repo: "demo", state: "open" }]);
       expect(writeCalls).toEqual([]);
 

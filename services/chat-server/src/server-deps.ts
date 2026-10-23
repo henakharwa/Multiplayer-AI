@@ -30,8 +30,8 @@ export interface CreateServerDeps {
   // converted to this project's ToolExecutor shape. Injectable so tests
   // can supply canned tools without spawning a real subprocess -- see
   // github-mcp-pool.ts / mcp-tools.ts for the real implementation.
-  // accountKey separates members of one workspace (or the workspace
-  // GitHub App), so each account keeps its own server process.
+  // accountKey separates members of one workspace, so each member's
+  // account keeps its own server process.
   githubMcpToolsFactory: (opts: { workspaceId: string; token: string; accountKey?: string }) => Promise<ToolExecutor[]>;
   // The agent's actual Slack tool surface -- connects to (or reuses a
   // connection to) Slack's own official MCP server with this workspace's
@@ -60,9 +60,9 @@ export interface CreateServerDeps {
   // Checks that a Figma token can open a team before it is saved as the
   // team the agent may browse. Defaults to figma-tools.ts's listFigmaTeamProjects.
   figmaTeamLoader?: (token: string, teamId: string) => Promise<{ teamName?: string }>;
-  // GitHub account names, repository access, duplicate checks, webhooks and
-  // the workspace GitHub App. Omitted in tests, which then never reach
-  // github.com (access is "unknown" and no App is configured).
+  // GitHub account names, repository access, duplicate checks and
+  // webhooks. Omitted in tests, which then never reach github.com (access
+  // is "unknown").
   githubTeamApi?: GithubTeamApi;
 }
 
@@ -149,7 +149,7 @@ export const defaultDeps: CreateServerDeps = {
   },
   slackOAuthDeps: defaultSlackOAuthDeps,
   // Created on first use, after the environment is loaded; one instance so
-  // its access and App-token caches are shared.
+  // its login and access caches are shared.
   get githubTeamApi() {
     return (sharedGithubTeamApi ??= createGithubTeamApi());
   },

@@ -16,34 +16,19 @@ const TIMEOUT_MS = 10_000;
 async function checkGithub(workspaceId: string, integration: Extract<IntegrationConfig, { type: "github" }>): Promise<IntegrationHealth> {
   const credential = await db.getIntegrationCredential(workspaceId, "github", integration.id);
   if (!credential?.token) return { status: "failed", message: "No GitHub credential is stored for this connection. Reconnect GitHub." };
-  // The workspace repository list decides what agents use; check each one
-  // with this member's own account. Without a list, check their own choice.
-  const workspaceRepos = await db.listWorkspaceRepositories(workspaceId);
-  const repos = workspaceRepos.length
-    ? workspaceRepos.map((repository) => ({ owner: repository.owner, repo: repository.repo }))
-    : credential.owner && credential.repo
-      ? [{ owner: credential.owner, repo: credential.repo }]
-      : [];
-  if (!repos.length) return { status: "needs_setup", message: "GitHub is connected, but this workspace has no repositories yet. An Admin can add them under Workspace repositories." };
-  const readable: string[] = [];
-  const blocked: string[] = [];
-  for (const { owner, repo } of repos) {
-    const res = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {
-      headers: { authorization: `Bearer ${credential.token}`, accept: "application/vnd.github+json", "user-agent": "nexus-integration-check" },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    if (res.status === 401) return { status: "failed", message: "GitHub rejected the stored token. Reconnect GitHub." };
-    if (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0") return { status: "failed", message: "GitHub's rate limit was reached. Try again later." };
-    if (res.ok) readable.push(`${owner}/${repo}`);
-    else if (res.status === 404 || res.status === 403) blocked.push(`${owner}/${repo}`);
-    else return { status: "failed", message: `GitHub returned HTTP ${res.status} for ${owner}/${repo}.` };
-  }
+  // Each member works in the one repository they chose; check it with their account.
+  if (!credential.owner || !credential.repo) return { status: "needs_setup", message: "GitHub is connected, but you haven't chosen a repository yet. Choose one to start working." };
+  const fullName = `${credential.owner}/${credential.repo}`;
+  const res = await fetch(`https://api.github.com/repos/${encodeURIComponent(credential.owner)}/${encodeURIComponent(credential.repo)}`, {
+    headers: { authorization: `Bearer ${credential.token}`, accept: "application/vnd.github+json", "user-agent": "nexus-integration-check" },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (res.status === 401) return { status: "failed", message: "GitHub rejected the stored token. Reconnect GitHub." };
+  if (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0") return { status: "failed", message: "GitHub's rate limit was reached. Try again later." };
   const account = integration.accountLogin ? ` as @${integration.accountLogin}` : "";
-  if (!blocked.length) return { status: "ok", message: `Connected${account}: ${readable.join(", ")} ${readable.length === 1 ? "is" : "are"} readable.` };
-  return {
-    status: readable.length ? "needs_setup" : "failed",
-    message: `Your account${account} can't access ${blocked.join(", ")}.${readable.length ? ` It can read ${readable.join(", ")}.` : ""} Ask a repository admin for access.`,
-  };
+  if (res.ok) return { status: "ok", message: `Connected${account}: ${fullName} is readable.` };
+  if (res.status === 404 || res.status === 403) return { status: "failed", message: `Your account${account} can't access ${fullName}. Ask a repository admin for access, or choose a different repository.` };
+  return { status: "failed", message: `GitHub returned HTTP ${res.status} for ${fullName}.` };
 }
 
 async function checkSlack(workspaceId: string, integration: Extract<IntegrationConfig, { type: "slack" }>): Promise<IntegrationHealth> {

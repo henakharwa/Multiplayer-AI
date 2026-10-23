@@ -1,85 +1,89 @@
 // How several members share GitHub in one workspace:
-//  - the workspace repository list decides which repositories agents use;
-//  - each member reaches them through their own GitHub account, and a
-//    repository their account cannot open is reported, never swapped out;
+//  - each member works in exactly one repository at a time: the one they
+//    chose for their own GitHub connection (Integrations -> GitHub);
+//  - the agent reaches it only through that member's own account, and a
+//    request aimed at any other repository is refused, never swapped out;
 //  - every proposed change records what it targets, so duplicates and
 //    conflicts with teammates' work can be flagged before approval;
-//  - GitHub webhook deliveries become activity, live updates and triggers.
+//  - GitHub webhook deliveries from members' repositories become activity,
+//    live updates and workflow triggers.
 import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import * as db from "@mai-chat/db";
-import type { ActionTarget, ActionWarning, IntegrationType, PendingAction, TeamActivity, WorkspaceRepository } from "@mai-chat/shared-types";
+import type { ActionTarget, ActionWarning, IntegrationType, PendingAction, TeamActivity } from "@mai-chat/shared-types";
 import type { ToolExecutor } from "./tools.js";
-import type { GithubTeamApi, RepoAccess } from "./github-api.js";
+import type { RepoAccess } from "./github-api.js";
 
 export const GITHUB_WEBHOOK_EVENTS = ["issues", "issue_comment", "pull_request", "pull_request_review", "push", "workflow_run", "status", "release"];
 
-// -- Repositories and access ------------------------------------------------
+// -- The member's repository ------------------------------------------------
 
-export interface GithubRepoContext {
-  owner: string;
-  repo: string;
-  access: RepoAccess;
-  isDefault: boolean;
-}
-
-/** What the GitHub agent is told about repositories and the account it acts as. */
+/** What the GitHub agent is told about the repository and the account it acts as. */
 export interface GithubWorkspaceContext {
-  // The default repository (kept as top-level fields for older callers).
+  // The one repository this member works in.
   owner: string;
   repo: string;
-  repos: GithubRepoContext[];
+  // What the member's account can do there.
+  access: RepoAccess;
   // GitHub username the tools act as, when known.
   account: string | null;
   actingAs: string;
-  via: "user" | "app";
-  // True when the list comes from the workspace (not one member's personal choice).
-  workspaceList: boolean;
   teamActivity?: string | null;
 }
 
 const sameRepo = (a: { owner: string; repo: string }, b: { owner: string; repo: string }) =>
   a.owner.toLowerCase() === b.owner.toLowerCase() && a.repo.toLowerCase() === b.repo.toLowerCase();
 
-/** Each workspace repository with what this token's account can do there. */
-export async function repositoryAccess(api: GithubTeamApi, token: string, repos: WorkspaceRepository[]): Promise<GithubRepoContext[]> {
-  return Promise.all(
-    repos.map(async (repository) => ({
-      owner: repository.owner,
-      repo: repository.repo,
-      isDefault: repository.isDefault,
-      access: await api.getRepoAccess(token, repository.owner, repository.repo).catch((): RepoAccess => "unknown"),
-    }))
-  );
+// Search qualifiers that would widen a search beyond one repository.
+const SCOPE_QUALIFIER = /(^|\s)-?(repo|org|user|owner):\S+/gi;
+
+/** Limits a GitHub search query to one repository, whatever it asked for. */
+export function scopeQueryToRepo(query: string, owner: string, repo: string): string {
+  const rest = query.replace(SCOPE_QUALIFIER, " ").replace(/\s+/g, " ").trim();
+  return `${rest} repo:${owner}/${repo}`.trim();
 }
 
 /**
- * Wraps GitHub tools so a call can only reach the workspace's repositories,
- * and only ones this account can open. The error text is returned to the
- * model, which then tells the member exactly what is wrong.
+ * Wraps GitHub tools so every call stays in the member's one repository and
+ * respects what their account can do there. A call naming another
+ * repository is refused; a search is limited to the repository. The error
+ * text goes back to the model, which tells the member what to do.
  */
 export function guardGithubTools(tools: ToolExecutor[], context: GithubWorkspaceContext, onRepoUsed?: (fullName: string) => void): ToolExecutor[] {
-  const allowed = context.repos.map((repository) => `${repository.owner}/${repository.repo}`).join(", ");
+  const fullName = `${context.owner}/${context.repo}`;
+  const who = context.account ? `@${context.account}` : `${context.actingAs}'s account`;
+  // Returns the arguments to call with (a search is limited to the
+  // repository), or throws with what the member can do instead.
+  const check = (args: Record<string, unknown>, mutates: boolean): { callArgs: Record<string, unknown>; touchesRepo: boolean } => {
+    const owner = typeof args.owner === "string" ? args.owner.trim() : "";
+    const repo = typeof args.repo === "string" ? args.repo.trim() : "";
+    let callArgs = args;
+    if (owner || repo) {
+      if (!sameRepo({ owner, repo }, context)) {
+        throw new Error(
+          `You're working in ${fullName}, so ${owner || "?"}/${repo || "?"} can't be used. To work in a different repository, change your repository under Integrations → GitHub.`
+        );
+      }
+    } else if (typeof args.query === "string") {
+      callArgs = { ...args, query: scopeQueryToRepo(args.query, context.owner, context.repo) };
+    }
+    const touchesRepo = Boolean(owner || repo || typeof args.query === "string");
+    if (touchesRepo && context.access === "none") {
+      throw new Error(`Your GitHub account (${who}) can't access ${fullName}. Ask a repository admin to give it access, or reconnect GitHub with an account that has access.`);
+    }
+    if (touchesRepo && context.access === "read" && mutates) {
+      throw new Error(`Your GitHub account (${who}) can read ${fullName} but cannot make changes there.`);
+    }
+    return { callArgs, touchesRepo };
+  };
   return tools.map((tool) => ({
     ...tool,
+    validate: (args: Record<string, unknown>) => {
+      check(args, Boolean(tool.mutates));
+    },
     execute: async (args: Record<string, unknown>) => {
-      const owner = typeof args.owner === "string" ? args.owner.trim() : "";
-      const repo = typeof args.repo === "string" ? args.repo.trim() : "";
-      if (owner && repo) {
-        const match = context.repos.find((repository) => sameRepo(repository, { owner, repo }));
-        if (!match && context.workspaceList) {
-          throw new Error(`${owner}/${repo} is not one of this workspace's repositories (${allowed}). An Admin can add it under Integrations → Workspace repositories.`);
-        }
-        if (match?.access === "none") {
-          const who = context.account ? `@${context.account}` : `${context.actingAs}'s account`;
-          throw new Error(`Your GitHub account (${who}) can't access ${match.owner}/${match.repo}. Ask a repository admin to give it access, or reconnect GitHub with an account that has access.`);
-        }
-        if (match?.access === "read" && tool.mutates) {
-          const who = context.account ? `@${context.account}` : `${context.actingAs}'s account`;
-          throw new Error(`Your GitHub account (${who}) can read ${match.owner}/${match.repo} but cannot make changes there.`);
-        }
-        onRepoUsed?.(`${match?.owner ?? owner}/${match?.repo ?? repo}`);
-      }
-      return tool.execute(args);
+      const { callArgs, touchesRepo } = check(args, Boolean(tool.mutates));
+      if (touchesRepo) onRepoUsed?.(fullName);
+      return tool.execute(callArgs);
     },
   }));
 }

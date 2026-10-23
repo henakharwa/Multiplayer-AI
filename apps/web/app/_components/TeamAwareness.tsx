@@ -14,6 +14,7 @@ const PROVIDER_LABELS: Record<MessageProvenance["provider"], string> = {
 /** One line under an agent reply: whose account it used and, for GitHub, which repositories. */
 export function provenanceText(provenance: MessageProvenance): string {
   const repos = provenance.repos?.length ? ` · ${provenance.repos.join(", ")}` : "";
+  // Replies from before the workspace GitHub App was removed.
   if (provenance.via === "app") {
     return `Used the workspace GitHub App${provenance.account ? ` (@${provenance.account})` : ""}${repos}`;
   }

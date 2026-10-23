@@ -120,7 +120,8 @@ export interface ChatMessage {
 
 export interface MessageProvenance {
   provider: IntegrationType;
-  // "user": the member's own connection; "app": the workspace GitHub App.
+  // Always the member's own connection. (Replies from before the workspace
+  // GitHub App was removed may still say "app".)
   via: "user" | "app";
   actedAsUserId: string | null;
   actedAsName: string;
@@ -201,8 +202,7 @@ export interface WorkspaceWorkflow {
   requiresApproval: boolean;
   ownerUserId: string | null;
   // Display name of the owner, and whether they are still a member. A
-  // workflow whose owner left runs through the workspace GitHub App when one
-  // is installed; otherwise an Admin can take it over.
+  // workflow whose owner left can't run until an Admin takes it over.
   ownerName?: string | null;
   ownerIsMember?: boolean;
   nextRunAt: string | null;
@@ -665,10 +665,8 @@ export interface PendingAction {
   requestedByUserId?: string | null;
   requestedByName?: string | null;
   agentKind?: "project" | "github" | "slack" | "linear" | "notion" | "figma" | null;
-  // Who the action runs as when approved. "user": the requester's own
-  // connection (the default); "app": the workspace GitHub App (workflow runs
-  // whose owner has no usable connection).
-  runAsKind?: "user" | "app";
+  // Whose own connection the action runs with when approved (the requester's
+  // by default).
   runAsUserId?: string | null;
   runAsName?: string | null;
   // Provider account it will act as, e.g. "@octocat" on GitHub.
@@ -705,27 +703,6 @@ export interface ActionWarning {
   actionId?: string;
 }
 
-// A repository the whole workspace works on. Each member's agent reaches it
-// through that member's own GitHub account.
-export interface WorkspaceRepository {
-  id: string;
-  workspaceId: string;
-  owner: string;
-  repo: string;
-  fullName: string;
-  isDefault: boolean;
-  addedByUserId: string | null;
-  addedByName: string | null;
-  webhookId: number | null;
-  lastEventAt: string | null;
-  createdAt: string;
-  // For the member viewing the list: what their own GitHub account can do.
-  myAccess?: "write" | "read" | "none" | "not_connected" | "unknown";
-  // Whether the workspace GitHub App is installed on this repository
-  // (null when no GitHub App is configured on the server).
-  appInstalled?: boolean | null;
-}
-
 export interface WorkspaceGithubSetup {
   // Repository webhook endpoint for this workspace (content type JSON).
   webhookUrl: string;
@@ -734,7 +711,11 @@ export interface WorkspaceGithubSetup {
   events: string[];
   lastDeliveryAt: string | null;
   lastEvent: string | null;
-  app: { configured: boolean; installUrl: string | null };
+  // The repository the viewing member works in ("owner/repo"), if chosen.
+  myRepository: string | null;
+  // Every repository a member of this workspace works in. GitHub events
+  // from these repositories are accepted.
+  repositories: string[];
 }
 
 // One recent thing a teammate (or GitHub itself) did, shown live in chat.

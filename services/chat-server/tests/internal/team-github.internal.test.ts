@@ -1,8 +1,8 @@
-// Several members working in the same GitHub repositories: the workspace
-// repository list and per-account access (TG-01), who each answer acted as
-// (TG-02), duplicate warnings (TG-03), the run-as rule (TG-04), verified
-// webhooks, real event triggers and the GitHub App fallback (TG-05), and
-// live team activity (TG-06).
+// Several members working with GitHub in one workspace: each member works in
+// the one repository they chose, through their own account (TG-01), who each
+// answer acted as (TG-02), duplicate warnings (TG-03), the run-as rule
+// (TG-04), verified webhooks and real event triggers (TG-05), and live team
+// activity (TG-06).
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createHmac, randomUUID } from "node:crypto";
 import request from "supertest";
@@ -13,8 +13,7 @@ import { createChatServer } from "../../src/server.js";
 import type { ToolExecutor } from "../../src/tools.js";
 import type { GithubTeamApi, RepoAccess } from "../../src/github-api.js";
 import type { RunAgentTurnInput, RunAgentTurnResult } from "../../src/agent.js";
-import { describeActionTarget, findActionWarnings, summarizeGithubEvent, titleSimilarity, verifyGithubSignature } from "../../src/github-team.js";
-import { parseRepositoryInput } from "../../src/routes/github-team.js";
+import { describeActionTarget, findActionWarnings, scopeQueryToRepo, summarizeGithubEvent, titleSimilarity, verifyGithubSignature } from "../../src/github-team.js";
 import { setupDatabase, makeUser, makeDeps, makeWorkspace, grantEditor, type TestUser } from "./helpers.js";
 
 type ToolCall = { tool: string; args: Record<string, unknown>; token: string };
@@ -32,30 +31,22 @@ function fakeGithubTools(token: string): ToolExecutor[] {
   });
   return [
     tool("list_issues", false, [{ number: 14, title: "Login fails" }]),
+    tool("search_code", false, { total_count: 0 }),
     tool("add_issue_comment", true, { html_url: "https://github.com/acme/web/issues/14#issuecomment-1" }),
     tool("issue_write", true, { html_url: "https://github.com/acme/web/issues/30" }),
   ];
 }
 
 const access: Record<string, RepoAccess> = {};
-let appOn = false;
-const hooks: Array<{ url: string; secret: string; events: string[] }> = [];
+const hooks: Array<{ url: string; secret: string; events: string[]; repository: string }> = [];
 const logins: Record<string, string> = { "tok-admin": "hena-gh", "tok-stevens": "stevens-gh", "tok-casey": "casey-gh" };
 const teamApi: GithubTeamApi = {
   getLogin: async (token) => logins[token] ?? null,
   getRepoAccess: async (token, owner, repo) => access[`${token}:${owner}/${repo}`] ?? "write",
   listOpenIssues: async () => [{ number: 22, title: "Login fails on Safari", url: "https://github.com/acme/web/issues/22" }],
-  createRepoWebhook: async (_token, _owner, _repo, input) => {
-    hooks.push(input);
+  createRepoWebhook: async (_token, owner, repo, input) => {
+    hooks.push({ ...input, repository: `${owner}/${repo}` });
     return { id: 991 };
-  },
-  app: {
-    configured: () => appOn,
-    installUrl: () => (appOn ? "https://github.com/apps/nexus-test/installations/new" : null),
-    webhookSecret: () => "app-secret",
-    isInstalled: async () => appOn,
-    installationToken: async () => (appOn ? "tok-app" : null),
-    botLogin: () => "nexus-test[bot]",
   },
 };
 
@@ -107,8 +98,13 @@ async function githubTurn(user: TestUser, content: string, conversationId = ws.c
   return { reply, events };
 }
 
-async function connectGithub(user: TestUser, token: string) {
+/** Connects the member's GitHub account and, unless `repo` is null, chooses their one repository. */
+async function connectGithub(user: TestUser, token: string, repo: string | null = "acme/web") {
   await db.saveGithubOAuthToken({ workspaceId: ws.id, token, ownerUserId: user.id });
+  if (repo) {
+    const [owner, name] = repo.split("/");
+    await db.setGithubRepo({ workspaceId: ws.id, owner, repo: name, ownerUserId: user.id });
+  }
 }
 
 const as = (user: TestUser) => ({
@@ -139,77 +135,87 @@ afterAll(async () => {
 beforeEach(() => {
   toolCalls.length = 0;
   seenInputs.length = 0;
-  appOn = false;
 });
 
-describe("TG-01 workspace repositories and per-account access", () => {
-  it("only Admins manage the list; names are validated and checked against the Admin's own access", async () => {
-    access["tok-admin:acme/private"] = "none";
-    expect((await as(stevens).post(`/workspaces/${ws.id}/repositories`, { fullName: "acme/web" })).status).toBe(403);
-    expect((await as(admin).post(`/workspaces/${ws.id}/repositories`, { fullName: "not a repo" })).status).toBe(400);
-    expect((await as(admin).post(`/workspaces/${ws.id}/repositories`, { fullName: "acme/private" })).body.error).toMatch(/can't access acme\/private/);
-    const web = await as(admin).post(`/workspaces/${ws.id}/repositories`, { fullName: "https://github.com/acme/web" });
-    expect(web.status).toBe(201);
-    expect(web.body).toMatchObject({ fullName: "acme/web", isDefault: true });
-    expect((await as(admin).post(`/workspaces/${ws.id}/repositories`, { owner: "ACME", repo: "WEB" })).status).toBe(409);
-    const secret = await as(admin).post(`/workspaces/${ws.id}/repositories`, { fullName: "acme/secret" });
-    expect(secret.body.isDefault).toBe(false);
-  });
-
-  it("shows each member what their own account can do on each repository", async () => {
-    access["tok-stevens:acme/secret"] = "none";
-    const forStevens = await as(stevens).get(`/workspaces/${ws.id}/repositories`);
-    expect(forStevens.body.map((repository: { fullName: string; myAccess: string }) => [repository.fullName, repository.myAccess])).toEqual([
-      ["acme/web", "write"],
-      ["acme/secret", "none"],
-    ]);
-    const forCasey = await as(casey).get(`/workspaces/${ws.id}/repositories`);
-    expect(forCasey.body.every((repository: { myAccess: string }) => repository.myAccess === "not_connected")).toBe(true);
-  });
-
-  it("reaches workspace repositories through the asker's own account and refuses anything else", async () => {
+describe("TG-01 one repository per member, through their own account", () => {
+  it("works only in the member's chosen repository and refuses any other", async () => {
     const errors: string[] = [];
     script = async ({ tools }) => {
       const list = tools.find((tool) => tool.definition.function.name === "list_issues")!;
-      for (const repo of ["other", "secret"]) {
-        await list.execute({ owner: "acme", repo }).catch((error: Error) => errors.push(error.message));
-      }
-      await list.execute({ owner: "acme", repo: "web" });
+      await list.execute({ owner: "acme", repo: "other" }).catch((error: Error) => errors.push(error.message));
+      await list.execute({ owner: "ACME", repo: "WEB" });
+      // A search can't reach beyond the repository, whatever it asks for.
+      await tools.find((tool) => tool.definition.function.name === "search_code")!.execute({ query: "login org:acme repo:acme/secret" });
       return result("Two open issues in acme/web.", 3);
     };
     const { reply } = await githubTurn(stevens, "What is open?");
-    expect(errors[0]).toMatch(/acme\/other is not one of this workspace's repositories \(acme\/web, acme\/secret\)/);
-    expect(errors[1]).toMatch(/Your GitHub account \(@stevens-gh\) can't access acme\/secret/);
-    expect(toolCalls).toEqual([{ tool: "list_issues", args: { owner: "acme", repo: "web" }, token: "tok-stevens" }]);
+    expect(errors[0]).toMatch(/You're working in acme\/web, so acme\/other can't be used\. To work in a different repository, change your repository under Integrations → GitHub\./);
+    expect(toolCalls).toEqual([
+      { tool: "list_issues", args: { owner: "ACME", repo: "WEB" }, token: "tok-stevens" },
+      { tool: "search_code", args: { query: "login repo:acme/web" }, token: "tok-stevens" },
+    ]);
     // Each member keeps their own GitHub server process.
     expect(factoryCalls.at(-1)).toEqual({ token: "tok-stevens", accountKey: stevens.id });
-    expect(seenInputs[0].githubContext).toMatchObject({ owner: "acme", repo: "web", account: "stevens-gh", actingAs: "Stevens", via: "user", workspaceList: true });
-    expect(seenInputs[0].githubContext?.repos).toEqual([
-      { owner: "acme", repo: "web", access: "write", isDefault: true },
-      { owner: "acme", repo: "secret", access: "none", isDefault: false },
-    ]);
+    expect(seenInputs[0].githubContext).toEqual({ owner: "acme", repo: "web", access: "write", account: "stevens-gh", actingAs: "Stevens" });
     // TG-02: the reply records whose account answered and where it read.
     expect(reply.provenance).toEqual({ provider: "github", via: "user", actedAsUserId: stevens.id, actedAsName: "Stevens", account: "stevens-gh", repos: ["acme/web"] });
   });
 
-  it("tells a member without a GitHub connection what to do instead of using someone else's", async () => {
-    script = async () => result("Connect GitHub first.", 0);
-    const { reply } = await githubTurn(casey, "What is open?");
-    expect(seenInputs[0].tools).toEqual([]);
-    expect(seenInputs[0].githubNotice).toMatch(/works on acme\/web, acme\/secret, but Casey has not connected their GitHub account/);
-    expect(reply.provenance ?? null).toBeNull();
+  it("teammates can each work in a different repository", async () => {
+    await connectGithub(casey, "tok-casey", "acme/docs");
+    script = async ({ tools }) => {
+      await tools.find((tool) => tool.definition.function.name === "list_issues")!.execute({ owner: "acme", repo: "docs" });
+      return result("Docs issues.", 1);
+    };
+    await githubTurn(casey, "What is open in the docs?");
+    expect(seenInputs[0].githubContext).toMatchObject({ owner: "acme", repo: "docs", account: "casey-gh" });
+    expect(toolCalls).toEqual([{ tool: "list_issues", args: { owner: "acme", repo: "docs" }, token: "tok-casey" }]);
+    const casyGithub = (await db.listIntegrations(ws.id)).find((integration) => integration.type === "github" && integration.ownerUserId === casey.id)!;
+    await db.deleteIntegrationForOwner(ws.id, "github", casyGithub.id!, casey.id);
   });
 
-  it("lets an Admin change the default and remove a repository", async () => {
-    const list = (await as(admin).get(`/workspaces/${ws.id}/repositories`)).body as Array<{ id: string; fullName: string }>;
-    const secret = list.find((repository) => repository.fullName === "acme/secret")!;
-    expect((await as(stevens).post(`/workspaces/${ws.id}/repositories/${secret.id}/default`)).status).toBe(403);
-    expect((await as(admin).post(`/workspaces/${ws.id}/repositories/${secret.id}/default`)).body.isDefault).toBe(true);
-    expect((await as(admin).delete(`/workspaces/${ws.id}/repositories/${secret.id}`)).status).toBe(204);
-    const after = (await as(admin).get(`/workspaces/${ws.id}/repositories`)).body as Array<{ fullName: string; isDefault: boolean }>;
-    expect(after).toEqual([expect.objectContaining({ fullName: "acme/web", isDefault: true })]);
-    const events = await db.listAuditEvents(ws.id, { limit: 50 });
-    expect(events.map((event) => event.eventType)).toEqual(expect.arrayContaining(["repository.added", "repository.updated", "repository.removed"]));
+  it("refuses a repository the member's account can't open, and changes it can't make", async () => {
+    access["tok-stevens:acme/web"] = "read";
+    const errors: string[] = [];
+    script = async ({ tools }) => {
+      await tools.find((tool) => tool.definition.function.name === "add_issue_comment")!.execute({ owner: "acme", repo: "web", issue_number: 14, body: "hi" }).catch((error: Error) => errors.push(error.message));
+      return result("Read only.", 1);
+    };
+    await githubTurn(stevens, "Comment on #14");
+    access["tok-stevens:acme/web"] = "none";
+    script = async ({ tools }) => {
+      await tools.find((tool) => tool.definition.function.name === "list_issues")!.execute({ owner: "acme", repo: "web" }).catch((error: Error) => errors.push(error.message));
+      return result("No access.", 1);
+    };
+    await githubTurn(stevens, "What is open?");
+    delete access["tok-stevens:acme/web"];
+    expect(seenInputs[0].githubContext?.access).toBe("read");
+    expect(errors).toEqual([
+      "Your GitHub account (@stevens-gh) can read acme/web but cannot make changes there.",
+      "Your GitHub account (@stevens-gh) can't access acme/web. Ask a repository admin to give it access, or reconnect GitHub with an account that has access.",
+    ]);
+    expect(toolCalls).toEqual([]);
+  });
+
+  it("tells a member who hasn't chosen a repository what to do, and never uses someone else's", async () => {
+    await connectGithub(casey, "tok-casey", null);
+    script = async () => result("Choose a repository first.", 0);
+    const { reply } = await githubTurn(casey, "What is open?");
+    expect(seenInputs[0].tools).toEqual([]);
+    expect(seenInputs[0].githubNotice).toBe("Casey connected GitHub but hasn't chosen a repository yet. They can choose one under Integrations → GitHub.");
+    expect(reply.provenance ?? null).toBeNull();
+    const casyGithub = (await db.listIntegrations(ws.id)).find((integration) => integration.type === "github" && integration.ownerUserId === casey.id)!;
+    await db.deleteIntegrationForOwner(ws.id, "github", casyGithub.id!, casey.id);
+  });
+
+  it("no longer offers a workspace repository list", async () => {
+    expect((await as(admin).get(`/workspaces/${ws.id}/repositories`)).status).toBe(404);
+    expect((await as(admin).post(`/workspaces/${ws.id}/repositories`, { fullName: "acme/web" })).status).toBe(404);
+  });
+
+  it("limits searches to one repository", () => {
+    expect(scopeQueryToRepo("login bug", "acme", "web")).toBe("login bug repo:acme/web");
+    expect(scopeQueryToRepo("login repo:other/x org:other user:me -repo:acme/web", "acme", "web")).toBe("login repo:acme/web");
   });
 });
 
@@ -308,7 +314,28 @@ describe("TG-04 run-as rule", () => {
   });
 });
 
-describe("TG-05 GitHub webhooks, event triggers and the workspace GitHub App", () => {
+describe("TG-04b run-as across repositories", () => {
+  it("doesn't offer Run as me to an approver who works in a different repository", async () => {
+    script = async ({ tools }) => {
+      const comment = tools.find((tool) => tool.definition.function.name === "add_issue_comment")!;
+      const proposal = (await comment.execute({ owner: "acme", repo: "web", issue_number: 21, body: "Fixed" })) as { actionId: string };
+      return result("Proposed a comment.", 1, [proposal.actionId]);
+    };
+    const { events } = await githubTurn(stevens, "Comment on #21");
+    const card = events.find((event) => event.type === "pending_action")!.action!;
+    // Stevens moves to another repository; so does the approver.
+    await db.setGithubRepo({ workspaceId: ws.id, owner: "acme", repo: "mobile", ownerUserId: stevens.id });
+    await db.setGithubRepo({ workspaceId: ws.id, owner: "acme", repo: "docs", ownerUserId: admin.id });
+    const refused = await as(admin).post(`/workspaces/${ws.id}/actions/${card.id}/confirm`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.canRunAsMe).toBeUndefined();
+    expect(toolCalls).toEqual([]);
+    await db.setGithubRepo({ workspaceId: ws.id, owner: "acme", repo: "web", ownerUserId: stevens.id });
+    await db.setGithubRepo({ workspaceId: ws.id, owner: "acme", repo: "web", ownerUserId: admin.id });
+  });
+});
+
+describe("TG-05 GitHub webhooks and event triggers", () => {
   const issueOpened = (number: number, repo = "acme/web") =>
     JSON.stringify({ action: "opened", issue: { number, title: "Checkout button broken", html_url: `https://github.com/${repo}/issues/${number}`, body: "Steps to reproduce" }, repository: { full_name: repo }, sender: { login: "octocat", type: "User" } });
 
@@ -317,11 +344,13 @@ describe("TG-05 GitHub webhooks, event triggers and the workspace GitHub App", (
     expect(forAdmin.body.webhookUrl).toMatch(new RegExp(`/webhooks/github/workspaces/${ws.id}$`));
     expect(forAdmin.body.webhookSecret).toMatch(/^[0-9a-f]{48}$/);
     expect(forAdmin.body.events).toContain("issues");
+    expect(forAdmin.body).toMatchObject({ myRepository: "acme/web", repositories: ["acme/web"] });
     expect((await as(stevens).get(`/workspaces/${ws.id}/github/setup`)).body.webhookSecret).toBeUndefined();
-    const repository = (await as(admin).get(`/workspaces/${ws.id}/repositories`)).body[0];
-    const hook = await as(admin).post(`/workspaces/${ws.id}/repositories/${repository.id}/webhook`);
-    expect(hook.body.webhookId).toBe(991);
-    expect(hooks.at(-1)).toMatchObject({ url: forAdmin.body.webhookUrl, secret: forAdmin.body.webhookSecret });
+    // "Connect events" adds the webhook to the Admin's own repository, with their account.
+    expect((await as(stevens).post(`/workspaces/${ws.id}/github/webhook`)).status).toBe(403);
+    const hook = await as(admin).post(`/workspaces/${ws.id}/github/webhook`);
+    expect(hook.body).toEqual({ repository: "acme/web", webhookId: 991 });
+    expect(hooks.at(-1)).toMatchObject({ url: forAdmin.body.webhookUrl, secret: forAdmin.body.webhookSecret, repository: "acme/web" });
   });
 
   it("verifies signatures, records the event, pushes it live, starts matching workflows, and ignores redeliveries", async () => {
@@ -356,7 +385,7 @@ describe("TG-05 GitHub webhooks, event triggers and the workspace GitHub App", (
 
     // GitHub retries the same delivery: it is acknowledged but not run again.
     expect((await request(app).post(url).set(headers(sign(secret, body), "d-1")).send(body)).body.processed).toBe(0);
-    // A repository that is not on the list is ignored.
+    // A repository no one in the workspace works in is ignored.
     const other = issueOpened(5, "acme/elsewhere");
     expect((await request(app).post(url).set(headers(sign(secret, other), "d-2")).send(other)).body.processed).toBe(0);
     socket.close();
@@ -367,17 +396,7 @@ describe("TG-05 GitHub webhooks, event triggers and the workspace GitHub App", (
     await as(admin).delete(`/workspaces/${ws.id}/workflows/${workflow.body.id}`);
   });
 
-  it("accepts GitHub App deliveries for every workspace with the repository, signed with the App secret", async () => {
-    const body = issueOpened(40);
-    const res = await request(app)
-      .post("/webhooks/github")
-      .set({ "content-type": "application/json", "x-github-event": "issues", "x-github-delivery": `app-${randomUUID()}`, "x-hub-signature-256": sign("app-secret", body) })
-      .send(body);
-    expect(res.status).toBe(202);
-    expect(res.body.processed).toBeGreaterThanOrEqual(1);
-  });
-
-  it("keeps a workflow running through the GitHub App after its owner leaves, and lets an Admin take it over otherwise", async () => {
+  it("fails a workflow whose owner left until an Admin takes it over", async () => {
     await grantEditor(ws.id, { manageWorkflows: true });
     await connectGithub(casey, "tok-casey");
     const workflow = await as(casey).post(`/workspaces/${ws.id}/workflows`, { name: "Issue digest", instructions: "Summarize the new issue.", agentKind: "github", trigger: "github_issue" });
@@ -396,27 +415,31 @@ describe("TG-05 GitHub webhooks, event triggers and the workspace GitHub App", (
         .send(body);
     };
 
-    // Without the App, the run fails with a clear next step.
     await deliver(50);
     const failed = await waitFor(async () => (await db.listWorkflowRuns(ws.id, workflow.body.id)).find((candidate) => candidate.status === "failed"));
-    expect(failed.detail).toMatch(/no longer a workspace member\. An Admin can take it over on the Workflows page, or install the workspace GitHub App/);
+    expect(failed.detail).toBe("The workflow owner is no longer a workspace member. An Admin can take it over on the Workflows page.");
 
-    // With the App installed, it runs as the App on the workspace repositories.
-    appOn = true;
+    // Editors without Manage workflows cannot take it over; Admins can, and it then runs as them.
+    expect((await as(stevens).post(`/workspaces/${ws.id}/workflows/${workflow.body.id}/take-over`)).status).toBe(403);
+    const taken = await as(admin).post(`/workspaces/${ws.id}/workflows/${workflow.body.id}/take-over`);
+    expect(taken.body).toMatchObject({ ownerUserId: admin.id, ownerIsMember: true });
     script = async ({ tools }) => {
       await tools.find((tool) => tool.definition.function.name === "list_issues")!.execute({ owner: "acme", repo: "web" });
       return result("Digest posted.", 1);
     };
     await deliver(51);
     await waitFor(async () => (await db.listWorkflowRuns(ws.id, workflow.body.id)).find((candidate) => candidate.status === "succeeded"));
-    expect(seenInputs.at(-1)?.githubContext).toMatchObject({ via: "app", account: "nexus-test[bot]", owner: "acme", repo: "web" });
-    expect(toolCalls.at(-1)).toMatchObject({ tool: "list_issues", token: "tok-app" });
-    expect(factoryCalls.at(-1)).toEqual({ token: "tok-app", accountKey: "app" });
+    expect(toolCalls.at(-1)).toMatchObject({ tool: "list_issues", token: "tok-admin" });
+    await as(admin).delete(`/workspaces/${ws.id}/workflows/${workflow.body.id}`);
+  });
 
-    // Editors without Manage workflows cannot take it over; Admins can.
-    expect((await as(stevens).post(`/workspaces/${ws.id}/workflows/${workflow.body.id}/take-over`)).status).toBe(403);
-    const taken = await as(admin).post(`/workspaces/${ws.id}/workflows/${workflow.body.id}/take-over`);
-    expect(taken.body).toMatchObject({ ownerUserId: admin.id, ownerIsMember: true });
+  it("no longer accepts GitHub App deliveries", async () => {
+    const body = issueOpened(40);
+    const res = await request(app)
+      .post("/webhooks/github")
+      .set({ "content-type": "application/json", "x-github-event": "issues", "x-github-delivery": `app-${randomUUID()}`, "x-hub-signature-256": sign("app-secret", body) })
+      .send(body);
+    expect(res.status).toBe(404);
   });
 });
 
@@ -430,13 +453,6 @@ describe("TG-06 team activity in the agent's context", () => {
 });
 
 describe("helpers", () => {
-  it("parses repository input in the common forms", () => {
-    expect(parseRepositoryInput({ fullName: "acme/web" })).toEqual({ owner: "acme", repo: "web" });
-    expect(parseRepositoryInput({ url: "https://github.com/acme/web.git" })).toEqual({ owner: "acme", repo: "web" });
-    expect(parseRepositoryInput({ owner: "acme", repo: "web" })).toEqual({ owner: "acme", repo: "web" });
-    expect(parseRepositoryInput({ fullName: "acme" })).toBeNull();
-  });
-
   it("verifies signatures in constant time and summarizes the common events", () => {
     const body = Buffer.from('{"a":1}');
     expect(verifyGithubSignature("s", body, sign("s", '{"a":1}'))).toBe(true);

@@ -8,6 +8,7 @@ End-to-end tests that drive the real app in Chromium with [Playwright](https://p
 | `chat.spec.ts` | Two teammates in one workspace: presence, shared messages, the agent's reply, hand-offs, the message length limit |
 | `approvals.spec.ts` | Approval cards for everyone in the room, Editors unable to approve, cancelling, and a confirm that fails visibly |
 | `workflows.spec.ts` | Creating a workflow through the builder and running it |
+| `integrations.spec.ts` | GitHub's per-member repository setup and GitHub events panel on the Integrations page |
 
 ## Running them
 

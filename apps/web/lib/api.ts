@@ -12,7 +12,6 @@ import type {
   TeamActivity,
   Workspace,
   WorkspaceGithubSetup,
-  WorkspaceRepository,
   WorkspaceWorkflow,
   WorkspaceInvitation,
   WorkspaceMember,
@@ -888,36 +887,9 @@ async function postJson(url: string, body: unknown = {}): Promise<unknown> {
   return parseJsonOrThrow(res);
 }
 
-export async function listWorkspaceRepositories(workspaceId: string): Promise<WorkspaceRepository[]> {
-  return (await parseJsonOrThrow(
-    await authenticatedFetch(workspaceUrl(workspaceId, "/repositories")),
-  )) as WorkspaceRepository[];
-}
-
-export async function addWorkspaceRepository(workspaceId: string, fullName: string): Promise<WorkspaceRepository> {
-  return (await postJson(workspaceUrl(workspaceId, "/repositories"), { fullName })) as WorkspaceRepository;
-}
-
-export async function removeWorkspaceRepository(workspaceId: string, repositoryId: string): Promise<void> {
-  const res = await authenticatedFetch(workspaceUrl(workspaceId, `/repositories/${encodeURIComponent(repositoryId)}`), {
-    method: "DELETE",
-  });
-  if (!res.ok) await parseJsonOrThrow(res);
-}
-
-export async function setDefaultWorkspaceRepository(
-  workspaceId: string,
-  repositoryId: string,
-): Promise<WorkspaceRepository> {
-  return (await postJson(
-    workspaceUrl(workspaceId, `/repositories/${encodeURIComponent(repositoryId)}/default`),
-  )) as WorkspaceRepository;
-}
-
-export async function connectRepositoryEvents(workspaceId: string, repositoryId: string): Promise<WorkspaceRepository> {
-  return (await postJson(
-    workspaceUrl(workspaceId, `/repositories/${encodeURIComponent(repositoryId)}/webhook`),
-  )) as WorkspaceRepository;
+/** Adds the workspace's GitHub webhook to the Admin's own repository (needs admin rights on it). */
+export async function connectGithubEvents(workspaceId: string): Promise<{ repository: string; webhookId: number }> {
+  return (await postJson(workspaceUrl(workspaceId, "/github/webhook"))) as { repository: string; webhookId: number };
 }
 
 export async function getGithubSetup(workspaceId: string): Promise<WorkspaceGithubSetup> {

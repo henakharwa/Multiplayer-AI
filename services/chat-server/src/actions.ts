@@ -9,9 +9,9 @@ import { getRemoteMcpClient } from "./remote-mcp-pool.js";
 import { listMcpToolExecutors } from "./mcp-tools.js";
 import { buildNotionTools } from "./notion-tools.js";
 import { buildFigmaTools } from "./figma-tools.js";
-import type { IntegrationType, PendingAction, TeamActivity, WorkspaceRepository } from "@mai-chat/shared-types";
-import { offlineGithubTeamApi, type GithubTeamApi } from "./github-api.js";
-import { describeActionTarget, findActionWarnings, guardGithubTools, providerForTool, repositoryAccess, type GithubWorkspaceContext } from "./github-team.js";
+import type { IntegrationType, PendingAction, TeamActivity } from "@mai-chat/shared-types";
+import { offlineGithubTeamApi, type GithubTeamApi, type RepoAccess } from "./github-api.js";
+import { describeActionTarget, findActionWarnings, guardGithubTools, providerForTool, type GithubWorkspaceContext } from "./github-team.js";
 
 type ActionAgentKind = "project" | "github" | "slack" | "linear" | "notion" | "figma";
 
@@ -34,8 +34,8 @@ function completionAgentFor(agentKind: ActionAgentKind | null | undefined, toolN
 }
 
 export interface ProviderAccount {
-  // "app": the workspace GitHub App acted, not a member.
-  via: "user" | "app";
+  // Every connection belongs to one member; actions run as that member.
+  via: "user";
   userId: string | null;
   // Provider account name, e.g. a GitHub username.
   account: string | null;
@@ -48,13 +48,13 @@ export interface WorkspaceTools {
   linearTools: ToolExecutor[];
   notionTools: ToolExecutor[];
   figmaTools: ToolExecutor[];
-  // Set when GitHub tools were loaded: the repositories they may reach, what
-  // this account can do on each, and who they act as. agent.ts tells the
+  // Set when GitHub tools were loaded: the member's one repository, what
+  // their account can do there, and who the tools act as. agent.ts tells the
   // model which owner/repo to pass, since GitHub's MCP tools take both on
   // every call.
   githubContext?: GithubWorkspaceContext;
-  // Set when the workspace has repositories but this member has not
-  // connected GitHub, so the agent can say what to do instead of guessing.
+  // Set when this member connected GitHub but hasn't chosen a repository,
+  // so the agent can say what to do instead of guessing.
   githubNotice?: string;
   // The account each provider's tools act as this turn.
   accounts: Partial<Record<IntegrationType, ProviderAccount>>;
@@ -63,11 +63,7 @@ export interface WorkspaceTools {
 }
 
 export interface BuildToolsOptions {
-  // "user" (default): only the member's own connection. "auto": the
-  // member's connection, or the workspace GitHub App when they have none
-  // (workflow runs). "app": only the workspace GitHub App.
-  githubVia?: "user" | "auto" | "app";
-  // Called with "owner/repo" whenever a GitHub tool call reaches a repository.
+  // Called with "owner/repo" whenever a GitHub tool call reaches the repository.
   onGithubRepoUsed?: (fullName: string) => void;
 }
 
@@ -83,12 +79,10 @@ export function teamApiFor(deps: CreateServerDeps): GithubTeamApi {
 export async function buildToolsForWorkspace(workspaceId: string, deps: CreateServerDeps, requestingUserId?: string, options: BuildToolsOptions = {}): Promise<WorkspaceTools> {
   const available = await db.listIntegrations(workspaceId);
   const api = teamApiFor(deps);
-  const githubVia = options.githubVia ?? "user";
   // A member can work only through a connection they own. This preserves
   // source access boundaries even though every member can see the connected
   // account directory in the workspace UI.
   const integrations = (["github", "slack", "linear", "notion", "figma"] as const).flatMap((type) => {
-    if (type === "github" && githubVia === "app") return [];
     const accounts = available.filter((integration) => integration.type === type);
     const owned = accounts.find((integration) => integration.ownerUserId === requestingUserId);
     return owned ? [owned] : [];
@@ -101,36 +95,19 @@ export async function buildToolsForWorkspace(workspaceId: string, deps: CreateSe
   let githubContext: GithubWorkspaceContext | undefined;
   let githubNotice: string | undefined;
   let listOpenIssues: WorkspaceTools["listOpenIssues"];
-  const workspaceRepos = await db.listWorkspaceRepositories(workspaceId);
   const actingUser = requestingUserId ? await db.getUserById(requestingUserId) : null;
 
-  // GitHub: the workspace repository list, reached through the member's own
-  // account (or, for automation, the workspace GitHub App).
-  const loadGithub = async (token: string, via: "user" | "app", account: string | null, personalRepo?: { owner: string; repo: string }) => {
-    const repos: WorkspaceRepository[] = workspaceRepos.length
-      ? workspaceRepos
-      : personalRepo
-        ? [{ id: "personal", workspaceId, owner: personalRepo.owner, repo: personalRepo.repo, fullName: `${personalRepo.owner}/${personalRepo.repo}`, isDefault: true, addedByUserId: requestingUserId ?? null, addedByName: null, webhookId: null, lastEventAt: null, createdAt: new Date().toISOString() }]
-        : [];
-    if (!repos.length) return;
+  // GitHub: the one repository this member chose, through their own account.
+  const loadGithub = async (token: string, account: string | null, owner: string, repo: string) => {
     try {
-      const githubTools = await deps.githubMcpToolsFactory({ workspaceId, token, accountKey: via === "app" ? "app" : requestingUserId });
-      const repoAccess = await repositoryAccess(api, token, repos);
-      const preferred = repoAccess.find((repository) => repository.isDefault) ?? repoAccess[0];
-      githubContext = {
-        owner: preferred.owner,
-        repo: preferred.repo,
-        repos: repoAccess,
-        account,
-        actingAs: via === "app" ? "the workspace GitHub App" : actingUser?.displayName ?? "this member",
-        via,
-        workspaceList: workspaceRepos.length > 0,
-      };
+      const githubTools = await deps.githubMcpToolsFactory({ workspaceId, token, accountKey: requestingUserId });
+      const access: RepoAccess = await api.getRepoAccess(token, owner, repo).catch((): RepoAccess => "unknown");
+      githubContext = { owner, repo, access, account, actingAs: actingUser?.displayName ?? "this member" };
       const guarded = guardGithubTools(githubTools, githubContext, options.onGithubRepoUsed);
       tools.push(...guarded);
       githubAgentTools.push(...guarded);
-      accounts.github = { via, userId: via === "app" ? null : requestingUserId ?? null, account };
-      listOpenIssues = (owner, repo) => api.listOpenIssues(token, owner, repo);
+      accounts.github = { via: "user", userId: requestingUserId ?? null, account };
+      listOpenIssues = (issueOwner, issueRepo) => api.listOpenIssues(token, issueOwner, issueRepo);
     } catch (err) {
       // A misconfigured/unreachable GitHub MCP server (e.g. Docker isn't
       // running) shouldn't take the whole chat down -- surface it in the
@@ -149,7 +126,8 @@ export async function buildToolsForWorkspace(workspaceId: string, deps: CreateSe
           login = await api.getLogin(credential.token);
           if (login) await db.setIntegrationAccountLogin(integration.id, login).catch(() => undefined);
         }
-        await loadGithub(credential.token, "user", login, credential.owner && credential.repo ? { owner: credential.owner, repo: credential.repo } : undefined);
+        if (credential.owner && credential.repo) await loadGithub(credential.token, login, credential.owner, credential.repo);
+        else githubNotice = `${actingUser?.displayName ?? "The person asking"} connected GitHub but hasn't chosen a repository yet. They can choose one under Integrations → GitHub.`;
       }
     } else if (integration.type === "slack") {
       const credential = await db.getIntegrationCredential(workspaceId, "slack", integration.id);
@@ -202,21 +180,6 @@ export async function buildToolsForWorkspace(workspaceId: string, deps: CreateSe
     }
   }
 
-  // Automation with no member connection: the workspace GitHub App, when
-  // it is installed on the default repository.
-  if (!githubContext && githubVia !== "user" && workspaceRepos.length && api.app.configured()) {
-    const preferred = workspaceRepos.find((repository) => repository.isDefault) ?? workspaceRepos[0];
-    const token = await api.app.installationToken(preferred.owner, preferred.repo).catch((error) => {
-      console.error(`[actions] workspace ${workspaceId}: GitHub App token unavailable:`, errMessage(error));
-      return null;
-    });
-    if (token) await loadGithub(token, "app", api.app.botLogin());
-  }
-  if (!githubContext && workspaceRepos.length) {
-    githubNotice = `This workspace works on ${workspaceRepos.map((repository) => repository.fullName).join(", ")}, but ${
-      githubVia === "app" ? "the workspace GitHub App is not installed on it" : `${actingUser?.displayName ?? "the person asking"} has not connected their GitHub account in this workspace`
-    }. They can connect it under Integrations → GitHub.`;
-  }
   return { tools, githubTools: githubAgentTools, slackTools: slackAgentTools, linearTools: remoteAgentTools.linear, notionTools: remoteAgentTools.notion, figmaTools: remoteAgentTools.figma, githubContext, githubNotice, accounts, listOpenIssues };
 }
 
@@ -265,6 +228,9 @@ export function wrapForProposal(
     return {
       ...tool,
       execute: async (args: Record<string, unknown>) => {
+        // Refuse before anything is queued, so no one is asked to approve a
+        // change that can't be made (e.g. outside the member's repository).
+        tool.validate?.(args);
         const toolName = tool.definition.function.name;
         const description = tool.describe ? tool.describe(args) : `Run ${toolName}`;
         const preview = tool.preview ? tool.preview(args) : undefined;
@@ -289,7 +255,6 @@ export function wrapForProposal(
           requestedByUserId: requestedBy?.userId,
           requestedByName: requestedBy?.name,
           agentKind: agentKind ?? null,
-          runAsKind: runAs?.via ?? "user",
           runAsUserId: runAs ? runAs.userId : requestedBy?.userId ?? null,
           runAsAccount: runAs?.account ?? null,
           target,
@@ -330,11 +295,9 @@ export async function withRunAsAvailability(workspaceId: string, deps: CreateSer
   if (!actions.some((action) => action.status === "pending")) return actions;
   const integrations = await db.listIntegrations(workspaceId);
   const members = new Set((await db.listWorkspaceMembers(workspaceId)).map((member) => member.id));
-  const api = teamApiFor(deps);
   return actions.map((action) => {
     if (action.status !== "pending") return action;
     const provider = providerForTool(action.toolName, action.agentKind);
-    if (action.runAsKind === "app") return { ...action, runAsAvailable: api.app.configured() };
     const userId = action.runAsUserId ?? action.requestedByUserId;
     if (!userId) return { ...action, runAsAvailable: true };
     const connected = integrations.some((integration) => integration.type === provider && integration.ownerUserId === userId);
@@ -437,19 +400,22 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
     }
 
     // Run-as rule: an approved action runs with the requester's own
-    // connection (or the workspace GitHub App for automation). When that is
-    // no longer usable, the approver may choose to run it as themselves.
+    // connection. When that is no longer usable, the approver may choose to
+    // run it as themselves.
     const provider = providerForTool(action.toolName, action.agentKind);
     const runAsMe = req.body?.runAs === "me";
-    const runAsApp = !runAsMe && action.runAsKind === "app";
-    const runUserId = runAsMe ? req.user!.id : runAsApp ? undefined : action.runAsUserId ?? action.requestedByUserId ?? req.user!.id;
-    const built = await buildToolsForWorkspace(workspaceId, deps, runUserId, { githubVia: runAsApp ? "app" : "user" });
-    // Every pending action is a write: an account that can only read the
-    // repository cannot run it, so treat that like a missing connection.
-    const repoBlocked = (tools: WorkspaceTools) =>
-      provider === "github" &&
-      Boolean(action.target?.repo) &&
-      tools.githubContext?.repos.some((repository) => `${repository.owner}/${repository.repo}`.toLowerCase() === action.target!.repo!.toLowerCase() && (repository.access === "none" || repository.access === "read"));
+    const runUserId = runAsMe ? req.user!.id : action.runAsUserId ?? action.requestedByUserId ?? req.user!.id;
+    const built = await buildToolsForWorkspace(workspaceId, deps, runUserId);
+    // A GitHub action can only run through an account that works in the
+    // repository it targets and can write there. Each member works in one
+    // repository, so a connection pointed at another repository, or one that
+    // can only read this one, counts as unavailable.
+    const repoBlocked = (tools: WorkspaceTools) => {
+      if (provider !== "github" || !action.target?.repo) return false;
+      const context = tools.githubContext;
+      if (!context) return true;
+      return `${context.owner}/${context.repo}`.toLowerCase() !== action.target.repo.toLowerCase() || context.access === "none" || context.access === "read";
+    };
     const tool = repoBlocked(built) ? undefined : built.tools.find((t) => t.definition.function.name === action.toolName);
     if (!tool) {
       // Offer "Run as me" instead of failing when the approver's own
@@ -457,7 +423,7 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
       if (!runAsMe && runUserId !== req.user!.id) {
         const mine = await buildToolsForWorkspace(workspaceId, deps, req.user!.id);
         if (!repoBlocked(mine) && mine.tools.some((t) => t.definition.function.name === action.toolName)) {
-          const who = runAsApp ? "The workspace GitHub App" : `${action.runAsName ?? action.requestedByName ?? "The requester"}'s ${PROVIDER_LABELS[provider]} connection`;
+          const who = `${action.runAsName ?? action.requestedByName ?? "The requester"}'s ${PROVIDER_LABELS[provider]} connection`;
           res.status(409).json({
             error: `${who} can no longer run this action. You can run it as yourself${formatAccount(provider, mine.accounts[provider]?.account) ? ` (${formatAccount(provider, mine.accounts[provider]?.account)})` : ""} instead.`,
             code: "run_as_unavailable",
@@ -503,11 +469,11 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
 
     const executed = built.accounts[provider];
     const executedAccount = formatAccount(provider, executed?.account);
-    const executedAsName = runAsApp ? "the workspace GitHub App" : runAsMe ? actorName : action.runAsName ?? action.requestedByName ?? actorName;
+    const executedAsName = runAsMe ? actorName : action.runAsName ?? action.requestedByName ?? actorName;
     try {
       const result = await tool.execute(action.args);
       const resultText = typeof result === "string" ? result : JSON.stringify(result);
-      await db.setActionExecutedAs(workspaceId, actionId, runAsApp ? null : runUserId ?? null, executed?.account ?? null);
+      await db.setActionExecutedAs(workspaceId, actionId, runUserId ?? null, executed?.account ?? null);
       const resolved = await db.resolvePendingAction({ workspaceId, id: actionId, status: "confirmed", result: resultText });
       rooms.broadcast(roomId, { type: "pending_action_update", action: resolved });
       const ranAs = runAsMe
@@ -532,7 +498,7 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
         role: "agent",
         authorName: completionAgentFor(action.agentKind, action.toolName),
         content: `The requested action has completed: ${action.description}.`,
-        provenance: { provider, via: runAsApp ? "app" : "user", actedAsUserId: runAsApp ? null : runUserId ?? null, actedAsName: executedAsName, account: executed?.account ?? null, ...(action.target?.repo ? { repos: [action.target.repo] } : {}) },
+        provenance: { provider, via: "user", actedAsUserId: runUserId ?? null, actedAsName: executedAsName, account: executed?.account ?? null, ...(action.target?.repo ? { repos: [action.target.repo] } : {}) },
       });
       rooms.broadcast(roomId, { type: "message", message: completionMessage });
       // Members who are not watching this conversation learn the write

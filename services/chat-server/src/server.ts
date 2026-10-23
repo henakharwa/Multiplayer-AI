@@ -10,7 +10,7 @@ import { createPostgresRoomBus, realtimeBusEnabled } from "./realtime-bus.js";
 import { toLlmHistory } from "./history.js";
 import { replyForResolvedActions, stripConfirmationBoilerplate, type AgentKind } from "./agent.js";
 import { resolveLlmConfig } from "./llm-client.js";
-import { buildToolsForWorkspace, wrapForProposal, registerActionRoutes, teamApiFor } from "./actions.js";
+import { buildToolsForWorkspace, wrapForProposal, registerActionRoutes } from "./actions.js";
 import { registerGithubTeamRoutes, registerGithubWebhookRoutes, type GithubEventHandler } from "./routes/github-team.js";
 import { formatTeamActivity, listTeamActivity, summarizeGithubEvent } from "./github-team.js";
 import type { MessageProvenance, TeamActivity } from "@mai-chat/shared-types";
@@ -262,7 +262,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
   async function runAgentReply(
     workspaceId: string,
     conversationId: string,
-    // userId is null for a workflow run by the workspace GitHub App after its owner left.
+    // userId is null only when no member can be attributed.
     requestedBy: { userId: string | null; name: string },
     agentKind: AgentKind,
     configuredAgentId?: string,
@@ -284,8 +284,6 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     // Repositories the GitHub tools actually reached this turn (for "Read as @login · owner/repo").
     const reposUsed = new Set<string>();
     const built = await buildToolsForWorkspace(workspaceId, deps, requestedBy.userId ?? undefined, {
-      // Workflows may fall back to the workspace GitHub App; chat never does.
-      githubVia: workflowInstructions ? "auto" : "user",
       onGithubRepoUsed: (fullName) => reposUsed.add(fullName),
     });
     console.log(`[timing] workspace ${workspaceId}: buildToolsForWorkspace (incl. GitHub MCP container) took ${Date.now() - buildStart}ms`);
@@ -371,7 +369,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
             provider: agentKind,
             via: actingAccount.via,
             actedAsUserId: actingAccount.userId,
-            actedAsName: actingAccount.via === "app" ? "Workspace GitHub App" : requestedBy.name,
+            actedAsName: requestedBy.name,
             account: actingAccount.account,
             ...(agentKind === "github"
               ? { repos: reposUsed.size ? [...reposUsed] : built.githubContext ? [`${built.githubContext.owner}/${built.githubContext.repo}`] : [] }
@@ -413,19 +411,16 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
   // event-driven work takes the identical tool, provider-permission, action
   // proposal, notification, and WebSocket paths as an ordinary chat turn.
   const runWorkflow = async (workflow: NonNullable<Awaited<ReturnType<typeof db.getWorkspaceWorkflow>>>, trigger: "manual" | "schedule" | "github_issue" | "github_status" | "slack_mention", user: { id: string | null; displayName: string }, eventText?: string) => {
+    // A workflow runs as its owner, through the owner's own connections. If
+    // the owner has left the workspace, the run fails until someone takes
+    // the workflow over.
     const role = user.id ? await db.getWorkspaceRole(workflow.workspaceId, user.id) : null;
-    // A workflow whose owner left keeps running through the workspace
-    // GitHub App (GitHub and Project workflows only); its proposals still
-    // need a person's approval.
-    const viaApp = !role && (workflow.agentKind === "github" || workflow.agentKind === "project") && teamApiFor(deps).app.configured();
     const actor = role ? user : { id: null, displayName: "Workflow automation" };
     const run = await db.createWorkflowRun(workflow, trigger);
-    await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.started", actorType: role ? "user" : "system", actorUserId: role ? user.id : null, actorName: actor.displayName, summary: `${actor.displayName} started workflow ${workflow.name}${viaApp ? " (owner unavailable; using the workspace GitHub App)" : ""}`, metadata: { workflowId: workflow.id, runId: run.id, trigger } });
+    await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.started", actorType: role ? "user" : "system", actorUserId: role ? user.id : null, actorName: actor.displayName, summary: `${actor.displayName} started workflow ${workflow.name}`, metadata: { workflowId: workflow.id, runId: run.id, trigger } });
     try {
-      if (!role && !viaApp) {
-        throw new Error(
-          `The workflow owner is no longer a workspace member. An Admin can take it over on the Workflows page${workflow.agentKind === "github" ? ", or install the workspace GitHub App so it runs without a member" : ""}.`
-        );
+      if (!role) {
+        throw new Error("The workflow owner is no longer a workspace member. An Admin can take it over on the Workflows page.");
       }
       if (role && workflow.agentKind !== "project" && !(await db.hasWorkspacePermission(workflow.workspaceId, role, workflow.agentKind))) {
         throw new Error(`The workflow owner cannot use the ${workflow.agentKind} provider.`);
@@ -505,10 +500,6 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     const activity: TeamActivity = { id: recorded.id, source: "github", actorName: recorded.actorName, summary: summary.summary, repo: summary.repo, url: summary.url, createdAt: recorded.createdAt };
     rooms.broadcast(workspaceId, { type: "team_activity", activity });
     if (!summary.trigger) return;
-    // Changes made by the workspace GitHub App itself never start workflows,
-    // so an automated change cannot set off a chain of runs.
-    const sender = (payload as { sender?: { login?: string; type?: string } }).sender;
-    if (sender?.type === "Bot" && sender.login === teamApiFor(deps).app.botLogin()) return;
     for (const workflow of await db.listEventWorkflows(workspaceId, summary.trigger)) {
       const owner = workflow.ownerUserId ? await db.getUserById(workflow.ownerUserId) : null;
       void app.locals.runWorkflow(workflow, summary.trigger, { id: owner?.id ?? null, displayName: owner?.displayName ?? "Workflow automation" }, summary.eventText);
@@ -527,7 +518,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
         const due = await db.claimDueWorkflows();
         for (const workflow of due) {
           const owner = workflow.ownerUserId ? await db.getUserById(workflow.ownerUserId) : null;
-          // runWorkflow decides whether a missing owner can be replaced by the workspace GitHub App.
+          // runWorkflow records a failed run when the owner has left the workspace.
           void app.locals.runWorkflow(workflow, "schedule", { id: owner?.id ?? null, displayName: owner?.displayName ?? "Workflow automation" });
         }
       })().catch((error) => {

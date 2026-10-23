@@ -324,7 +324,7 @@ describe("runAgentTurn", () => {
     expect(seenSystemPrompt).toContain("No GitHub repository is connected");
   });
 
-  it("tells the GitHub agent the workspace repositories, whose account it acts as, what it cannot open, and recent team activity", async () => {
+  it("tells the GitHub agent its one repository, whose account it acts as, what that account can do, and recent team activity", async () => {
     let seenSystemPrompt = "";
     const chat: LlmChatFn = async (_config, messages) => {
       seenSystemPrompt = String(messages[0].content);
@@ -335,29 +335,24 @@ describe("runAgentTurn", () => {
       tools: [],
       chat,
       agentKind: "github",
-      githubContext: {
-        owner: "acme",
-        repo: "web",
-        account: "stevens-gh",
-        actingAs: "Stevens",
-        via: "user",
-        workspaceList: true,
-        repos: [
-          { owner: "acme", repo: "web", access: "write", isDefault: true },
-          { owner: "acme", repo: "secret", access: "none" },
-        ],
-      },
+      githubContext: { owner: "acme", repo: "web", access: "write", account: "stevens-gh", actingAs: "Stevens" },
       teamActivity: "- Hena's agent made a comment on #14 in acme/web (5 minutes ago)",
     });
-    expect(seenSystemPrompt).toContain("- acme/web (default): can read and propose changes");
-    expect(seenSystemPrompt).toContain("- acme/secret: NO ACCESS");
+    expect(seenSystemPrompt).toContain("works in ONE GitHub repository: acme/web (can read and propose changes)");
     expect(seenSystemPrompt).toContain("Stevens's own GitHub account (@stevens-gh)");
-    expect(seenSystemPrompt).toContain('say "Your GitHub account (@stevens-gh) can\'t access acme/secret"');
-    expect(seenSystemPrompt).toContain("Only use the repositories listed above");
+    expect(seenSystemPrompt).toContain('Always pass owner="acme"');
+    expect(seenSystemPrompt).toContain("Never use a different repository");
+    expect(seenSystemPrompt).toContain("change\ntheir repository under Integrations → GitHub");
     expect(seenSystemPrompt).toContain("Hena's agent made a comment on #14");
 
-    await runAgentTurn({ history: [], tools: [], chat, agentKind: "github", githubNotice: "This workspace works on acme/web, but Casey has not connected their GitHub account in this workspace." });
-    expect(seenSystemPrompt).toContain("Casey has not connected their GitHub account");
+    await runAgentTurn({ history: [], tools: [], chat, agentKind: "github", githubContext: { owner: "acme", repo: "secret", access: "none", account: "stevens-gh", actingAs: "Stevens" } });
+    expect(seenSystemPrompt).toContain('say "Your GitHub account (@stevens-gh) can\'t access acme/secret"');
+
+    await runAgentTurn({ history: [], tools: [], chat, agentKind: "github", githubContext: { owner: "acme", repo: "docs", access: "read", account: "stevens-gh", actingAs: "Stevens" } });
+    expect(seenSystemPrompt).toContain("can read acme/docs but cannot make changes there");
+
+    await runAgentTurn({ history: [], tools: [], chat, agentKind: "github", githubNotice: "Casey connected GitHub but hasn't chosen a repository yet." });
+    expect(seenSystemPrompt).toContain("Casey connected GitHub but hasn't chosen a repository yet");
     expect(seenSystemPrompt).not.toContain("No GitHub repository is connected");
   });
 

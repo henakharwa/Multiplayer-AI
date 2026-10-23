@@ -933,10 +933,7 @@ export default function WorkflowsPage() {
                 <aside className="workflow-diagnostic" data-testid="workflow-owner-left">
                   <strong>Owner left the workspace</strong>
                   <span>
-                    {selected.ownerName ?? "Its owner"} is no longer a member.{" "}
-                    {selected.agentKind === "github" || selected.agentKind === "project"
-                      ? "It keeps running through the workspace GitHub App when one is installed; otherwise runs fail until someone takes it over."
-                      : "Runs fail until someone takes it over."}
+                    {selected.ownerName ?? "Its owner"} is no longer a member. Runs fail until someone takes it over.
                   </span>
                   {canChange && (
                     <button

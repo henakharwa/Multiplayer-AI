@@ -30,7 +30,7 @@ export default function PendingActionCard({
   const [error, setError] = useState<string | null>(null);
   // Set when the server reports the run-as connection is gone and the
   // approver's own connection can do it instead.
-  const runsAsCurrentUser = action.runAsKind !== "app" && !!currentUserId && action.runAsUserId === currentUserId;
+  const runsAsCurrentUser = !!currentUserId && action.runAsUserId === currentUserId;
   const [offerRunAsMe, setOfferRunAsMe] = useState(action.runAsAvailable === false && !runsAsCurrentUser);
   // GitHub writes target owner/repo. Slack's MCP tools pass channel_id,
   // older Slack tools passed channel, and Figma tools pass the file link.
@@ -45,14 +45,11 @@ export default function PendingActionCard({
     text(action.args.file) ||
     action.toolName;
   const warnings = action.warnings ?? [];
-  const runsAs =
-    action.runAsKind === "app"
-      ? `Workspace GitHub App${action.runAsAccount ? ` (@${action.runAsAccount})` : ""}`
-      : `${action.runAsName ?? action.requestedByName ?? "The requester"}${
-          action.runAsAccount
-            ? ` (${action.agentKind === "github" || !action.agentKind ? "@" : ""}${action.runAsAccount})`
-            : ""
-        }`;
+  const runsAs = `${action.runAsName ?? action.requestedByName ?? "The requester"}${
+    action.runAsAccount
+      ? ` (${action.agentKind === "github" || !action.agentKind ? "@" : ""}${action.runAsAccount})`
+      : ""
+  }`;
 
   async function handle(intent: "confirm" | "cancel" | "runAsMe") {
     setBusy(intent);
