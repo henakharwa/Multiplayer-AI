@@ -58,7 +58,9 @@ export function registerEmailAuthRoutes(app: Express, config: UserAuthConfig, ma
       if (!user) return res.status(401).json({ error: "Incorrect email or password." });
       await issueSession(res, user.id, config);
       res.status(signup ? 201 : 200).json(user);
-      if (signup) {
+      // Only when verification is on: with it off, the emailed link would
+      // just say verification is disabled.
+      if (signup && config.emailVerificationEnabled) {
         // Fire-and-forget from the response's point of view -- signup
         // already succeeded and the session is already issued; a slow or
         // failing mail provider shouldn't turn a successful signup into

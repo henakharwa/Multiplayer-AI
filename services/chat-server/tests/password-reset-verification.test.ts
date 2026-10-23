@@ -30,10 +30,16 @@ function captureMailer(): { mailer: Mailer; sent: OutgoingEmail[] } {
 
 // Signup fires the verification email without awaiting it (so a slow/failing
 // mail provider can never turn a successful signup into an error response --
-// see email-auth.ts's comment on this). Tests that inspect `sent` right
-// after a signup give that fire-and-forget send one tick to actually land.
-function flush(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 10));
+// see email-auth.ts's comment on this). Tests that inspect `sent` after a
+// signup wait until that email has actually been handed to the mailer. A
+// fixed short pause was not enough on slower CI machines, where the email
+// could land after the test had already cleared `sent`.
+async function waitForSignupEmail(sent: OutgoingEmail[]): Promise<void> {
+  const deadline = Date.now() + 3_000;
+  while (sent.length === 0) {
+    if (Date.now() > deadline) throw new Error("the signup verification email was never sent");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 function extractToken(text: string): string {
@@ -42,17 +48,17 @@ function extractToken(text: string): string {
   return decodeURIComponent(match[1]);
 }
 
-function makeApp(mailer: Mailer) {
+function makeApp(mailer: Mailer, authConfig: UserAuthConfig = config) {
   const app = express();
   app.use(express.json());
   app.use(attachUser());
-  registerUserAuthRoutes(app, config, {
+  registerUserAuthRoutes(app, authConfig, {
     exchangeCodeForToken: async () => ({ error: "unused" }),
     fetchGithubUser: async () => ({ error: "unused" }),
     google: { fetchProfile: async () => ({ googleId: "unused", email: "unused@example.test", displayName: "Unused" }) },
   }, mailer);
-  registerEmailVerificationRoutes(app, config, mailer);
-  registerPasswordResetRoutes(app, config, mailer);
+  registerEmailVerificationRoutes(app, authConfig, mailer);
+  registerPasswordResetRoutes(app, authConfig, mailer);
   app.get("/protected", requireAuth, (req, res) => res.json(req.user));
   return app;
 }
@@ -61,6 +67,14 @@ const newAccount = () => ({ email: `${randomUUID()}@example.test`, password: `Te
 
 beforeAll(async () => {
   await runMigrations();
+});
+// Every test file signs people up from the same address (127.0.0.1), and the
+// sign-in and password-reset limits are per address and stored in the
+// database, so files running alongside this one use up the same allowance.
+// Start each test here with a fresh allowance so a test never fails because
+// of how many sign-ups other files happened to make first.
+beforeEach(async () => {
+  await db.getPool().query("DELETE FROM auth_rate_limits WHERE scope IN ('email-auth-ip', 'password-reset-ip')");
 });
 afterAll(async () => { await db.closePool(); });
 
@@ -72,7 +86,7 @@ describe("email verification", () => {
     const signup = await request(app).post("/auth/signup/email").send(account);
     expect(signup.status).toBe(201);
     expect(signup.body.emailVerified).toBe(false);
-    await flush();
+    await waitForSignupEmail(sent);
 
     expect(sent).toHaveLength(1);
     expect(sent[0].to).toBe(account.email);
@@ -88,6 +102,17 @@ describe("email verification", () => {
     expect(replay.status).toBe(400);
   });
 
+  // Regression: with verification turned off, sign-up used to email a link
+  // that only said "Email verification is currently disabled".
+  it("sends no verification email when verification is turned off", async () => {
+    const { mailer, sent } = captureMailer();
+    const app = makeApp(mailer, { ...config, emailVerificationEnabled: false });
+    const signup = await request(app).post("/auth/signup/email").send(newAccount());
+    expect(signup.status).toBe(201);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(sent).toHaveLength(0);
+  });
+
   it("rejects an unknown or malformed verification token", async () => {
     const app = makeApp(captureMailer().mailer);
     const res = await request(app).post("/auth/verify-email").send({ token: "not-a-real-token" });
@@ -100,7 +125,7 @@ describe("email verification", () => {
     const browser = request.agent(app);
     const account = newAccount();
     await browser.post("/auth/signup/email").send(account); // sends email #1
-    await flush();
+    await waitForSignupEmail(sent);
 
     expect((await request(app).post("/auth/resend-verification")).status).toBe(401);
 
@@ -139,7 +164,7 @@ describe("password reset", () => {
     const account = newAccount();
     const original = request.agent(app);
     await original.post("/auth/signup/email").send(account);
-    await flush();
+    await waitForSignupEmail(sent);
     expect((await original.get("/protected")).status).toBe(200); // real, live session before the reset
 
     const forgot = await request(app).post("/auth/forgot-password").send({ email: account.email });
@@ -170,7 +195,7 @@ describe("password reset", () => {
     const app = makeApp(mailer);
     const known = newAccount();
     await request(app).post("/auth/signup/email").send(known);
-    await flush();
+    await waitForSignupEmail(sent);
     sent.length = 0;
 
     const forKnown = await request(app).post("/auth/forgot-password").send({ email: known.email });
