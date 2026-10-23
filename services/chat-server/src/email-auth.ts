@@ -38,9 +38,12 @@ export function registerEmailAuthRoutes(app: Express, config: UserAuthConfig, ma
           email,
           displayName,
           passwordHash: await hashPassword(password),
-          // This prototype currently disables email verification, so a
-          // completed sign-up can be linked with a verified OAuth email.
-          emailVerified: !config.emailVerificationEnabled,
+          // Typing an address into a sign-up form never proves ownership of
+          // it. Only the emailed verification link may mark it verified;
+          // treating it as verified here would let someone pre-register a
+          // victim's email and later receive the victim's Google/GitHub
+          // sign-in, since verified emails are the account-linking key.
+          emailVerified: false,
         });
       } else {
         const credential = await db.getPasswordCredential(email);

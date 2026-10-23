@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import type { Express, NextFunction, Request, Response } from "express";
 import * as db from "@mai-chat/db";
 import type { RoomRegistry } from "./rooms.js";
 import type { ToolExecutor } from "./tools.js";
@@ -357,12 +357,14 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
     res.json(await withRunAsAvailability(workspaceId, deps, await db.listPendingActions(workspaceId, conversationId, onlyPending)));
   });
 
-  app.post("/workspaces/:id/actions/:actionId/confirm", (req: Request, res: Response) => {
-    void resolveAction(req, res, "confirmed");
+  // Passing failures to next() (instead of `void`) sends them to the error
+  // handler; an unhandled rejection here would terminate the server.
+  app.post("/workspaces/:id/actions/:actionId/confirm", (req: Request, res: Response, next: NextFunction) => {
+    resolveAction(req, res, "confirmed").catch(next);
   });
 
-  app.post("/workspaces/:id/actions/:actionId/cancel", (req: Request, res: Response) => {
-    void resolveAction(req, res, "cancelled");
+  app.post("/workspaces/:id/actions/:actionId/cancel", (req: Request, res: Response, next: NextFunction) => {
+    resolveAction(req, res, "cancelled").catch(next);
   });
 
   async function resolveAction(req: Request, res: Response, intent: "confirmed" | "cancelled"): Promise<void> {
@@ -372,6 +374,18 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
       res.status(400).json({ error: "invalid id" });
       return;
     }
+    // Two approvals arriving together (two Admins, a double-click, a retry)
+    // used to both pass the "still pending" check below and run the write
+    // twice -- two issues, two Slack posts. Only one request at a time may
+    // resolve a given action, across every server process; the status is
+    // re-read once the lock is held, so the second request sees the result.
+    const outcome = await db.tryWithAdvisoryLock(`pending-action:${actionId}`, () => resolveActionLocked(req, res, intent, workspaceId, actionId));
+    if (!outcome.acquired) {
+      res.status(409).json({ error: "Someone is already confirming or cancelling this action." });
+    }
+  }
+
+  async function resolveActionLocked(req: Request, res: Response, intent: "confirmed" | "cancelled", workspaceId: string, actionId: string): Promise<void> {
     const action = await db.getPendingAction(workspaceId, actionId);
     if (!action) {
       res.status(404).json({ error: "action not found" });

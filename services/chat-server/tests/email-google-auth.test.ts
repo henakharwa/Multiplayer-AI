@@ -142,14 +142,33 @@ describe("Google sign-in", () => {
     await browser.get("/auth/login/google/callback").query({ code: "test", state: new URL(start.headers.location).searchParams.get("state") });
     expect((await browser.get("/auth/me")).body.id).not.toBe(created.body.id);
   });
-  it("links a verified email account and Google login into one user", async () => {
+  // Security regression: with verification disabled, a sign-up used to be
+  // treated as a verified email, so someone could pre-register a victim's
+  // address and later receive the victim's Google sign-in.
+  it("does not hand a Google login to a password account that merely typed the same email", async () => {
     const account = newAccount();
     const app = makeApp({ google: { fetchProfile: async () => ({ googleId: randomUUID(), email: account.email, displayName: "Google" }) } });
     const created = await request(app).post("/auth/signup/email").send(account);
     expect(created.status).toBe(201);
+    expect(created.body.emailVerified).toBe(false);
     const browser = request.agent(app); const start = await browser.get("/auth/login/google/start");
     await browser.get("/auth/login/google/callback").query({ code: "test", state: new URL(start.headers.location).searchParams.get("state") });
-    expect((await browser.get("/auth/me")).body.id).toBe(created.body.id);
+    expect((await browser.get("/auth/me")).body.id).not.toBe(created.body.id);
+  });
+  // Security regression: a password sign-up on an email that a Google/GitHub
+  // account already owns used to attach a new password to that account and
+  // sign the stranger in as its owner.
+  it("refuses an email sign-up for an address a Google or GitHub account already owns", async () => {
+    // Checked at the database layer: the sign-up route turns this refusal
+    // into its usual 409 without issuing a session (see "rejects duplicates
+    // atomically" above), and staying off HTTP keeps this test out of the
+    // per-IP sign-in rate limit that the other files running in parallel share.
+    const googleVictim = await db.upsertUserFromGoogle({ googleId: randomUUID(), email: `${randomUUID()}@gmail.test`, displayName: "Victim" });
+    const githubVictim = await db.upsertUserFromGithub({ githubId: randomUUID(), email: `${randomUUID()}@github.test`, username: `v-${randomUUID().slice(0, 8)}`, displayName: "Victim" });
+    for (const victim of [googleVictim, githubVictim]) {
+      await expect(db.createPasswordUser({ email: victim.email!, displayName: "Mallory", passwordHash: "x" })).rejects.toMatchObject({ code: "23505" });
+      expect(await db.getPasswordCredential(victim.email!)).toBeNull();
+    }
   });
   it("validates the real token and UserInfo responses", async () => {
     const mocked = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "test-access" })))

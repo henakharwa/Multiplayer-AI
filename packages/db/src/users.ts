@@ -123,17 +123,21 @@ export async function createPasswordUser(input: { email: string; displayName: st
   try {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [email]);
+    // A password sign-up proves nothing about who owns the email, so it must
+    // never attach to an account that already owns that email through Google
+    // or GitHub -- doing so would let anyone who knows the address set a
+    // password on someone else's account and sign straight in. Refuse with the
+    // same unique-violation code a duplicate password account produces, so
+    // the route answers with its usual 409.
     const existing = await client.query(`SELECT user_id FROM user_email_identities WHERE email = $1`, [email]);
-    const result = existing.rows[0]
-      ? await client.query(
-        `SELECT id, github_id, username, display_name, avatar_url, created_at FROM users WHERE id = $1`,
-        [existing.rows[0].user_id]
-      )
-      : await client.query(
-        `INSERT INTO users (username, display_name) VALUES ($1, $2)
-         RETURNING id, github_id, username, display_name, avatar_url, created_at`,
-        [email, input.displayName]
-      );
+    if (existing.rows[0]) {
+      throw Object.assign(new Error("An account already uses this email."), { code: "23505" });
+    }
+    const result = await client.query(
+      `INSERT INTO users (username, display_name) VALUES ($1, $2)
+       RETURNING id, github_id, username, display_name, avatar_url, created_at`,
+      [email, input.displayName]
+    );
     await client.query(
       `INSERT INTO password_credentials (user_id, email, password_hash, email_verified_at)
        VALUES ($1, $2, $3, CASE WHEN $4 THEN now() ELSE NULL END)`,
@@ -204,6 +208,12 @@ export async function getUserBySessionToken(token: string): Promise<User | null>
 export async function deleteSession(token: string): Promise<void> {
   const pool = getPool();
   await pool.query(`DELETE FROM sessions WHERE token_hash = $1`, [hashSessionToken(token)]);
+}
+
+/** Number of the user's sessions that are still live (signed in somewhere). */
+export async function countActiveSessionsForUser(userId: string): Promise<number> {
+  const result = await getPool().query(`SELECT count(*)::int AS n FROM sessions WHERE user_id = $1 AND expires_at > now()`, [userId]);
+  return Number(result.rows[0]?.n ?? 0);
 }
 
 // -- Email verification -------------------------------------------------

@@ -14,12 +14,12 @@
     "@mai-chat/db": "0.1.0",
     "@mai-chat/integrations": "0.1.0",
     "@mai-chat/shared-types": "0.1.0",
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "cors": "2.8.6",
     "dotenv": "18.0.1",
     "express": "5.2.1",
     "gpt-tokenizer": "4.0.0",
-    "nodemailer": "^7.0.12",
+    "nodemailer": "^10.2.1",
     "undici": "^7.29.1",
     "ws": "8.21.3"
   },
@@ -27,12 +27,12 @@
     "@types/cors": "2.8.19",
     "@types/express": "5.0.6",
     "@types/node": "26.6.2",
-    "@types/nodemailer": "^7.0.4",
+    "@types/nodemailer": "^8.0.2",
     "@types/supertest": "7.2.1",
     "@types/ws": "8.18.1",
     "supertest": "7.2.2",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
-    "vitest": "5.0.1"
+    "vitest": "5.0.5"
   }
 }

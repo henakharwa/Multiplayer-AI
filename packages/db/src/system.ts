@@ -8,13 +8,30 @@ import { getPool } from "./pool.js";
  * more than one instance without adding a separate queue dependency.
  */
 export async function runWithAdvisoryLock<T>(key: string, task: () => Promise<T>): Promise<T | undefined> {
-  const pool = getPool();
-  const acquired = await pool.query("SELECT pg_try_advisory_lock(hashtext($1)) AS locked", [key]);
-  if (!acquired.rows[0]?.locked) return undefined;
+  const outcome = await tryWithAdvisoryLock(key, task);
+  return outcome.acquired ? outcome.value : undefined;
+}
+
+/**
+ * Runs `task` only if no other process or request holds the lock for `key`.
+ * Postgres advisory locks belong to one connection, so the lock is taken and
+ * released on a single dedicated connection -- taking it through the shared
+ * pool could release it on a different connection and leave it held.
+ */
+export async function tryWithAdvisoryLock<T>(key: string, task: () => Promise<T>): Promise<{ acquired: false } | { acquired: true; value: T }> {
+  const client = await getPool().connect();
+  let locked = false;
   try {
-    return await task();
+    const acquired = await client.query("SELECT pg_try_advisory_lock(hashtext($1)) AS locked", [key]);
+    locked = Boolean(acquired.rows[0]?.locked);
+    if (!locked) return { acquired: false };
+    return { acquired: true, value: await task() };
   } finally {
-    await pool.query("SELECT pg_advisory_unlock(hashtext($1))", [key]);
+    let releaseError: unknown;
+    if (locked) await client.query("SELECT pg_advisory_unlock(hashtext($1))", [key]).catch((error) => { releaseError = error; });
+    // A connection whose unlock failed may still hold the lock; destroy it
+    // instead of returning it to the pool.
+    client.release(releaseError instanceof Error ? releaseError : undefined);
   }
 }
 

@@ -16,3 +16,8 @@ const sameOrigin = sameOriginApi();
 
 export const CHAT_SERVER_URL = process.env.NEXT_PUBLIC_CHAT_SERVER_URL || sameOrigin?.http || "http://localhost:4000";
 export const CHAT_SERVER_WS_URL = process.env.NEXT_PUBLIC_CHAT_SERVER_WS_URL || sameOrigin?.ws || "ws://localhost:4000";
+
+// Longest chat message the server accepts (services/chat-server/src/server.ts
+// MAX_CHAT_MESSAGE_CHARS). The composer stops typing at this length so people
+// never hit the server's rejection.
+export const MAX_CHAT_MESSAGE_CHARS = 20_000;

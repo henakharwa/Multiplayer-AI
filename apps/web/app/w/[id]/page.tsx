@@ -54,6 +54,7 @@ import { useWorkspaceAccess } from "../../../lib/useWorkspaceAccess";
 import EmailVerificationBanner from "../../_components/EmailVerificationBanner";
 import { draftLooksLikeHandoff } from "../../../lib/mentionHighlight";
 import { renderMessageContent } from "../../../lib/messageMarkdown";
+import { MAX_CHAT_MESSAGE_CHARS } from "../../../lib/config";
 
 function roleLabel(role: string): string {
   if (role === "agent") return "Agent";
@@ -1331,6 +1332,7 @@ export default function WorkspaceRoomPage() {
               <form className="workspace-hero-composer" onSubmit={handleSend}>
                 <input
                   ref={composerInputRef}
+                  maxLength={MAX_CHAT_MESSAGE_CHARS}
                   data-testid="chat-input"
                   placeholder="Get work done"
                   value={draft}
@@ -1548,6 +1550,7 @@ export default function WorkspaceRoomPage() {
             <form className="composer" onSubmit={handleSend}>
               <input
                 ref={composerInputRef}
+                maxLength={MAX_CHAT_MESSAGE_CHARS}
                 data-testid="chat-input"
                 placeholder={
                   chat.status !== "open"

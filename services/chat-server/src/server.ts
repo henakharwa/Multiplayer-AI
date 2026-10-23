@@ -194,10 +194,33 @@ export function registerDashboardBroadcastRoutes(app: Express, rooms: RoomRegist
   });
 }
 
+// Longest chat message accepted (the web composer enforces the same limit,
+// apps/web/lib/config.ts). Every message is stored, broadcast to the whole
+// room and sent to the LLM, so an unbounded one is a cheap way to fill the
+// database and run up model costs.
+export const MAX_CHAT_MESSAGE_CHARS = 20_000;
+// Largest raw WebSocket frame. Generous for a 20,000-character message in
+// JSON (multi-byte characters included), far below ws's 100 MiB default.
+const MAX_WS_PAYLOAD_BYTES = 256 * 1024;
+// Agent turns each person may start per hour across all workspaces; each
+// turn is a paid LLM call. Override with AGENT_TURNS_PER_USER_PER_HOUR.
+function agentTurnsPerUserPerHour(): number {
+  const configured = Number(process.env.AGENT_TURNS_PER_USER_PER_HOUR);
+  return Number.isInteger(configured) && configured > 0 ? configured : 60;
+}
+
+function sendSafely(ws: WebSocket, payload: unknown): void {
+  try {
+    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
+  } catch (error) {
+    console.error("websocket send failed", error);
+  }
+}
+
 export function createChatServer(deps: CreateServerDeps = defaultDeps) {
   const app = createApp(deps);
   const server = createServer(app);
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  const wss = new WebSocketServer({ server, path: "/ws", maxPayload: MAX_WS_PAYLOAD_BYTES });
   // In production, live events and the agent-turn lock are shared through
   // Postgres so the service can run as more than one process.
   const roomBus = realtimeBusEnabled() ? createPostgresRoomBus() : undefined;
@@ -514,6 +537,13 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
     // See the heartbeat setInterval above -- marks this connection alive
     // on open and on every pong, so a dead connection gets pruned instead
     // of lingering (and showing up as a duplicate) in the presence list.
+    // ws reports protocol problems (an oversized or malformed frame) as an
+    // "error" event and then closes the socket. With no listener, Node
+    // treats that event as an uncaught exception and stops the server, so
+    // one bad client could disconnect everyone.
+    ws.on("error", (error) => {
+      console.error(JSON.stringify({ level: "warn", event: "websocket_client_error", error: errMessage(error) }));
+    });
     (ws as HeartbeatSocket).isAlive = true;
     ws.on("pong", () => {
       (ws as HeartbeatSocket).isAlive = true;
@@ -598,6 +628,10 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
             return;
           }
           const content = parsed.content.trim();
+          if (content.length > MAX_CHAT_MESSAGE_CHARS) {
+            ws.send(JSON.stringify({ type: "error", error: `Messages can be at most ${MAX_CHAT_MESSAGE_CHARS.toLocaleString("en-US")} characters. Share longer text as an artifact or a file in a connected tool.` }));
+            return;
+          }
           const agentKind: AgentKind = parsed.agentKind === "github" || parsed.agentKind === "slack" || parsed.agentKind === "linear" || parsed.agentKind === "notion" || parsed.agentKind === "figma" || parsed.agentKind === "project"
             ? parsed.agentKind
             : /@github\b/i.test(content) ? "github" : /@slack\b/i.test(content) ? "slack" : "project";
@@ -640,6 +674,20 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
           if (mentions.mentionsAgent && !(await rooms.tryAcquireAgentTurn(roomId))) {
             ws.send(JSON.stringify({ type: "error", error: "The agent is still working on the previous request. Please wait for it to finish." }));
             return;
+          }
+          // Counted only once the turn is actually starting, so a "still
+          // busy" rejection above never uses up someone's allowance.
+          if (mentions.mentionsAgent) {
+            const allowed = await db.consumeRateLimit("agent-turn-user", user.id, agentTurnsPerUserPerHour(), 60 * 60)
+              .catch(async (error) => {
+                await rooms.releaseAgentTurn(roomId).catch(() => undefined);
+                throw error;
+              });
+            if (!allowed) {
+              await rooms.releaseAgentTurn(roomId);
+              ws.send(JSON.stringify({ type: "error", error: "You've reached the hourly limit for agent requests. Please try again later, or hand this off to a teammate with an @mention." }));
+              return;
+            }
           }
 
           // If saving the message fails, give the agent-turn lock back so the
@@ -702,8 +750,15 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
               await rooms.releaseAgentTurn(roomId).catch((error) => console.error("agent turn lock release failed", error));
               rooms.broadcast(roomId, { type: "agent_status", status: "idle" });
             }
-          })();
-        })();
+          })().catch((error) => console.error("agent turn cleanup failed", error));
+        })().catch((error) => {
+          // Without this, any failed database call above (saving the
+          // message, reading membership, ...) became an unhandled promise
+          // rejection, which terminates the whole Node process and drops
+          // every connected user. Report it to this sender only.
+          console.error("chat message handling failed", error);
+          sendSafely(ws, { type: "error", error: "Your message couldn't be sent. Please try again." });
+        });
       };
       // Replay, in order, anything that arrived before this handler was
       // ready -- see the earlyMessages comment above.
@@ -716,7 +771,12 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
         rooms.broadcast(roomId, { type: "presence", participants: rooms.participants(roomId) });
         rooms.broadcast(workspaceId, { type: "workspace_presence", participants: rooms.participants(workspaceId) });
       });
-    })();
+    })().catch((error) => {
+      // A database failure while setting up the connection must close this
+      // one socket, not crash the server for everyone.
+      console.error("chat connection setup failed", error);
+      if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) ws.close(1011, "Server error, please reconnect");
+    });
   });
 
   app.use((error: unknown, req: Request, res: Response, _next: express.NextFunction) => {

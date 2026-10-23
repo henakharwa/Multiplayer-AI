@@ -4,7 +4,7 @@ export { getPool, closePool, openListenerConnection, closeListenerConnection } f
 export { encryptToken, decryptToken, hashSessionToken } from "./crypto.js";
 export { runMigrations, rollbackLastMigration, listMigrationFiles, listAppliedMigrations } from "./migrations.js";
 export type { MigrationFile, AppliedMigration } from "./migrations.js";
-export { runWithAdvisoryLock, saveOAuthPendingState, consumeOAuthPendingState, consumeRateLimit, isRateLimited, checkDatabaseHealth } from "./system.js";
+export { runWithAdvisoryLock, tryWithAdvisoryLock, saveOAuthPendingState, consumeOAuthPendingState, consumeRateLimit, isRateLimited, checkDatabaseHealth } from "./system.js";
 export { WorkspaceNameTakenError, normalizeWorkspaceName, createWorkspace, addWorkspaceMember, isWorkspaceMemberEmail, createWorkspaceInvitation, deleteWorkspaceInvitation, listWorkspaceInvitations, revokeWorkspaceInvitation, acceptWorkspaceInvitation, getWorkspaceById, getWorkspaceByJoinCode, deleteWorkspace, listWorkspacesForUser, listWorkspaceMembers, listWorkspaceMembersWithRoles, getWorkspaceRole, setWorkspaceMemberRole, removeWorkspaceMember, removeWorkspaceMemberAndPersonalIntegrations } from "./workspaces.js";
 export type { AcceptWorkspaceInvitationResult } from "./workspaces.js";
 export { createConversation, listConversations, renameConversation, setConversationPinned, setConversationArchived, getConversation, deleteConversation, insertMessage, listMessages } from "./conversations.js";
@@ -20,5 +20,5 @@ export { upsertGithubIntegration, saveGithubOAuthToken, setGithubRepo, upsertSla
 export { createPendingAction, getPendingAction, listPendingActions, resolvePendingAction, listActionsForConflictCheck, setActionExecutedAs } from "./pending-actions.js";
 export { listWorkspaceRepositories, getWorkspaceRepository, addWorkspaceRepository, removeWorkspaceRepository, setDefaultWorkspaceRepository, setRepositoryWebhookId, findWorkspacesForRepository, touchRepositoryEvent, getOrCreateWorkspaceWebhookSecret, getWorkspaceWebhookSecret, rotateWorkspaceWebhookSecret, getWorkspaceWebhookStatus, recordWebhookDelivery, setIntegrationAccountLogin } from "./github-team.js";
 export { recordAuditEvent, listAuditEvents } from "./audit.js";
-export { upsertUserFromGithub, getUserById, createPasswordUser, getPasswordCredential, upsertUserFromGoogle, createSession, getUserBySessionToken, deleteSession, createEmailVerificationToken, verifyEmailToken, getPasswordCredentialByUserId, createPasswordResetToken, consumePasswordResetToken, updatePasswordHash, deleteSessionsForUser } from "./users.js";
+export { upsertUserFromGithub, getUserById, createPasswordUser, getPasswordCredential, upsertUserFromGoogle, createSession, getUserBySessionToken, deleteSession, countActiveSessionsForUser, createEmailVerificationToken, verifyEmailToken, getPasswordCredentialByUserId, createPasswordResetToken, consumePasswordResetToken, updatePasswordHash, deleteSessionsForUser } from "./users.js";
 export { REALTIME_CHANNEL, publishRealtimeEvent, getRealtimeEvent, pruneRealtimeEvents, tryAcquireAgentTurnLock, releaseAgentTurnLock } from "./realtime.js";

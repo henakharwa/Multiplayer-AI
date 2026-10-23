@@ -282,9 +282,15 @@ export function registerUserAuthRoutes(
   });
 
   app.post("/auth/logout", async (req: Request, res: Response) => {
-    if (req.user) await db.deletePersonalIntegrationsForUser(req.user.id);
     const token = parseSessionToken(req.headers.cookie);
     if (token) await db.deleteSession(token);
+    // Personal tool connections end when the person is fully signed out.
+    // Signing out of one browser or device used to remove them everywhere,
+    // breaking the person's other sessions and any approvals waiting to run
+    // with their connection, so only the last sign-out clears them.
+    if (req.user && (await db.countActiveSessionsForUser(req.user.id)) === 0) {
+      await db.deletePersonalIntegrationsForUser(req.user.id);
+    }
     clearSessionCookie(res, config);
     res.status(204).end();
   });

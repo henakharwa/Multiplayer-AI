@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import os, { tmpdir } from "node:os";
 import { syncBuiltinESMExports } from "node:module";
 
@@ -55,7 +56,14 @@ try {
   try { await pg.createDatabase(database); } catch (error) {
     if (!String(error?.message ?? error).toLowerCase().includes("already exists")) throw error;
   }
-  const env = { ...process.env, DATABASE_URL: connectionString };
+  // Integration tokens are encrypted at rest, so the tests need a key. The
+  // database is thrown away after the run, so a fresh random key works and
+  // a new checkout or CI never fails for lack of one in .env.
+  const env = {
+    ...process.env,
+    DATABASE_URL: connectionString,
+    INTEGRATION_ENCRYPTION_KEY: process.env.INTEGRATION_ENCRYPTION_KEY || randomBytes(32).toString("base64"),
+  };
   // Apply the versioned migrations exactly as a deploy does, then run every
   // workspace's tests against that database.
   await run(npm, ["run", "migrate", "--workspace=packages/db"], env);
