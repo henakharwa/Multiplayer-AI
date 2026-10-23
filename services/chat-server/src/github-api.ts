@@ -105,6 +105,9 @@ export function createGithubTeamApi(fetchImpl: typeof fetch = fetch): GithubTeam
         { method: "POST", token, body: JSON.stringify({ name: "web", active: true, events: input.events, config: { url: input.url, content_type: "json", secret: input.secret, insecure_ssl: "0" } }) },
         fetchImpl
       );
+      if (response.status === 401) {
+        throw new Error("GitHub no longer accepts your saved GitHub connection (it was revoked or expired). Disconnect GitHub, connect it again, then try again.");
+      }
       if (response.status === 404 || response.status === 403) {
         throw new Error(`Your GitHub account needs admin access to ${owner}/${repo} to add a webhook. Ask a repository admin to add it with the URL and secret shown here.`);
       }

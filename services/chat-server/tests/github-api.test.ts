@@ -35,4 +35,10 @@ describe("github-api", () => {
     const api = createGithubTeamApi(impl);
     await expect(api.createRepoWebhook("t", "acme", "web", { url: "https://x", secret: "s", events: ["issues"] })).rejects.toThrow(/needs admin access to acme\/web/);
   });
+
+  it("asks the member to reconnect when GitHub rejects the saved token", async () => {
+    const { impl } = fakeFetch({ "POST /repos/acme/web/hooks": { status: 401, body: { message: "Bad credentials" } } });
+    const api = createGithubTeamApi(impl);
+    await expect(api.createRepoWebhook("t", "acme", "web", { url: "https://x", secret: "s", events: ["issues"] })).rejects.toThrow(/Disconnect GitHub, connect it again/);
+  });
 });
