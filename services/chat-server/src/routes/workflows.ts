@@ -35,6 +35,7 @@ export function registerWorkflowsRoutes({ app, requireRole, requirePermission }:
     if (input.name.trim().length > 120) return res.status(400).json({ error: "Workflow names can be up to 120 characters." });
     if (input.trigger === "schedule" && !input.scheduleMinutes) return res.status(400).json({ error: "Choose an interval between 5 minutes and 7 days." });
     if (input.workspaceAgentId && !(await db.getPublishedWorkspaceAgent(paramString(req.params.id), input.workspaceAgentId))) return res.status(400).json({ error: "Choose a published workspace agent." });
+    if (input.conversationId && !(await db.getConversation(paramString(req.params.id), input.conversationId))) return res.status(400).json({ error: "Choose a conversation in this workspace." });
     const workflow = await db.createWorkspaceWorkflow(paramString(req.params.id), req.user!.id, input);
     await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.created", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} created workflow ${workflow.name}` });
     res.status(201).json(workflow);
@@ -46,6 +47,7 @@ export function registerWorkflowsRoutes({ app, requireRole, requirePermission }:
     if (input.name.trim().length > 120) return res.status(400).json({ error: "Workflow names can be up to 120 characters." });
     if (input.trigger === "schedule" && !input.scheduleMinutes) return res.status(400).json({ error: "Choose an interval between 5 minutes and 7 days." });
     if (input.workspaceAgentId && !(await db.getPublishedWorkspaceAgent(paramString(req.params.id), input.workspaceAgentId))) return res.status(400).json({ error: "Choose a published workspace agent." });
+    if (input.conversationId && !(await db.getConversation(paramString(req.params.id), input.conversationId))) return res.status(400).json({ error: "Choose a conversation in this workspace." });
     const workflow = await db.updateWorkspaceWorkflow(paramString(req.params.id), paramString(req.params.workflowId), input);
     if (!workflow) return res.status(404).json({ error: "Workflow not found." });
     await db.recordAuditEvent({ workspaceId: workflow.workspaceId, eventType: "workflow.updated", actorType: "user", actorUserId: req.user!.id, actorName: req.user!.displayName, summary: `${req.user!.displayName} updated workflow ${workflow.name}` });

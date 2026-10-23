@@ -39,7 +39,7 @@ describe("PO-01 provider OAuth connections", () => {
       if (href === "https://api.figma.com/v1/me") return new Response(JSON.stringify({ handle: "hena kharwa" }), { status: 200 });
       return realFetch(url, init);
     });
-    const callback = await request(app).get(`/auth/mcp/figma/callback?state=${state}&code=abc`);
+    const callback = await request(app).get(`/auth/mcp/figma/callback?state=${state}&code=abc`).set("Cookie", admin.cookie);
     vi.unstubAllGlobals();
     expect(callback.status).toBe(302);
     expect(callback.headers.location).toContain("figma=connected");

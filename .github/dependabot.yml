@@ -1,0 +1,48 @@
+# Weekly dependency update pull requests. CI (unit, database and browser
+# tests) runs on each one, so a passing PR is safe to merge.
+version: 2
+updates:
+  - package-ecosystem: npm
+    # The root package.json covers every npm workspace (packages/*,
+    # services/chat-server, apps/web) through the shared package-lock.json.
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 8
+    labels: [dependencies]
+    commit-message:
+      prefix: "deps"
+    groups:
+      # Next.js and React move together; review them as one change.
+      web-framework:
+        patterns: ["next", "react", "react-dom", "@types/react", "@types/react-dom", "eslint-config-next"]
+      testing:
+        patterns: ["vitest", "@vitest/*", "@playwright/test", "supertest", "@types/supertest"]
+      # Everything else that is only a minor or patch release, in one PR.
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # Major versions need a person to read the release notes; Dependabot
+      # still opens security fixes for them regardless of this rule.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels: [dependencies]
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels: [dependencies]
+    commit-message:
+      prefix: "docker"

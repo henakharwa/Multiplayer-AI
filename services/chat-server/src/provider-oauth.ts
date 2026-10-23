@@ -54,6 +54,11 @@ export function registerProviderOAuthRoutes(app: Express): void {
   app.get("/auth/mcp/:provider/callback", async (req: Request, res: Response) => {
     const kind = provider(String(req.params.provider)); const state = typeof req.query.state === "string" ? req.query.state : ""; const code = typeof req.query.code === "string" ? req.query.code : ""; const pending = await db.consumeOAuthPendingState<{ workspaceId: string; provider: Provider; userId: string }>(state, "provider");
     if (!kind || !pending || pending.provider !== kind || !code) return res.status(400).send("This connection link expired. Please return to the workspace and try again.");
+    // The token is saved for whoever started this flow, so only that same
+    // signed-in session may finish it. Otherwise someone could start a
+    // connection and send the provider's link to another person, whose
+    // account would then be stored as theirs.
+    if (req.user?.id !== pending.userId) return res.redirect(back(kind, pending.workspaceId, "error", "Please finish connecting in the same browser and account you started from."));
     const oauth = config(kind); const info = infoFor(kind);
     const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: oauth.redirectUri });
     if (kind === "linear") { body.set("client_id", oauth.clientId); body.set("client_secret", oauth.clientSecret); }

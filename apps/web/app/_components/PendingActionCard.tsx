@@ -12,12 +12,16 @@ export default function PendingActionCard({
   workspaceId,
   action,
   actorName,
+  currentUserId,
   canApprove = true,
   onRequestAccess,
 }: {
   workspaceId: string;
   action: PendingAction;
   actorName: string;
+  // The signed-in member, so the card never offers "Run as me" for an
+  // action that already runs as them.
+  currentUserId?: string;
   // External approvals: Admins by default, Editors with approveActions.
   canApprove?: boolean;
   onRequestAccess?: ReactNode;
@@ -26,7 +30,8 @@ export default function PendingActionCard({
   const [error, setError] = useState<string | null>(null);
   // Set when the server reports the run-as connection is gone and the
   // approver's own connection can do it instead.
-  const [offerRunAsMe, setOfferRunAsMe] = useState(action.runAsAvailable === false);
+  const runsAsCurrentUser = action.runAsKind !== "app" && !!currentUserId && action.runAsUserId === currentUserId;
+  const [offerRunAsMe, setOfferRunAsMe] = useState(action.runAsAvailable === false && !runsAsCurrentUser);
   // GitHub writes target owner/repo. Slack's MCP tools pass channel_id,
   // older Slack tools passed channel, and Figma tools pass the file link.
   const text = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null);
@@ -60,7 +65,7 @@ export default function PendingActionCard({
       // actually removes this card (via the parent's status === "pending"
       // filter) for everyone in the room, including this tab.
     } catch (err) {
-      if (err instanceof ApiError && err.code === "run_as_unavailable") setOfferRunAsMe(true);
+      if (err instanceof ApiError && err.code === "run_as_unavailable" && !runsAsCurrentUser) setOfferRunAsMe(true);
       setError(describeError(err, "Something went wrong."));
       setBusy(null);
     }
@@ -126,9 +131,11 @@ export default function PendingActionCard({
           ? "An Admin or a teammate with the “Approve actions” permission must confirm this action."
           : offerRunAsMe
             ? `${action.runAsName ?? action.requestedByName ?? "The requester"}'s connection can no longer run this. You can run it with your own account instead.`
-            : warnings.length
-              ? "Check the possible duplicates above before approving."
-              : "Review the target and preview, then approve to run this action."}
+            : runsAsCurrentUser && action.runAsAvailable === false
+              ? "Your connection for this tool is no longer available. Reconnect it under Integrations before confirming, or cancel."
+              : warnings.length
+                ? "Check the possible duplicates above before approving."
+                : "Review the target and preview, then approve to run this action."}
       </p>
       {!canApprove && onRequestAccess}
       <div className="pending-action-buttons">

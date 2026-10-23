@@ -1,4 +1,5 @@
 import type { Express, NextFunction, Request, Response } from "express";
+import { captureError } from "./error-tracking.js";
 import * as db from "@mai-chat/db";
 import type { RoomRegistry } from "./rooms.js";
 import type { ToolExecutor } from "./tools.js";
@@ -568,6 +569,7 @@ export function registerActionRoutes(app: Express, deps: CreateServerDeps, rooms
       // "failed", posts why in the room, and records it.
       const failureReason = errMessage(err);
       console.error(`[actions] workspace ${workspaceId}: confirm failed for action ${actionId} (${action.toolName}):`, failureReason);
+      captureError(err, { where: "action-confirm", workspaceId, actionId, toolName: action.toolName });
       const resolved = await db.resolvePendingAction({ workspaceId, id: actionId, status: "failed", result: failureReason });
       rooms.broadcast(roomId, { type: "pending_action_update", action: resolved });
       const failureMessage = await db.insertMessage({

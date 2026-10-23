@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { createChatServer } from "./server.js";
 import { closeAllGithubMcpClients } from "./github-mcp-pool.js";
 import { enforceProductionConfig } from "./config-check.js";
+import { flushErrorTracking, initErrorTracking } from "./error-tracking.js";
 
 loadEnv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
 loadEnv();
@@ -13,6 +14,7 @@ export * from "./tools.js";
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   enforceProductionConfig();
+  await initErrorTracking();
   const port = Number(process.env.PORT ?? process.env.CHAT_SERVER_PORT ?? 4000);
   createChatServer().start(port);
 
@@ -23,7 +25,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   // in the background instead of exiting with their parent, silently
   // piling up orphaned github-mcp-server containers over a dev session.
   const shutdown = () => {
-    void closeAllGithubMcpClients().finally(() => process.exit(0));
+    void Promise.allSettled([closeAllGithubMcpClients(), flushErrorTracking()]).finally(() => process.exit(0));
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

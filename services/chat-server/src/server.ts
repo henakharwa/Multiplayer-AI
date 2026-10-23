@@ -21,6 +21,7 @@ import { registerEmailVerificationRoutes } from "./email-verification.js";
 import { registerPasswordResetRoutes } from "./password-reset.js";
 import { registerProviderOAuthRoutes } from "./provider-oauth.js";
 import { defaultDeps, type CreateServerDeps } from "./server-deps.js";
+import { captureError } from "./error-tracking.js";
 import type { RouteContext } from "./routes/context.js";
 import { registerPublicRoutes } from "./routes/public.js";
 import { registerNotificationsRoutes } from "./routes/notifications.js";
@@ -68,9 +69,12 @@ export function createApp(deps: CreateServerDeps = defaultDeps) {
     const requestId = randomUUID();
     res.setHeader("x-request-id", requestId);
     res.on("finish", () => {
-      // Keep normal successful traffic quiet. Render captures these JSON
-      // lines for failures without exposing request bodies or secrets.
-      if (res.statusCode >= 400) console.error(JSON.stringify({ level: "error", event: "http_request", requestId, method: req.method, path: req.path, status: res.statusCode }));
+      // Keep normal successful traffic quiet. These JSON lines never include
+      // request bodies or secrets. A 4xx is the client's outcome (not signed
+      // in, no permission, a conflict) and is logged as a warning; only a
+      // 5xx is the server's own failure and logged as an error.
+      if (res.statusCode >= 500) console.error(JSON.stringify({ level: "error", event: "http_request", requestId, method: req.method, path: req.path, status: res.statusCode }));
+      else if (res.statusCode >= 400) console.warn(JSON.stringify({ level: "warn", event: "http_request", requestId, method: req.method, path: req.path, status: res.statusCode }));
     });
     next();
   });
@@ -408,7 +412,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
   // runner. Keeping the actual agent invocation here means scheduled and
   // event-driven work takes the identical tool, provider-permission, action
   // proposal, notification, and WebSocket paths as an ordinary chat turn.
-  app.locals.runWorkflow = async (workflow: NonNullable<Awaited<ReturnType<typeof db.getWorkspaceWorkflow>>>, trigger: "manual" | "schedule" | "github_issue" | "github_status" | "slack_mention", user: { id: string | null; displayName: string }, eventText?: string) => {
+  const runWorkflow = async (workflow: NonNullable<Awaited<ReturnType<typeof db.getWorkspaceWorkflow>>>, trigger: "manual" | "schedule" | "github_issue" | "github_status" | "slack_mention", user: { id: string | null; displayName: string }, eventText?: string) => {
     const role = user.id ? await db.getWorkspaceRole(workflow.workspaceId, user.id) : null;
     // A workflow whose owner left keeps running through the workspace
     // GitHub App (GitHub and Project workflows only); its proposals still
@@ -474,6 +478,15 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       }
     }
   };
+  // Runs start in the background (Run now, schedules, GitHub/Slack events),
+  // so nothing awaits them. A failure the run itself couldn't record, such as
+  // the database rejecting the run record, must be logged here: an
+  // unhandled rejection would stop the whole server.
+  app.locals.runWorkflow = (...args: Parameters<typeof runWorkflow>): Promise<void> =>
+    runWorkflow(...args).catch((error) => {
+      console.error(`workflow run failed to start or finish: ${args[0].name} (${args[0].id})`, error);
+      captureError(error, { where: "workflow-run", workspaceId: args[0].workspaceId, workflowId: args[0].id, trigger: args[1] });
+    });
 
   // A verified GitHub webhook delivery for one workspace: recorded in
   // Activity, pushed live to everyone in the workspace, and used to start
@@ -517,15 +530,24 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
           // runWorkflow decides whether a missing owner can be replaced by the workspace GitHub App.
           void app.locals.runWorkflow(workflow, "schedule", { id: owner?.id ?? null, displayName: owner?.displayName ?? "Workflow automation" });
         }
-      })().catch((error) => console.error("workflow scheduler failed", error));
+      })().catch((error) => {
+        console.error("workflow scheduler failed", error);
+        captureError(error, { where: "workflow-scheduler" });
+      });
     }, 30_000);
   };
   let retentionScheduler: NodeJS.Timeout | undefined;
   let notificationScheduler: NodeJS.Timeout | undefined;
-  const enforceRetention = () => void db.runWithAdvisoryLock("workflow-run-retention", () => db.enforceWorkflowRunRetention()).catch((error) => console.error("workflow retention failed", error));
+  const enforceRetention = () => void db.runWithAdvisoryLock("workflow-run-retention", () => db.enforceWorkflowRunRetention()).catch((error) => {
+    console.error("workflow retention failed", error);
+    captureError(error, { where: "workflow-retention" });
+  });
   const deliverNotificationJobs = () => void db.runWithAdvisoryLock("notification-delivery", async () => {
     await Promise.all([db.escalateUnreadDecisionNotifications(), db.createDailyNotificationDigests()]);
-  }).catch((error) => console.error("notification scheduler failed", error));
+  }).catch((error) => {
+    console.error("notification scheduler failed", error);
+    captureError(error, { where: "notification-scheduler" });
+  });
   server.on("listening", () => { startWorkflowScheduler(); enforceRetention(); deliverNotificationJobs(); retentionScheduler = setInterval(enforceRetention, 24 * 60 * 60 * 1000); notificationScheduler = setInterval(deliverNotificationJobs, 5 * 60 * 1000); });
   server.on("close", () => { void roomBus?.close(); if (workflowScheduler) clearInterval(workflowScheduler); if (retentionScheduler) clearInterval(retentionScheduler); if (notificationScheduler) clearInterval(notificationScheduler); workflowScheduler = undefined; retentionScheduler = undefined; notificationScheduler = undefined; });
 
@@ -737,6 +759,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
               await runAgentReply(workspaceId, conversationId, { userId: user.id, name: displayName }, agentKind, typeof parsed.agentId === "string" && UUID_RE.test(parsed.agentId) ? parsed.agentId : undefined);
             } catch (err) {
               console.error("agent turn failed", err);
+              captureError(err, { where: "agent-turn", workspaceId, conversationId, agentKind });
               const errorMessage = await db.insertMessage({
                 workspaceId,
                 conversationId,
@@ -750,13 +773,17 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
               await rooms.releaseAgentTurn(roomId).catch((error) => console.error("agent turn lock release failed", error));
               rooms.broadcast(roomId, { type: "agent_status", status: "idle" });
             }
-          })().catch((error) => console.error("agent turn cleanup failed", error));
+          })().catch((error) => {
+            console.error("agent turn cleanup failed", error);
+            captureError(error, { where: "agent-turn-cleanup", workspaceId, conversationId });
+          });
         })().catch((error) => {
           // Without this, any failed database call above (saving the
           // message, reading membership, ...) became an unhandled promise
           // rejection, which terminates the whole Node process and drops
           // every connected user. Report it to this sender only.
           console.error("chat message handling failed", error);
+          captureError(error, { where: "chat-message", workspaceId, conversationId });
           sendSafely(ws, { type: "error", error: "Your message couldn't be sent. Please try again." });
         });
       };
@@ -775,6 +802,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       // A database failure while setting up the connection must close this
       // one socket, not crash the server for everyone.
       console.error("chat connection setup failed", error);
+      captureError(error, { where: "chat-connection" });
       if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) ws.close(1011, "Server error, please reconnect");
     });
   });
@@ -789,6 +817,7 @@ export function createChatServer(deps: CreateServerDeps = defaultDeps) {
       return;
     }
     console.error(JSON.stringify({ level: "error", event: "unhandled_http_error", requestId, method: req.method, path: req.path, error: errMessage(error) }));
+    captureError(error, { where: "http", method: req.method, route: req.route?.path ?? req.path, requestId: typeof requestId === "string" ? requestId : null });
     if (!res.headersSent) res.status(500).json({ error: "Unexpected server error", requestId });
   });
 

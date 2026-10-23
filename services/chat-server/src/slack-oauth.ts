@@ -211,6 +211,13 @@ export function registerSlackOAuthRoutes(app: Express, config: SlackOAuthConfig,
         redirectTarget(config, undefined, "error", "That Slack login link expired or was already used -- click Log in with Slack again.")
       );
     }
+    // The token is saved for whoever started this flow, so only that same
+    // signed-in session may finish it. Otherwise someone could start a
+    // connection and send the provider's link to another person, whose
+    // account would then be stored as theirs.
+    if (req.user?.id !== pending.userId) {
+      return res.redirect(redirectTarget(config, pending.workspaceId, "error", "Please finish connecting in the same browser and account you started from."));
+    }
     if (!code) {
       return res.redirect(redirectTarget(config, pending.workspaceId, "error", "Slack didn't send back an authorization code."));
     }
